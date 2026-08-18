@@ -1,0 +1,6 @@
+@ArtCommission.API_HostAddress = http://localhost:5075
+
+GET {{ArtCommission.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

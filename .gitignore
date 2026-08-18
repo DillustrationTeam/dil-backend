@@ -430,3 +430,9 @@ FodyWeavers.xsd
 appsettings.Development.json
 appsettings.Production.json
 appsettings.Local.json
+
+# Agent & Tooling directories
+.claude/
+.gemini/
+*.exe
+
