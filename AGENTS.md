@@ -20,11 +20,13 @@ Deploy: Azure App Service, GitHub Actions, Docker.
 
 ## Quy tắc cứng — không tự ý đổi hướng khi chưa hỏi
 
+- **Phạm vi Repo**: Repo này (`dil-backend`) chỉ chịu trách nhiệm phần **Backend API & Real-time Server** (ASP.NET Core 8 C#). Không chứa code Frontend UI (Frontend Next.js được phát triển ở repo riêng `dil-frontend`).
 - Kiến trúc: monolith 4-project Clean Architecture, **không** tách microservice/modular-monolith-project-riêng trừ khi người yêu cầu rõ.
 - 1 `AppDbContext` duy nhất, không tách theo module.
 - Index/scale strategy đã chốt trong `docs/03-database.md` — không thêm sharding/partitioning/read-replica tuỳ tiện.
 - Ngoài phạm vi (đừng build): mua tranh trực tiếp, dispute resolution tự động, app di động native.
 - Quyết định mới phát sinh lúc làm việc → cập nhật lại file `docs/` tương ứng ngay, đừng để trôi trong chat.
+
 
 ## Build / Run
 

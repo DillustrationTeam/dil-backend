@@ -14,9 +14,10 @@
 
 > **Lưu ý về mô hình User**: Hệ thống hỗ trợ tài khoản đa vai trò (Multi-role User): 1 tài khoản Registered User có thể vừa đóng vai trò làm Client (đi đặt vẽ) vừa đóng vai trò làm Artist / Creator (nhận commission).
 
----
-
 ## 2. Danh sách Use Cases chi tiết (2.2.2 Descriptions)
+
+> **Phạm vi xử lý của Backend (`dil-backend`)**:
+> Thư mục code của repo này chịu trách nhiệm hiện thực hóa phần **Backend API, Business Logic, Validation, Authentication/Authorization, SignalR Real-time Hubs, Database Access và Integrations** cho toàn bộ 34 Use Cases bên dưới. Giao diện Frontend tương ứng được phát triển ở repository riêng (`dil-frontend`).
 
 | ID | Use Case | Actors | Description |
 |---|---|---|---|

@@ -37,7 +37,16 @@ Chi tiết Use Case của các Actor xem tại [`docs/05-use-cases.md`](05-use-c
 - Chỉ web, không có app di động native.
 - Chỉ nhắm thị trường Việt Nam (ngôn ngữ, cổng thanh toán nội địa).
 
+## Phạm vi trách nhiệm của Repo `dil-backend`
+
+Repo này (`dil-backend`) chịu trách nhiệm xây dựng **Backend Web API Service & Real-time Server** cho toàn bộ hệ thống:
+- Xử lý Business Logic, Data Access (SQL Server / EF Core 8), Validation, Authentication (JWT / ASP.NET Identity), và Phân quyền cho 34 Use Cases.
+- Cung cấp hệ thống RESTful APIs (`/api/v1/...`) và SignalR Real-time Hubs (`/hubs/chat`, `/hubs/notifications`).
+- Xử lý tích hợp Cổng thanh toán (VNPAY / MoMo IPN Callbacks), Background Jobs (Hangfire), và các Microservices / Dịch vụ AI bên ngoài (Azure AI Search, OpenAI API).
+- **Lưu ý:** Giao diện người dùng (Frontend UI/UX Next.js) được xây dựng ở repository riêng (`dil-frontend`).
+
 ## Nguồn tài liệu gốc
 
-Repo này (`dil-backend`) chỉ chứa code. Tài liệu yêu cầu/thiết kế đầy đủ (SRS, mapping màn hình, Software Design Document) nằm ở repo tài liệu riêng: `D:\SEP490_Dillustration` — thư mục `02_Plan_Requirement/` và `03_Software_Design/`. Nếu không chắc 1 tính năng có trong scope hay không, kiểm tra ở đó trước, đừng đoán.
+Repo này (`dil-backend`) chỉ chứa code backend. Tài liệu yêu cầu/thiết kế đầy đủ (SRS, mapping màn hình, Software Design Document) nằm ở repo tài liệu riêng: `D:\SEP490_Dillustration` — thư mục `02_Plan_Requirement/` và `03_Software_Design/`. Nếu không chắc 1 tính năng có trong scope hay không, kiểm tra ở đó trước, đừng đoán.
+
 
