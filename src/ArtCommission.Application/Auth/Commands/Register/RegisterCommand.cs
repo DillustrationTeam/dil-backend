@@ -8,7 +8,8 @@ namespace ArtCommission.Application.Auth.Commands.Register;
 public record RegisterCommand(
     string Email,
     string Password,
-    string FullName
+    string FullName,
+    string? Role = null
 ) : IRequest<(bool Success, AuthResponseDto? AuthResponse, string[] Errors)>;
 
 public class RegisterCommandHandler : IRequestHandler<RegisterCommand, (bool Success, AuthResponseDto? AuthResponse, string[] Errors)>
@@ -25,7 +26,7 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, (bool Suc
     public async Task<(bool Success, AuthResponseDto? AuthResponse, string[] Errors)> Handle(RegisterCommand request, CancellationToken cancellationToken)
     {
         var (registerSuccess, userId, registerErrors) = await _identityService.RegisterUserAsync(
-            request.Email, request.Password, request.FullName, cancellationToken);
+            request.Email, request.Password, request.FullName, request.Role, cancellationToken);
 
         if (!registerSuccess)
         {

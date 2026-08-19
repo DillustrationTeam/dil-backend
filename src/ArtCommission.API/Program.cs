@@ -113,6 +113,33 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+// Auto-initialize Database & Seed Roles on Startup
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    var logger = services.GetRequiredService<ILogger<Program>>();
+    try
+    {
+        var dbContext = services.GetRequiredService<AppDbContext>();
+        await dbContext.Database.EnsureCreatedAsync();
+
+        var roleManager = services.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
+        var roles = new[] { "Administrator", "Moderator", "Creator", "Client" };
+        foreach (var role in roles)
+        {
+            if (!await roleManager.RoleExistsAsync(role))
+            {
+                await roleManager.CreateAsync(new IdentityRole<Guid>(role));
+            }
+        }
+        logger.LogInformation("Database initialized and default roles seeded successfully.");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "An error occurred while initializing the database.");
+    }
+}
+
 // Configure HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {

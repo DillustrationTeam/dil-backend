@@ -4,6 +4,11 @@
 -- Project: ArtCommission (Dillustration)
 -- =============================================================================
 
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+
 -- 1. Bảng Users (Tương đương AspNetUsers)
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = N'Users')
 BEGIN
@@ -140,6 +145,8 @@ BEGIN
         [CreatedByIp] NVARCHAR(50) NULL,
         [ReplacedByTokenHash] NVARCHAR(450) NULL,
         [CreatedAt] DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        [UpdatedAt] DATETIMEOFFSET NULL,
+        [IsDeleted] BIT NOT NULL DEFAULT 0,
         CONSTRAINT [PK_RefreshTokens] PRIMARY KEY CLUSTERED ([Id] ASC),
         CONSTRAINT [FK_RefreshTokens_Users] FOREIGN KEY ([UserId]) REFERENCES [dbo].[Users] ([Id]) ON DELETE CASCADE
     );
@@ -148,3 +155,4 @@ BEGIN
     CREATE NONCLUSTERED INDEX [IX_RefreshTokens_UserId] ON [dbo].[RefreshTokens] ([UserId]);
 END;
 GO
+

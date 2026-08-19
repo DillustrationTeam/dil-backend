@@ -10,6 +10,8 @@
 4. [`docs/03-database.md`](docs/03-database.md) — schema, index đã chốt, concurrency, migration command
 5. [`docs/04-api-conventions.md`](docs/04-api-conventions.md) — REST pattern, response envelope, auth, SignalR, rate limit
 6. [`docs/05-use-cases.md`](docs/05-use-cases.md) — danh sách 7 Actor chuẩn hóa, mô hình Multi-role User, specs 34 use cases
+7. [`docs/06-auth-implementation-plan.md`](docs/06-auth-implementation-plan.md) — kế hoạch triển khai code chi tiết cho Module Auth / Identity
+
 
 ## Tech stack (tóm tắt — chi tiết xem docs/)
 

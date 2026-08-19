@@ -18,7 +18,7 @@ public class IdentityService : IIdentityService
         _roleManager = roleManager;
     }
 
-    public async Task<(bool Success, Guid UserId, string[] Errors)> RegisterUserAsync(string email, string password, string fullName, CancellationToken cancellationToken = default)
+    public async Task<(bool Success, Guid UserId, string[] Errors)> RegisterUserAsync(string email, string password, string fullName, string? role = null, CancellationToken cancellationToken = default)
     {
         var existingUser = await _userManager.FindByEmailAsync(email);
         if (existingUser != null)
@@ -42,13 +42,23 @@ public class IdentityService : IIdentityService
             return (false, Guid.Empty, result.Errors.Select(e => e.Description).ToArray());
         }
 
-        // Default role for registered users is Client
+        // 1. Every registered user receives the default 'Client' role
         if (!await _roleManager.RoleExistsAsync(UserRoleNames.Client))
         {
             await _roleManager.CreateAsync(new IdentityRole<Guid>(UserRoleNames.Client));
         }
-
         await _userManager.AddToRoleAsync(user, UserRoleNames.Client);
+
+        // 2. If registering directly as Artist / Creator, ALSO grant the 'Creator' role (Dual-role)
+        if (string.Equals(role, "artist", StringComparison.OrdinalIgnoreCase) || 
+            string.Equals(role, "creator", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!await _roleManager.RoleExistsAsync(UserRoleNames.Creator))
+            {
+                await _roleManager.CreateAsync(new IdentityRole<Guid>(UserRoleNames.Creator));
+            }
+            await _userManager.AddToRoleAsync(user, UserRoleNames.Creator);
+        }
 
         return (true, user.Id, Array.Empty<string>());
     }
@@ -148,6 +158,31 @@ public class IdentityService : IIdentityService
         if (!result.Succeeded)
         {
             return (false, result.Errors.Select(e => e.Description).ToArray());
+        }
+
+        return (true, Array.Empty<string>());
+    }
+
+    public async Task<(bool Success, string[] Errors)> AddCreatorRoleAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user == null || user.IsDeleted)
+        {
+            return (false, new[] { "User not found." });
+        }
+
+        if (!await _roleManager.RoleExistsAsync(UserRoleNames.Creator))
+        {
+            await _roleManager.CreateAsync(new IdentityRole<Guid>(UserRoleNames.Creator));
+        }
+
+        if (!await _userManager.IsInRoleAsync(user, UserRoleNames.Creator))
+        {
+            var result = await _userManager.AddToRoleAsync(user, UserRoleNames.Creator);
+            if (!result.Succeeded)
+            {
+                return (false, result.Errors.Select(e => e.Description).ToArray());
+            }
         }
 
         return (true, Array.Empty<string>());
