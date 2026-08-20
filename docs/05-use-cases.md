@@ -6,13 +6,13 @@
 
 1. **Administrator** (Primary Human Actor): Quản trị viên hệ thống (cấu hình, quản lý người dùng, xem system logs, xử lý các ca tranh chấp mức cuối).
 2. **Moderator** (Primary Human Actor): Kiểm duyệt viên (duyệt bài viết vi phạm, xử lý báo cáo từ người dùng, giải quyết tranh chấp đơn đặt vẽ/Dispute).
-3. **Artist / Creator** (Primary Human Actor): Họa sĩ / Người sáng tạo (tạo hồ sơ portfolio, đăng sản phẩm, tạo các gói dịch vụ đặt vẽ - Commission Services, nhận yêu cầu đặt vẽ, nộp sản phẩm từng mốc - Milestones).
-4. **Client / Commissioner** (Primary Human Actor): Khách hàng (tìm kiếm artist, gửi yêu cầu đặt vẽ, thanh toán tạm giữ Escrow, xem preview watermark, duyệt mốc & nhận file gốc).
+3. **Creator** (Primary Human Actor): Người sáng tạo / Họa sĩ (tạo hồ sơ portfolio, đăng sản phẩm, tạo các gói dịch vụ đặt vẽ - Commission Services, nhận yêu cầu đặt vẽ, nộp sản phẩm từng mốc - Milestones).
+4. **Client** (Primary Human Actor): Khách hàng (tìm kiếm artist, gửi yêu cầu đặt vẽ, thanh toán tạm giữ Escrow, xem preview watermark, duyệt mốc & nhận file gốc).
 5. **Guest** (Primary Human Actor): Người dùng vãng lai chưa đăng nhập (xem portfolio công khai, tìm kiếm tranh/artist, đăng ký, đăng nhập).
 6. **Payment Gateway Service** (Secondary / External System Actor): Cổng thanh toán bên ngoài (VNPAY / MoMo) xử lý các giao dịch nạp/rút/hoàn tiền và phản hồi IPN Callback.
 7. **AI Assistant Service** (Secondary / External System Actor): Dịch vụ AI bên ngoài / Microservice (phục vụ Auto-tagging tự động đánh thẻ tranh, AI Moderation quét ảnh nhạy cảm/bản quyền, và AI Recommendation gợi ý nội dung).
 
-> **Lưu ý về mô hình User**: Hệ thống hỗ trợ tài khoản đa vai trò (Multi-role User): 1 tài khoản Registered User có thể vừa đóng vai trò làm Client (đi đặt vẽ) vừa đóng vai trò làm Artist / Creator (nhận commission).
+> **Lưu ý về mô hình User**: Hệ thống hỗ trợ tài khoản đa vai trò (Multi-role User): 1 tài khoản Registered User có thể vừa đóng vai trò làm Client (đi đặt vẽ) vừa đóng vai trò làm Creator (nhận commission).
 
 ## 2. Danh sách Use Cases chi tiết (2.2.2 Descriptions)
 
