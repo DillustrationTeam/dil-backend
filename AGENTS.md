@@ -10,6 +10,8 @@
 4. [`docs/03-database.md`](docs/03-database.md) — schema, index đã chốt, concurrency, migration command
 5. [`docs/04-api-conventions.md`](docs/04-api-conventions.md) — REST pattern, response envelope, auth, SignalR, rate limit
 6. [`docs/05-use-cases.md`](docs/05-use-cases.md) — danh sách 7 Actor chuẩn hóa, mô hình Multi-role User, specs 34 use cases
+7. [`docs/06-auth-implementation-plan.md`](docs/06-auth-implementation-plan.md) — kế hoạch triển khai code chi tiết cho Module Auth / Identity
+
 
 ## Tech stack (tóm tắt — chi tiết xem docs/)
 
@@ -20,11 +22,13 @@ Deploy: Azure App Service, GitHub Actions, Docker.
 
 ## Quy tắc cứng — không tự ý đổi hướng khi chưa hỏi
 
+- **Phạm vi Repo**: Repo này (`dil-backend`) chỉ chịu trách nhiệm phần **Backend API & Real-time Server** (ASP.NET Core 8 C#). Không chứa code Frontend UI (Frontend Next.js được phát triển ở repo riêng `dil-frontend`).
 - Kiến trúc: monolith 4-project Clean Architecture, **không** tách microservice/modular-monolith-project-riêng trừ khi người yêu cầu rõ.
 - 1 `AppDbContext` duy nhất, không tách theo module.
 - Index/scale strategy đã chốt trong `docs/03-database.md` — không thêm sharding/partitioning/read-replica tuỳ tiện.
 - Ngoài phạm vi (đừng build): mua tranh trực tiếp, dispute resolution tự động, app di động native.
 - Quyết định mới phát sinh lúc làm việc → cập nhật lại file `docs/` tương ứng ngay, đừng để trôi trong chat.
+
 
 ## Build / Run
 

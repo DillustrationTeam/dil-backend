@@ -1,0 +1,30 @@
+name: 🏗️ Backend CI — Build & Validate
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build-and-validate:
+    name: Build & Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: 📦 Restore NuGet packages
+        run: dotnet restore
+
+      - name: 🏗️ Build solution (0 warnings allowed)
+        run: dotnet build --no-restore --configuration Release -warnaserror
+
+      - name: ✅ Build passed
+        run: echo "Build succeeded with 0 errors and 0 warnings!"
