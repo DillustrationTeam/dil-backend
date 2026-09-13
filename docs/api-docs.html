@@ -1,0 +1,3365 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <title>ArtCommission (Dillustration) - Complete API Reference</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="https://scalar.com/favicon.svg" />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <script id="api-reference" type="application/json">
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "ArtCommission (Dillustration) - Complete API Specification",
+    "description": "Tài liệu API đầy đủ cho toàn bộ 10 Phân hệ (73 Endpoints). Đọc trực tiếp trên trình duyệt mà không cần khởi chạy backend server.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.dillustration.com/api/v1",
+      "description": "Production Server"
+    },
+    {
+      "url": "https://localhost:7001/api/v1",
+      "description": "Local Development Server"
+    }
+  ],
+  "paths": {
+    "/commissions": {
+      "post": {
+        "tags": [
+          "Commission & Escrow Core"
+        ],
+        "summary": "Client tạo và gửi Yêu cầu Đặt vẽ (Brief) mới cho Artist/Creator",
+        "description": "**Mục đích**: Client tạo và gửi Yêu cầu Đặt vẽ (Brief) mới cho Artist/Creator\n\n**Input chính**: creatorId, title, description, deadlineAt, totalPrice, voucherCode (tuỳ chọn), milestones: [{ sequence, title, price }]\n\n**Output trả về**: `commission: { commissionId, title, description, clientId, creatorId, totalPrice, discountAmount, finalPrice, escrowHeldAmount, escrowStatus: \"Pending\", currentStage: 1, status: \"PendingAcceptance\", deadlineAt, createdAt }, milestones: [...]`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "commission: { commissionId, title, description, clientId, creatorId, totalPrice, discountAmount, finalPrice, escrowHeldAmount, escrowStatus: \"Pending\", currentStage: 1, status: \"PendingAcceptance\", deadlineAt, createdAt }, milestones: [...]",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "creatorId, title, description, deadlineAt, totalPrice, voucherCode (tuỳ chọn), milestones: [{ sequence, title, price }]"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Commission & Escrow Core"
+        ],
+        "summary": "Lấy danh sách các đơn Commission đặt vẽ của người dùng (Client đi đặt hoặc Creator nhận vẽ), lọc theo trạng thái",
+        "description": "**Mục đích**: Lấy danh sách các đơn Commission đặt vẽ của người dùng (Client đi đặt hoặc Creator nhận vẽ), lọc theo trạng thái\n\n**Input chính**: query status, role (Client / Creator), search, cursor, limit\n\n**Output trả về**: `data: [{ commissionId, title, client: { userId, fullName }, creator: { creatorId, displayName }, finalPrice, escrowStatus, status, currentStage, deadlineAt, createdAt }], meta: { cursor, total }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "data: [{ commissionId, title, client: { userId, fullName }, creator: { creatorId, displayName }, finalPrice, escrowStatus, status, currentStage, deadlineAt, createdAt }], meta: { cursor, total }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        }
+      }
+    },
+    "/commissions/{commissionId}": {
+      "get": {
+        "tags": [
+          "Commission & Escrow Core"
+        ],
+        "summary": "Người dùng xem chi tiết đơn hàng Commission, tiến độ công việc, trạng thái Escrow và danh sách các cột mốc Milestones",
+        "description": "**Mục đích**: Người dùng xem chi tiết đơn hàng Commission, tiến độ công việc, trạng thái Escrow và danh sách các cột mốc Milestones\n\n**Input chính**: commissionId\n\n**Output trả về**: `commission: { commissionId, title, description, client, creator, voucherId, discountAmount, totalPrice, finalPrice, escrowHeldAmount, disbursedAmount, escrowStatus, currentStage, status, deadlineAt, createdAt }, milestones: [{ milestoneId, sequence, title, price, status, wipPreviewUrl, watermarkedUrl, finalDeliverableUrl, revisionCount, submittedAt, approvedAt }]`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "commission: { commissionId, title, description, client, creator, voucherId, discountAmount, totalPrice, finalPrice, escrowHeldAmount, disbursedAmount, escrowStatus, currentStage, status, deadlineAt, createdAt }, milestones: [{ milestoneId, sequence, title, price, status, wipPreviewUrl, watermarkedUrl, finalDeliverableUrl, revisionCount, submittedAt, approvedAt }]",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "commissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu commissionId"
+          }
+        ]
+      }
+    },
+    "/commissions/{commissionId}/respond": {
+      "patch": {
+        "tags": [
+          "Commission & Escrow Core"
+        ],
+        "summary": "Creator tiếp nhận Yêu cầu Đặt vẽ: Chấp nhận (Accept), Từ chối (Reject), hoặc Đề xuất thương lượng giá/thời hạn (Negotiate)",
+        "description": "**Mục đích**: Creator tiếp nhận Yêu cầu Đặt vẽ: Chấp nhận (Accept), Từ chối (Reject), hoặc Đề xuất thương lượng giá/thời hạn (Negotiate)\n\n**Input chính**: action (\"Accept\" / \"Reject\" / \"Negotiate\"), negotiatePrice (tuỳ chọn), rejectReason (tuỳ chọn)\n\n**Output trả về**: `commission: { commissionId, status: \"InProgress\" / \"Cancelled\" / \"Negotiating\", updatedAt }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "commission: { commissionId, status: \"InProgress\" / \"Cancelled\" / \"Negotiating\", updatedAt }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "commissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu commissionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "action (\"Accept\" / \"Reject\" / \"Negotiate\"), negotiatePrice (tuỳ chọn), rejectReason (tuỳ chọn)"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/commissions/{commissionId}/escrow/deposit": {
+      "post": {
+        "tags": [
+          "Commission & Escrow Core"
+        ],
+        "summary": "Client đặt cọc nạp tiền ký quỹ Escrow cho đơn vẽ (khóa tiền vào ví trung gian sàn)",
+        "description": "**Mục đích**: Client đặt cọc nạp tiền ký quỹ Escrow cho đơn vẽ (khóa tiền vào ví trung gian sàn)\n\n**Input chính**: commissionId; body { paymentMethod: \"Wallet\" | \"Gateway\" }\n\n**Output trả về**: `escrow: { commissionId, escrowHeldAmount: finalPrice, escrowStatus: \"Deposited\", depositedAt }, wallet: { balance, lockedBalance }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "escrow: { commissionId, escrowHeldAmount: finalPrice, escrowStatus: \"Deposited\", depositedAt }, wallet: { balance, lockedBalance }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "commissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu commissionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "commissionId; body { paymentMethod: \"Wallet\" | \"Gateway\" }"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/commissions/{commissionId}/milestones/{milestoneId}/submit": {
+      "post": {
+        "tags": [
+          "Commission & Escrow Core"
+        ],
+        "summary": "Creator nộp sản phẩm bản phác thảo/lineart (WIP) cho cột mốc tiến độ (hệ thống tự động cắm Watermark bảo hộ)",
+        "description": "**Mục đích**: Creator nộp sản phẩm bản phác thảo/lineart (WIP) cho cột mốc tiến độ (hệ thống tự động cắm Watermark bảo hộ)\n\n**Input chính**: milestoneId; body { wipFileUrl }\n\n**Output trả về**: `milestone: { milestoneId, sequence, title, status: \"Submitted\", wipPreviewUrl, watermarkedUrl, submittedAt }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "milestone: { milestoneId, sequence, title, status: \"Submitted\", wipPreviewUrl, watermarkedUrl, submittedAt }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "commissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu commissionId"
+          },
+          {
+            "name": "milestoneId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu milestoneId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "milestoneId; body { wipFileUrl }"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/commissions/{commissionId}/milestones/{milestoneId}/approve": {
+      "patch": {
+        "tags": [
+          "Commission & Escrow Core"
+        ],
+        "summary": "Client phê duyệt cột mốc sản phẩm đã nộp, kích hoạt giải ngân phần tiền Escrow tương ứng cho Creator",
+        "description": "**Mục đích**: Client phê duyệt cột mốc sản phẩm đã nộp, kích hoạt giải ngân phần tiền Escrow tương ứng cho Creator\n\n**Input chính**: milestoneId\n\n**Output trả về**: `milestone: { milestoneId, status: \"Approved\", approvedAt }, commission: { escrowHeldAmount, disbursedAmount, currentStage, escrowStatus: \"PartialReleased\" | \"Released\" }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "milestone: { milestoneId, status: \"Approved\", approvedAt }, commission: { escrowHeldAmount, disbursedAmount, currentStage, escrowStatus: \"PartialReleased\" | \"Released\" }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "commissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu commissionId"
+          },
+          {
+            "name": "milestoneId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu milestoneId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "milestoneId"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/commissions/{commissionId}/milestones/{milestoneId}/request-revision": {
+      "post": {
+        "tags": [
+          "Commission & Escrow Core"
+        ],
+        "summary": "Client gửi yêu cầu sửa đổi (Revision) cho cột mốc tiến độ nếu chưa đạt yêu cầu",
+        "description": "**Mục đích**: Client gửi yêu cầu sửa đổi (Revision) cho cột mốc tiến độ nếu chưa đạt yêu cầu\n\n**Input chính**: milestoneId; body { feedbackComment, referenceImages }\n\n**Output trả về**: `milestone: { milestoneId, status: \"RevisionRequested\", revisionCount }, message: { messageId, messageType: \"RevisionNotice\", body }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "milestone: { milestoneId, status: \"RevisionRequested\", revisionCount }, message: { messageId, messageType: \"RevisionNotice\", body }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "commissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu commissionId"
+          },
+          {
+            "name": "milestoneId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu milestoneId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "milestoneId; body { feedbackComment, referenceImages }"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/commissions/{commissionId}/deliver": {
+      "post": {
+        "tags": [
+          "Commission & Escrow Core"
+        ],
+        "summary": "Creator nộp sản phẩm hoàn chỉnh file HD/gốc lên Cloud Storage (AWS S3) khi toàn bộ các mốc đã hoàn thành",
+        "description": "**Mục đích**: Creator nộp sản phẩm hoàn chỉnh file HD/gốc lên Cloud Storage (AWS S3) khi toàn bộ các mốc đã hoàn thành\n\n**Input chính**: commissionId; body { finalDeliverableUrl }\n\n**Output trả về**: `commission: { commissionId, status: \"SubmittedFinal\", finalDeliverableUrl }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "commission: { commissionId, status: \"SubmittedFinal\", finalDeliverableUrl }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "commissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu commissionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "commissionId; body { finalDeliverableUrl }"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/commissions/{commissionId}/complete": {
+      "patch": {
+        "tags": [
+          "Commission & Escrow Core"
+        ],
+        "summary": "Client nghiệm thu sản phẩm cuối cùng, hoàn tất đơn hàng, hệ thống cấp presigned URL tải file gốc và giải ngân toàn bộ số tiền Escrow còn lại",
+        "description": "**Mục đích**: Client nghiệm thu sản phẩm cuối cùng, hoàn tất đơn hàng, hệ thống cấp presigned URL tải file gốc và giải ngân toàn bộ số tiền Escrow còn lại\n\n**Input chính**: commissionId\n\n**Output trả về**: `commission: { commissionId, status: \"Completed\", escrowStatus: \"Released\", completedAt }, downloadPresignedUrl: { downloadUrl, expiresAt }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "commission: { commissionId, status: \"Completed\", escrowStatus: \"Released\", completedAt }, downloadPresignedUrl: { downloadUrl, expiresAt }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "commissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu commissionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "commissionId"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/commissions/{commissionId}/cancel": {
+      "post": {
+        "tags": [
+          "Commission & Escrow Core"
+        ],
+        "summary": "Client hoặc Creator yêu cầu hủy đơn hàng Commission (xử lý hoàn tiền Escrow theo quy định chính sách)",
+        "description": "**Mục đích**: Client hoặc Creator yêu cầu hủy đơn hàng Commission (xử lý hoàn tiền Escrow theo quy định chính sách)\n\n**Input chính**: commissionId; body { reason }\n\n**Output trả về**: `commission: { commissionId, status: \"Cancelled\", escrowStatus: \"Refunded\" }, refund: { refundAmount, clientWalletBalance }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "commission: { commissionId, status: \"Cancelled\", escrowStatus: \"Refunded\" }, refund: { refundAmount, clientWalletBalance }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "commissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu commissionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "commissionId; body { reason }"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/commissions/{commissionId}/disputes": {
+      "post": {
+        "tags": [
+          "Commission & Escrow Core"
+        ],
+        "summary": "Client hoặc Creator mở khiếu nại/tranh chấp khi không đạt thỏa thuận nghiệm thu đơn",
+        "description": "**Mục đích**: Client hoặc Creator mở khiếu nại/tranh chấp khi không đạt thỏa thuận nghiệm thu đơn\n\n**Input chính**: commissionId; body { reason, evidenceUrls }\n\n**Output trả về**: `dispute: { disputeId, commissionId, raisedById, reason, evidenceUrls, disputeStatus: \"Pending\", createdAt }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "dispute: { disputeId, commissionId, raisedById, reason, evidenceUrls, disputeStatus: \"Pending\", createdAt }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "commissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu commissionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "commissionId; body { reason, evidenceUrls }"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Commission & Escrow Core"
+        ],
+        "summary": "Xem thông tin chi tiết và tiến trình xử lý tranh chấp của đơn hàng",
+        "description": "**Mục đích**: Xem thông tin chi tiết và tiến trình xử lý tranh chấp của đơn hàng\n\n**Input chính**: commissionId\n\n**Output trả về**: `dispute: { disputeId, commissionId, raisedById, reason, evidenceUrls, disputeStatus, resolution, clientRefundAmount, artistPayAmount, adminNote, resolvedAt }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "dispute: { disputeId, commissionId, raisedById, reason, evidenceUrls, disputeStatus, resolution, clientRefundAmount, artistPayAmount, adminNote, resolvedAt }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "commissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu commissionId"
+          }
+        ]
+      }
+    },
+    "/commissions/{commissionId}/reviews": {
+      "post": {
+        "tags": [
+          "Commission & Escrow Core"
+        ],
+        "summary": "Client đánh giá số sao (1-5★) và nhận xét dịch vụ sau khi đơn hàng hoàn thành thành công",
+        "description": "**Mục đích**: Client đánh giá số sao (1-5★) và nhận xét dịch vụ sau khi đơn hàng hoàn thành thành công\n\n**Input chính**: commissionId; body { rating, comment }\n\n**Output trả về**: `review: { reviewId, commissionId, reviewerId, rating, comment, createdAt }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "review: { reviewId, commissionId, reviewerId, rating, comment, createdAt }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "commissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu commissionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "commissionId; body { rating, comment }"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/commissions/{commissionId}/reviews/reply": {
+      "post": {
+        "tags": [
+          "Commission & Escrow Core"
+        ],
+        "summary": "Creator đăng phản hồi đối với đánh giá nhận xét của Client",
+        "description": "**Mục đích**: Creator đăng phản hồi đối với đánh giá nhận xét của Client\n\n**Input chính**: commissionId; body { replyComment }\n\n**Output trả về**: `review: { reviewId, commissionId, rating, comment, reviewerReply: replyComment }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "review: { reviewId, commissionId, rating, comment, reviewerReply: replyComment }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "commissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu commissionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "commissionId; body { replyComment }"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auctions": {
+      "post": {
+        "tags": [
+          "Auction & Art Trade"
+        ],
+        "summary": "Creator/User niêm yết một tranh mình đang sở hữu thành phiên đấu giá, từ màn tạo phiên đấu giá",
+        "description": "**Mục đích**: Creator/User niêm yết một tranh mình đang sở hữu thành phiên đấu giá, từ màn tạo phiên đấu giá\n\n**Input chính**: artworkId, startPrice, reservePrice, bidStep, buyNowPrice, startAt, endAt\n\n**Output trả về**: `auction: { auctionId, artworkId, sellerId, startPrice, reservePrice, bidStep, buyNowPrice, startAt, endAt, auctionStatus: \"Scheduled\", originalFileUrl }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "auction: { auctionId, artworkId, sellerId, startPrice, reservePrice, bidStep, buyNowPrice, startAt, endAt, auctionStatus: \"Scheduled\", originalFileUrl }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "artworkId, startPrice, reservePrice, bidStep, buyNowPrice, startAt, endAt"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Auction & Art Trade"
+        ],
+        "summary": "Danh sách phiên đấu giá cho trang chợ đấu giá, lọc theo trạng thái / người bán / khoảng giá",
+        "description": "**Mục đích**: Danh sách phiên đấu giá cho trang chợ đấu giá, lọc theo trạng thái / người bán / khoảng giá\n\n**Input chính**: query status, sellerId, sort, cursor, limit\n\n**Output trả về**: `data: [{ auctionId, artwork: { artworkId, artworkTitle, thumbnailUrl }, currentPrice, bidCount, endAt, auctionStatus }], meta: { cursor, total }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "data: [{ auctionId, artwork: { artworkId, artworkTitle, thumbnailUrl }, currentPrice, bidCount, endAt, auctionStatus }], meta: { cursor, total }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        }
+      }
+    },
+    "/auctions/{auctionId}": {
+      "get": {
+        "tags": [
+          "Auction & Art Trade"
+        ],
+        "summary": "Người dùng xem chi tiết phiên đấu giá: giá hiện tại, số lượt bid, thời gian còn lại, lịch sử bid gần nhất",
+        "description": "**Mục đích**: Người dùng xem chi tiết phiên đấu giá: giá hiện tại, số lượt bid, thời gian còn lại, lịch sử bid gần nhất\n\n**Input chính**: auctionId\n\n**Output trả về**: `auction: { auctionId, artwork, seller, startPrice, reservePrice, buyNowPrice, bidStep, currentPrice, winnerId, endAt, auctionStatus, watchCount }, recentBids: [...]`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "auction: { auctionId, artwork, seller, startPrice, reservePrice, buyNowPrice, bidStep, currentPrice, winnerId, endAt, auctionStatus, watchCount }, recentBids: [...]",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "auctionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu auctionId"
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Auction & Art Trade"
+        ],
+        "summary": "Người bán sửa phiên khi chưa có bid (đổi giá bắt đầu, buy now, hạn kết thúc)",
+        "description": "**Mục đích**: Người bán sửa phiên khi chưa có bid (đổi giá bắt đầu, buy now, hạn kết thúc)\n\n**Input chính**: startPrice, reservePrice, bidStep, buyNowPrice, endAt\n\n**Output trả về**: `auction sau cập nhật; lỗi 400 nếu auctionStatus != \"Scheduled\" hoặc đã có Bid`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "auction sau cập nhật; lỗi 400 nếu auctionStatus != \"Scheduled\" hoặc đã có Bid",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "auctionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu auctionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "startPrice, reservePrice, bidStep, buyNowPrice, endAt"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Auction & Art Trade"
+        ],
+        "summary": "Người bán huỷ phiên chưa phát sinh bid",
+        "description": "**Mục đích**: Người bán huỷ phiên chưa phát sinh bid\n\n**Input chính**: auctionId\n\n**Output trả về**: `{ message }; bản ghi đổi auctionStatus = \"Cancelled\"`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ message }; bản ghi đổi auctionStatus = \"Cancelled\"",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "auctionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu auctionId"
+          }
+        ]
+      }
+    },
+    "/auctions/{auctionId}/watch": {
+      "post": {
+        "tags": [
+          "Auction & Art Trade"
+        ],
+        "summary": "Người dùng theo dõi phiên để nhận cảnh báo sắp kết thúc / bị đè giá",
+        "description": "**Mục đích**: Người dùng theo dõi phiên để nhận cảnh báo sắp kết thúc / bị đè giá\n\n**Input chính**: auctionId\n\n**Output trả về**: `{ auctionWatchId, auctionId, userId, isWatching: true }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ auctionWatchId, auctionId, userId, isWatching: true }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "auctionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu auctionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "auctionId"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Auction & Art Trade"
+        ],
+        "summary": "Người dùng bỏ theo dõi phiên đấu giá",
+        "description": "**Mục đích**: Người dùng bỏ theo dõi phiên đấu giá\n\n**Input chính**: auctionId\n\n**Output trả về**: `{ auctionId, isWatching: false }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ auctionId, isWatching: false }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "auctionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu auctionId"
+          }
+        ]
+      }
+    },
+    "/auctions/{auctionId}/bids": {
+      "post": {
+        "tags": [
+          "Auction & Art Trade"
+        ],
+        "summary": "Bidder đặt giá trong màn chi tiết phiên; hệ thống tự khoá tiền cọc trong ví bằng 1 transaction ACID",
+        "description": "**Mục đích**: Bidder đặt giá trong màn chi tiết phiên; hệ thống tự khoá tiền cọc trong ví bằng 1 transaction ACID\n\n**Input chính**: amount (hoặc maxAutoBid nếu isAuto = true)\n\n**Output trả về**: `bid: { bidId, auctionId, bidderId, amount, holdAmount, bidStatus: \"Leading\", holdStatus: \"Held\", placedAt }, wallet: { balance, lockedBalance }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "bid: { bidId, auctionId, bidderId, amount, holdAmount, bidStatus: \"Leading\", holdStatus: \"Held\", placedAt }, wallet: { balance, lockedBalance }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "auctionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu auctionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "amount (hoặc maxAutoBid nếu isAuto = true)"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Auction & Art Trade"
+        ],
+        "summary": "Người dùng xem lịch sử đặt giá của phiên, cursor theo placed_at",
+        "description": "**Mục đích**: Người dùng xem lịch sử đặt giá của phiên, cursor theo placed_at\n\n**Input chính**: query cursor, limit\n\n**Output trả về**: `data: [{ bidId, bidder: { userId, fullName }, amount, bidStatus, placedAt }], meta: { nextCursor }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "data: [{ bidId, bidder: { userId, fullName }, amount, bidStatus, placedAt }], meta: { nextCursor }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "auctionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu auctionId"
+          }
+        ]
+      }
+    },
+    "/auctions/{auctionId}/buy-now": {
+      "post": {
+        "tags": [
+          "Auction & Art Trade"
+        ],
+        "summary": "Người mua chấp nhận giá buyNowPrice để kết thúc phiên ngay",
+        "description": "**Mục đích**: Người mua chấp nhận giá buyNowPrice để kết thúc phiên ngay\n\n**Input chính**: auctionId\n\n**Output trả về**: `auction: { auctionStatus: \"Ended\", winnerId, finalPrice: buyNowPrice }, settlement: { paymentOrderId, paymentDeadline }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "auction: { auctionStatus: \"Ended\", winnerId, finalPrice: buyNowPrice }, settlement: { paymentOrderId, paymentDeadline }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "auctionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu auctionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "auctionId"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auctions/{auctionId}/settle": {
+      "post": {
+        "tags": [
+          "Auction & Art Trade"
+        ],
+        "summary": "Chốt phiên khi hết hạn: xác định winner, trừ tiền đang giữ của bidder thắng, chuyển quyền sở hữu tranh và cấp link tải file gốc (Hangfire job hoặc Admin gọi)",
+        "description": "**Mục đích**: Chốt phiên khi hết hạn: xác định winner, trừ tiền đang giữ của bidder thắng, chuyển quyền sở hữu tranh và cấp link tải file gốc (Hangfire job hoặc Admin gọi)\n\n**Input chính**: auctionId; body { force?: bool } cho Admin chốt tay\n\n**Output trả về**: `settlement: { auctionId, winnerId, finalPrice, settledAt, artworkOwnershipId, escrowTransactionId }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "settlement: { auctionId, winnerId, finalPrice, settledAt, artworkOwnershipId, escrowTransactionId }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "auctionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu auctionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "auctionId; body { force?: bool } cho Admin chốt tay"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auctions/{auctionId}/settlement": {
+      "get": {
+        "tags": [
+          "Auction & Art Trade"
+        ],
+        "summary": "Người thắng xem kết quả chốt phiên và trạng thái thanh toán của mình",
+        "description": "**Mục đích**: Người thắng xem kết quả chốt phiên và trạng thái thanh toán của mình\n\n**Input chính**: auctionId\n\n**Output trả về**: `{ winnerId, finalPrice, settledAt, paymentOrderStatus, artworkOwnershipId }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ winnerId, finalPrice, settledAt, paymentOrderStatus, artworkOwnershipId }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "auctionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu auctionId"
+          }
+        ]
+      }
+    },
+    "/auctions/{auctionId}/settlement/download-url": {
+      "post": {
+        "tags": [
+          "Auction & Art Trade"
+        ],
+        "summary": "Người thắng tải file gốc tranh sau khi thanh toán xong, qua presigned URL có hạn",
+        "description": "**Mục đích**: Người thắng tải file gốc tranh sau khi thanh toán xong, qua presigned URL có hạn\n\n**Input chính**: auctionId\n\n**Output trả về**: `{ downloadUrl, expiresAt }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ downloadUrl, expiresAt }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "auctionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu auctionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "auctionId"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auctions/{auctionId}/settlement/expire": {
+      "post": {
+        "tags": [
+          "Auction & Art Trade"
+        ],
+        "summary": "Xử lý winner quá payment_deadline không thanh toán: huỷ kết quả, giải phóng tiền giữ, đề xuất bidder kế tiếp",
+        "description": "**Mục đích**: Xử lý winner quá payment_deadline không thanh toán: huỷ kết quả, giải phóng tiền giữ, đề xuất bidder kế tiếp\n\n**Input chính**: auctionId\n\n**Output trả về**: `{ auctionId, expiredBidId, releasedHoldAmount, nextBidderId }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ auctionId, expiredBidId, releasedHoldAmount, nextBidderId }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "auctionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu auctionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "auctionId"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications": {
+      "get": {
+        "tags": [
+          "Notification"
+        ],
+        "summary": "Người dùng mở Notification Center (drawer toàn hệ thống) xem danh sách thông báo",
+        "description": "**Mục đích**: Người dùng mở Notification Center (drawer toàn hệ thống) xem danh sách thông báo\n\n**Input chính**: query isRead, notificationType, cursor, limit\n\n**Output trả về**: `data: [{ notificationId, notificationType, notificationTitle, body, refType, refId, channel, isRead, createdAt }], meta: { nextCursor, unreadCount }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "data: [{ notificationId, notificationType, notificationTitle, body, refType, refId, channel, isRead, createdAt }], meta: { nextCursor, unreadCount }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        }
+      }
+    },
+    "/notifications/unread-count": {
+      "get": {
+        "tags": [
+          "Notification"
+        ],
+        "summary": "Hiển thị badge số thông báo chưa đọc trên icon chuông ở topbar",
+        "description": "**Mục đích**: Hiển thị badge số thông báo chưa đọc trên icon chuông ở topbar\n\n**Input chính**: không\n\n**Output trả về**: `{ unreadCount }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ unreadCount }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        }
+      }
+    },
+    "/notifications/{notificationId}/read": {
+      "put": {
+        "tags": [
+          "Notification"
+        ],
+        "summary": "Người dùng bấm vào một thông báo thì đánh dấu đã đọc",
+        "description": "**Mục đích**: Người dùng bấm vào một thông báo thì đánh dấu đã đọc\n\n**Input chính**: notificationId\n\n**Output trả về**: `{ notificationId, isRead: true, readAt }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ notificationId, isRead: true, readAt }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "notificationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu notificationId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "notificationId"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/read-all": {
+      "put": {
+        "tags": [
+          "Notification"
+        ],
+        "summary": "Người dùng đánh dấu tất cả thông báo của mình là đã đọc",
+        "description": "**Mục đích**: Người dùng đánh dấu tất cả thông báo của mình là đã đọc\n\n**Input chính**: không\n\n**Output trả về**: `{ updatedCount }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ updatedCount }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "không"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hubs/notifications": {
+      "get": {
+        "tags": [
+          "Notification"
+        ],
+        "summary": "[SignalR Hub] Đẩy real-time sự kiện OutbidAlert, AuctionEndingSoon, AuctionWon, DeadlineRiskWarning tới đúng user đang online",
+        "description": "**Mục đích**: Đẩy real-time sự kiện OutbidAlert, AuctionEndingSoon, AuctionWon, DeadlineRiskWarning tới đúng user đang online\n\n**Input chính**: handshake JWT qua query-string; client gọi Subscribe\n\n**Output trả về**: `server → client event ReceiveNotification(notification), gửi vào group user-{userId}`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "server → client event ReceiveNotification(notification), gửi vào group user-{userId}",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        }
+      }
+    },
+    "/chat/rooms/{roomId}/messages": {
+      "get": {
+        "tags": [
+          "Workroom Chat"
+        ],
+        "summary": "Người dùng mở Workroom /workroom/[id] thì tải lịch sử chat của phòng commission, cursor theo sent_at",
+        "description": "**Mục đích**: Người dùng mở Workroom /workroom/[id] thì tải lịch sử chat của phòng commission, cursor theo sent_at\n\n**Input chính**: roomId; query cursor, limit\n\n**Output trả về**: `data: [{ messageId, senderId, body, translatedBody, messageType, sentAt, attachments: [{ fileUrl, mimeType, fileSize }] }], meta: { nextCursor }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "data: [{ messageId, senderId, body, translatedBody, messageType, sentAt, attachments: [{ fileUrl, mimeType, fileSize }] }], meta: { nextCursor }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu roomId"
+          }
+        ]
+      }
+    },
+    "/chat/rooms/{roomId}": {
+      "get": {
+        "tags": [
+          "Workroom Chat"
+        ],
+        "summary": "Lấy thông tin phòng chat: loại phòng, tiêu đề, danh sách thành viên và lastReadAt",
+        "description": "**Mục đích**: Lấy thông tin phòng chat: loại phòng, tiêu đề, danh sách thành viên và lastReadAt\n\n**Input chính**: roomId\n\n**Output trả về**: `room: { roomId, chatRoomType, chatRoomTitle, lastMessageAt }, members: [{ userId, fullName, memberRole, lastReadAt }]`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "room: { roomId, chatRoomType, chatRoomTitle, lastMessageAt }, members: [{ userId, fullName, memberRole, lastReadAt }]",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu roomId"
+          }
+        ]
+      }
+    },
+    "/chat/rooms/{roomId}/read": {
+      "post": {
+        "tags": [
+          "Workroom Chat"
+        ],
+        "summary": "Người dùng đánh dấu đã đọc tới thời điểm hiện tại (dùng ChatRoomMember.last_read_at)",
+        "description": "**Mục đích**: Người dùng đánh dấu đã đọc tới thời điểm hiện tại (dùng ChatRoomMember.last_read_at)\n\n**Input chính**: roomId\n\n**Output trả về**: `{ roomId, lastReadAt }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ roomId, lastReadAt }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu roomId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "roomId"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/rooms/{roomId}/attachments": {
+      "post": {
+        "tags": [
+          "Workroom Chat"
+        ],
+        "summary": "Người dùng upload ảnh/file tham khảo vào phòng chat (multipart → Cloudinary/S3)",
+        "description": "**Mục đích**: Người dùng upload ảnh/file tham khảo vào phòng chat (multipart → Cloudinary/S3)\n\n**Input chính**: multipart file, messageId (tuỳ chọn)\n\n**Output trả về**: `attachment: { messageAttachmentId, messageId, fileUrl, mimeType, fileSize }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "attachment: { messageAttachmentId, messageId, fileUrl, mimeType, fileSize }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu roomId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "multipart file, messageId (tuỳ chọn)"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/messages/{messageId}/translate": {
+      "post": {
+        "tags": [
+          "Workroom Chat"
+        ],
+        "summary": "Dịch một tin nhắn sang ngôn ngữ người nhận (AI Real-time Translation), lưu translated_body để không gọi AI lại",
+        "description": "**Mục đích**: Dịch một tin nhắn sang ngôn ngữ người nhận (AI Real-time Translation), lưu translated_body để không gọi AI lại\n\n**Input chính**: messageId; body { targetLang }\n\n**Output trả về**: `{ messageId, translatedBody, sourceLang, targetLang }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ messageId, translatedBody, sourceLang, targetLang }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu messageId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "messageId; body { targetLang }"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hubs/chat": {
+      "get": {
+        "tags": [
+          "Workroom Chat"
+        ],
+        "summary": "[SignalR Hub] Gửi/nhận tin nhắn tức thời trong Workroom dưới 200ms, kèm chỉ báo \"đang gõ\" và trạng thái đã đọc",
+        "description": "**Mục đích**: Gửi/nhận tin nhắn tức thời trong Workroom dưới 200ms, kèm chỉ báo \"đang gõ\" và trạng thái đã đọc\n\n**Input chính**: handshake JWT qua query-string; client gọi SendMessage(roomId, body, messageType), MarkRead(roomId), Typing(roomId)\n\n**Output trả về**: `ReceiveMessage(message), MessageRead(userId, lastReadAt), UserTyping(userId)`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "ReceiveMessage(message), MessageRead(userId, lastReadAt), UserTyping(userId)",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        }
+      }
+    },
+    "/ai/conversations": {
+      "post": {
+        "tags": [
+          "AI Assistant"
+        ],
+        "summary": "Người dùng mở một phiên hỏi đáp mới với AI Chatbot, có thể gắn ngữ cảnh đơn hàng/tranh",
+        "description": "**Mục đích**: Người dùng mở một phiên hỏi đáp mới với AI Chatbot, có thể gắn ngữ cảnh đơn hàng/tranh\n\n**Input chính**: topic, contextType (Commission / Artwork / General), contextId\n\n**Output trả về**: `conversation: { aiConversationId, topic, contextType, contextId, createdAt }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "conversation: { aiConversationId, topic, contextType, contextId, createdAt }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "topic, contextType (Commission / Artwork / General), contextId"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "AI Assistant"
+        ],
+        "summary": "Người dùng xem danh sách phiên hội thoại AI của mình để mở lại",
+        "description": "**Mục đích**: Người dùng xem danh sách phiên hội thoại AI của mình để mở lại\n\n**Input chính**: query cursor, limit\n\n**Output trả về**: `data: [{ aiConversationId, topic, lastMessageAt, messageCount }], meta: { nextCursor }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "data: [{ aiConversationId, topic, lastMessageAt, messageCount }], meta: { nextCursor }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        }
+      }
+    },
+    "/ai/conversations/{conversationId}/messages": {
+      "get": {
+        "tags": [
+          "AI Assistant"
+        ],
+        "summary": "Người dùng tải lại nội dung một phiên hội thoại AI",
+        "description": "**Mục đích**: Người dùng tải lại nội dung một phiên hội thoại AI\n\n**Input chính**: conversationId; query cursor, limit\n\n**Output trả về**: `data: [{ aiMessageId, role, content, tokenCount, createdAt }], meta: { nextCursor }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "data: [{ aiMessageId, role, content, tokenCount, createdAt }], meta: { nextCursor }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "conversationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu conversationId"
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "AI Assistant"
+        ],
+        "summary": "Người dùng gửi câu hỏi cho Chatbot 24/7, AI trả lời dựa trên ngữ cảnh đơn vẽ, escrow, trạng thái đơn",
+        "description": "**Mục đích**: Người dùng gửi câu hỏi cho Chatbot 24/7, AI trả lời dựa trên ngữ cảnh đơn vẽ, escrow, trạng thái đơn\n\n**Input chính**: content\n\n**Output trả về**: `userMessage, assistantMessage: { aiMessageId, role: \"assistant\", content, tokenCount }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "userMessage, assistantMessage: { aiMessageId, role: \"assistant\", content, tokenCount }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "conversationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu conversationId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "content"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai/messages/{aiMessageId}/feedback": {
+      "post": {
+        "tags": [
+          "AI Assistant"
+        ],
+        "summary": "Người dùng đánh giá câu trả lời hữu ích / không để cải thiện chất lượng bot",
+        "description": "**Mục đích**: Người dùng đánh giá câu trả lời hữu ích / không để cải thiện chất lượng bot\n\n**Input chính**: helpful (bool), note (tuỳ chọn)\n\n**Output trả về**: `{ aiMessageId, helpful }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ aiMessageId, helpful }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "aiMessageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu aiMessageId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "helpful (bool), note (tuỳ chọn)"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/commissions/{commissionId}/deadline-risks": {
+      "get": {
+        "tags": [
+          "AI Assistant"
+        ],
+        "summary": "Hiển thị điểm rủi ro trễ hạn của đơn vẽ trên màn theo dõi tiến độ",
+        "description": "**Mục đích**: Hiển thị điểm rủi ro trễ hạn của đơn vẽ trên màn theo dõi tiến độ\n\n**Input chính**: commissionId\n\n**Output trả về**: `{ commissionId, riskScore, deadline, currentStage, reminders: [{ deadlineReminderId, remindAt, channel, sentAt, riskScore }] }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ commissionId, riskScore, deadline, currentStage, reminders: [{ deadlineReminderId, remindAt, channel, sentAt, riskScore }] }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "commissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu commissionId"
+          }
+        ]
+      }
+    },
+    "/commissions/{commissionId}/deadline-risks/predict": {
+      "post": {
+        "tags": [
+          "AI Assistant"
+        ],
+        "summary": "Hệ thống tính lại risk_score từ deadline, số milestone trễ, số lần revision rồi ghi bản ghi nhắc nhở mới",
+        "description": "**Mục đích**: Hệ thống tính lại risk_score từ deadline, số milestone trễ, số lần revision rồi ghi bản ghi nhắc nhở mới\n\n**Input chính**: commissionId; body { modelVersion? }\n\n**Output trả về**: `{ commissionId, riskScore, predictedAt, nextRemindAt }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ commissionId, riskScore, predictedAt, nextRemindAt }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "commissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu commissionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "commissionId; body { modelVersion? }"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/commissions/{commissionId}/deadline-reminders": {
+      "post": {
+        "tags": [
+          "AI Assistant"
+        ],
+        "summary": "Người dùng tạo/gửi nhắc nhở thủ công (in-app + email) cho mốc sắp tới hạn",
+        "description": "**Mục đích**: Người dùng tạo/gửi nhắc nhở thủ công (in-app + email) cho mốc sắp tới hạn\n\n**Input chính**: milestoneId, remindAt, channel\n\n**Output trả về**: `reminder: { deadlineReminderId, commissionId, milestoneId, remindAt, channel, sentAt }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "reminder: { deadlineReminderId, commissionId, milestoneId, remindAt, channel, sentAt }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "commissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu commissionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "milestoneId, remindAt, channel"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/me/reminder-settings": {
+      "put": {
+        "tags": [
+          "AI Assistant"
+        ],
+        "summary": "Người dùng bật/tắt kênh nhận nhắc nhở deadline",
+        "description": "**Mục đích**: Người dùng bật/tắt kênh nhận nhắc nhở deadline\n\n**Input chính**: emailEnabled, pushEnabled, leadHours\n\n**Output trả về**: `{ emailEnabled, pushEnabled, leadHours }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ emailEnabled, pushEnabled, leadHours }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "emailEnabled, pushEnabled, leadHours"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallets/me": {
+      "get": {
+        "tags": [
+          "Wallet & Transaction"
+        ],
+        "summary": "Người dùng mở trang /wallet xem 3 thẻ chỉ số: số dư khả dụng, tiền đang giữ escrow, tổng đã rút",
+        "description": "**Mục đích**: Người dùng mở trang /wallet xem 3 thẻ chỉ số: số dư khả dụng, tiền đang giữ escrow, tổng đã rút\n\n**Input chính**: không\n\n**Output trả về**: `wallet: { walletId, balance, lockedBalance, currency, walletStatus }, summary: { escrowHeldAmount, totalWithdrawn }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "wallet: { walletId, balance, lockedBalance, currency, walletStatus }, summary: { escrowHeldAmount, totalWithdrawn }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        }
+      }
+    },
+    "/wallets/me/transactions": {
+      "get": {
+        "tags": [
+          "Wallet & Transaction"
+        ],
+        "summary": "Người dùng xem bảng lịch sử biến động số dư có lọc, phục vụ đối soát",
+        "description": "**Mục đích**: Người dùng xem bảng lịch sử biến động số dư có lọc, phục vụ đối soát\n\n**Input chính**: query walletTxType, direction (In/Out), from, to, cursor, limit\n\n**Output trả về**: `data: [{ walletTransactionId, walletTxType, direction, amount, balanceAfter, refType, refId, createdAt }], meta: { nextCursor, total }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "data: [{ walletTransactionId, walletTxType, direction, amount, balanceAfter, refType, refId, createdAt }], meta: { nextCursor, total }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        }
+      }
+    },
+    "/payments/orders": {
+      "post": {
+        "tags": [
+          "Payment & Deposit"
+        ],
+        "summary": "Người dùng nhập số tiền nạp và chọn cổng thanh toán để nạp tiền vào ví sàn",
+        "description": "**Mục đích**: Người dùng nhập số tiền nạp và chọn cổng thanh toán để nạp tiền vào ví sàn\n\n**Input chính**: amount, gateway (PayOS / VNPAY / Stripe), returnUrl, cancelUrl\n\n**Output trả về**: `paymentOrder: { paymentOrderId, orderRef, amount, gateway, paymentOrderStatus: \"Pending\" }, paymentUrl hoặc qrCode`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "paymentOrder: { paymentOrderId, orderRef, amount, gateway, paymentOrderStatus: \"Pending\" }, paymentUrl hoặc qrCode",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "amount, gateway (PayOS / VNPAY / Stripe), returnUrl, cancelUrl"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Payment & Deposit"
+        ],
+        "summary": "Người dùng xem lịch sử các lần nạp tiền của mình",
+        "description": "**Mục đích**: Người dùng xem lịch sử các lần nạp tiền của mình\n\n**Input chính**: query status, gateway, cursor, limit\n\n**Output trả về**: `data: [{ paymentOrderId, orderRef, gateway, amount, paymentOrderStatus, createdAt }], meta: { nextCursor }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "data: [{ paymentOrderId, orderRef, gateway, amount, paymentOrderStatus, createdAt }], meta: { nextCursor }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        }
+      }
+    },
+    "/payments/orders/{paymentOrderId}": {
+      "get": {
+        "tags": [
+          "Payment & Deposit"
+        ],
+        "summary": "Màn hình chờ thanh toán poll trạng thái cho tới khi cổng xác nhận",
+        "description": "**Mục đích**: Màn hình chờ thanh toán poll trạng thái cho tới khi cổng xác nhận\n\n**Input chính**: paymentOrderId\n\n**Output trả về**: `{ paymentOrderId, orderRef, amount, gateway, paymentOrderStatus, paidAt, walletBalance }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ paymentOrderId, orderRef, amount, gateway, paymentOrderStatus, paidAt, walletBalance }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "paymentOrderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu paymentOrderId"
+          }
+        ]
+      }
+    },
+    "/payments/webhooks/{gateway}": {
+      "post": {
+        "tags": [
+          "Payment & Deposit"
+        ],
+        "summary": "Cổng thanh toán gọi IPN/callback về hệ thống; verify chữ ký, cộng tiền vào ví, chống xử lý trùng",
+        "description": "**Mục đích**: Cổng thanh toán gọi IPN/callback về hệ thống; verify chữ ký, cộng tiền vào ví, chống xử lý trùng\n\n**Input chính**: raw payload của cổng; header signature (HMAC-SHA256)\n\n**Output trả về**: `{ received: true } (200); sai chữ ký trả 400`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ received: true } (200); sai chữ ký trả 400",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "gateway",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu gateway"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "raw payload của cổng; header signature (HMAC-SHA256)"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bank-accounts": {
+      "get": {
+        "tags": [
+          "Payout"
+        ],
+        "summary": "Creator lấy danh sách tài khoản ngân hàng đã lưu để chọn khi rút tiền",
+        "description": "**Mục đích**: Creator lấy danh sách tài khoản ngân hàng đã lưu để chọn khi rút tiền\n\n**Input chính**: không\n\n**Output trả về**: `data: [{ bankAccountId, bankName, accountNumber (masked), accountHolder, isDefault }]`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "data: [{ bankAccountId, bankName, accountNumber (masked), accountHolder, isDefault }]",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Payout"
+        ],
+        "summary": "Creator thêm tài khoản ngân hàng nhận tiền",
+        "description": "**Mục đích**: Creator thêm tài khoản ngân hàng nhận tiền\n\n**Input chính**: bankName, accountNumber, accountHolder, isDefault\n\n**Output trả về**: `{ bankAccountId, bankName, accountNumber, accountHolder, isDefault }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ bankAccountId, bankName, accountNumber, accountHolder, isDefault }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "bankName, accountNumber, accountHolder, isDefault"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bank-accounts/{bankAccountId}": {
+      "put": {
+        "tags": [
+          "Payout"
+        ],
+        "summary": "Creator sửa hoặc đặt mặc định một tài khoản ngân hàng",
+        "description": "**Mục đích**: Creator sửa hoặc đặt mặc định một tài khoản ngân hàng\n\n**Input chính**: bankName, accountNumber, accountHolder, isDefault\n\n**Output trả về**: `bankAccount sau cập nhật`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "bankAccount sau cập nhật",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "bankAccountId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu bankAccountId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "bankName, accountNumber, accountHolder, isDefault"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Payout"
+        ],
+        "summary": "Creator xoá tài khoản ngân hàng không còn dùng",
+        "description": "**Mục đích**: Creator xoá tài khoản ngân hàng không còn dùng\n\n**Input chính**: bankAccountId\n\n**Output trả về**: `{ message }; lỗi 409 nếu đang có PayoutRequest ở trạng thái Pending`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ message }; lỗi 409 nếu đang có PayoutRequest ở trạng thái Pending",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "bankAccountId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu bankAccountId"
+          }
+        ]
+      }
+    },
+    "/payout-requests": {
+      "post": {
+        "tags": [
+          "Payout"
+        ],
+        "summary": "Creator gửi yêu cầu rút tiền từ số dư khả dụng về ngân hàng; hệ thống trừ ví ngay trong transaction",
+        "description": "**Mục đích**: Creator gửi yêu cầu rút tiền từ số dư khả dụng về ngân hàng; hệ thống trừ ví ngay trong transaction\n\n**Input chính**: amount, bankAccountId, payoutNote\n\n**Output trả về**: `payoutRequest: { payoutRequestId, amount, payoutStatus: \"Pending\", bankAccount, requestedAt }, wallet: { balance }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "payoutRequest: { payoutRequestId, amount, payoutStatus: \"Pending\", bankAccount, requestedAt }, wallet: { balance }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "amount, bankAccountId, payoutNote"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Payout"
+        ],
+        "summary": "Creator xem lịch sử yêu cầu rút tiền của mình; Admin xem hàng chờ duyệt",
+        "description": "**Mục đích**: Creator xem lịch sử yêu cầu rút tiền của mình; Admin xem hàng chờ duyệt\n\n**Input chính**: query status, userId (Admin), cursor, limit\n\n**Output trả về**: `data: [{ payoutRequestId, amount, payoutStatus, payoutNote, processedBy, createdAt, processedAt }], meta: { nextCursor }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "data: [{ payoutRequestId, amount, payoutStatus, payoutNote, processedBy, createdAt, processedAt }], meta: { nextCursor }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        }
+      }
+    },
+    "/payout-requests/{payoutRequestId}/status": {
+      "put": {
+        "tags": [
+          "Payout"
+        ],
+        "summary": "Admin duyệt hoặc từ chối yêu cầu rút tiền; từ chối thì hoàn tiền về ví Creator",
+        "description": "**Mục đích**: Admin duyệt hoặc từ chối yêu cầu rút tiền; từ chối thì hoàn tiền về ví Creator\n\n**Input chính**: payoutStatus (Processed / Rejected), payoutNote, transactionRef\n\n**Output trả về**: `{ payoutRequestId, payoutStatus, processedBy, processedAt }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ payoutRequestId, payoutStatus, processedBy, processedAt }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "payoutRequestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu payoutRequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "payoutStatus (Processed / Rejected), payoutNote, transactionRef"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vouchers": {
+      "get": {
+        "tags": [
+          "Voucher"
+        ],
+        "summary": "Admin xem danh sách toàn bộ voucher; Creator xem voucher của mình",
+        "description": "**Mục đích**: Admin xem danh sách toàn bộ voucher; Creator xem voucher của mình\n\n**Input chính**: query status, discountType, cursor, limit\n\n**Output trả về**: `data: [{ voucherId, voucherCode, discountType, discountValue, minOrderAmount, startDate, endDate, usageLimit, usedCount }], meta: { nextCursor }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "data: [{ voucherId, voucherCode, discountType, discountValue, minOrderAmount, startDate, endDate, usageLimit, usedCount }], meta: { nextCursor }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Voucher"
+        ],
+        "summary": "Admin/Creator tạo mã giảm giá cho giao dịch",
+        "description": "**Mục đích**: Admin/Creator tạo mã giảm giá cho giao dịch\n\n**Input chính**: voucherCode, discountType (Percent / Fixed), discountValue, minOrderAmount, startDate, endDate, usageLimit\n\n**Output trả về**: `voucher: { voucherId, voucherCode, discountType, discountValue, startDate, endDate }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "voucher: { voucherId, voucherCode, discountType, discountValue, startDate, endDate }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "voucherCode, discountType (Percent / Fixed), discountValue, minOrderAmount, startDate, endDate, usageLimit"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vouchers/{voucherId}": {
+      "get": {
+        "tags": [
+          "Voucher"
+        ],
+        "summary": "Xem chi tiết một voucher kèm thống kê đã dùng",
+        "description": "**Mục đích**: Xem chi tiết một voucher kèm thống kê đã dùng\n\n**Input chính**: voucherId\n\n**Output trả về**: `{ voucher, usedCount, redemptions: [{ voucherRedemptionId, userId, discountAmount, redeemedAt }] }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ voucher, usedCount, redemptions: [{ voucherRedemptionId, userId, discountAmount, redeemedAt }] }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "voucherId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu voucherId"
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Voucher"
+        ],
+        "summary": "Admin/Creator sửa cấu hình voucher",
+        "description": "**Mục đích**: Admin/Creator sửa cấu hình voucher\n\n**Input chính**: discountValue, minOrderAmount, startDate, endDate, usageLimit, isActive\n\n**Output trả về**: `voucher sau cập nhật`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "voucher sau cập nhật",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "voucherId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu voucherId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "discountValue, minOrderAmount, startDate, endDate, usageLimit, isActive"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Voucher"
+        ],
+        "summary": "Admin/Creator vô hiệu hoá / xoá mềm voucher",
+        "description": "**Mục đích**: Admin/Creator vô hiệu hoá / xoá mềm voucher\n\n**Input chính**: voucherId\n\n**Output trả về**: `{ message } (soft delete qua IsDeleted)`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ message } (soft delete qua IsDeleted)",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "parameters": [
+          {
+            "name": "voucherId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID tham chiếu voucherId"
+          }
+        ]
+      }
+    },
+    "/vouchers/validate": {
+      "post": {
+        "tags": [
+          "Voucher"
+        ],
+        "summary": "Người dùng nhập mã giảm giá ở bước checkout, hệ thống kiểm tra mã có áp dụng được cho đơn hàng không",
+        "description": "**Mục đích**: Người dùng nhập mã giảm giá ở bước checkout, hệ thống kiểm tra mã có áp dụng được cho đơn hàng không\n\n**Input chính**: voucherCode, orderAmount, refType (Commission / Auction / Deposit)\n\n**Output trả về**: `{ voucherId, isValid, discountAmount, finalAmount, reason }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ voucherId, isValid, discountAmount, finalAmount, reason }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "voucherCode, orderAmount, refType (Commission / Auction / Deposit)"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vouchers/redeem": {
+      "post": {
+        "tags": [
+          "Voucher"
+        ],
+        "summary": "Hệ thống ghi nhận sử dụng voucher khi giao dịch được xác nhận",
+        "description": "**Mục đích**: Hệ thống ghi nhận sử dụng voucher khi giao dịch được xác nhận\n\n**Input chính**: voucherCode, refType, refId\n\n**Output trả về**: `redemption: { voucherRedemptionId, voucherId, discountAmount, redeemedAt }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "redemption: { voucherRedemptionId, voucherId, discountAmount, redeemedAt }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "voucherCode, refType, refId"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/creator/revenue/summary": {
+      "get": {
+        "tags": [
+          "Creator Revenue Analytics"
+        ],
+        "summary": "Creator Dashboard hiển thị thẻ số liệu tổng quan: tổng thu, phí sàn, thu nhập ròng, số đơn hoàn tất",
+        "description": "**Mục đích**: Creator Dashboard hiển thị thẻ số liệu tổng quan: tổng thu, phí sàn, thu nhập ròng, số đơn hoàn tất\n\n**Input chính**: query from, to\n\n**Output trả về**: `{ grossAmount, feeAmount, netAmount, completedOrderCount, averageOrderValue }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ grossAmount, feeAmount, netAmount, completedOrderCount, averageOrderValue }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        }
+      }
+    },
+    "/creator/revenue/timeseries": {
+      "get": {
+        "tags": [
+          "Creator Revenue Analytics"
+        ],
+        "summary": "Creator Dashboard vẽ biểu đồ doanh thu theo ngày/tuần/tháng",
+        "description": "**Mục đích**: Creator Dashboard vẽ biểu đồ doanh thu theo ngày/tuần/tháng\n\n**Input chính**: query granularity (day / week / month), from, to\n\n**Output trả về**: `data: [{ periodLabel, grossAmount, feeAmount, netAmount }]`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "data: [{ periodLabel, grossAmount, feeAmount, netAmount }]",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        }
+      }
+    },
+    "/creator/revenue/breakdown": {
+      "get": {
+        "tags": [
+          "Creator Revenue Analytics"
+        ],
+        "summary": "Creator Dashboard phân rã doanh thu theo nguồn (Commission / Auction) và theo dịch vụ",
+        "description": "**Mục đích**: Creator Dashboard phân rã doanh thu theo nguồn (Commission / Auction) và theo dịch vụ\n\n**Input chính**: query groupBy (source / service / auction), from, to\n\n**Output trả về**: `data: [{ key, label, grossAmount, feeAmount, netAmount, orderCount }]`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "data: [{ key, label, grossAmount, feeAmount, netAmount, orderCount }]",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        }
+      }
+    },
+    "/creator/revenue/snapshots": {
+      "get": {
+        "tags": [
+          "Creator Revenue Analytics"
+        ],
+        "summary": "Xem các bản ghi chốt doanh thu định kỳ phục vụ đối soát",
+        "description": "**Mục đích**: Xem các bản ghi chốt doanh thu định kỳ phục vụ đối soát\n\n**Input chính**: query scope, from, to, cursor, limit\n\n**Output trả về**: `data: [{ revenueSnapshotId, scope, snapshotDate, grossAmount, feeAmount }], meta: { nextCursor }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "data: [{ revenueSnapshotId, scope, snapshotDate, grossAmount, feeAmount }], meta: { nextCursor }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        }
+      }
+    },
+    "/creator/revenue/snapshots/rebuild": {
+      "post": {
+        "tags": [
+          "Creator Revenue Analytics"
+        ],
+        "summary": "Admin hoặc background job tính lại snapshot doanh thu khi phát hiện lệch số",
+        "description": "**Mục đích**: Admin hoặc background job tính lại snapshot doanh thu khi phát hiện lệch số\n\n**Input chính**: scope, snapshotDate\n\n**Output trả về**: `{ revenueSnapshotId, scope, snapshotDate, grossAmount, feeAmount }`",
+        "responses": {
+          "200": {
+            "description": "Thực thi thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": "{ revenueSnapshotId, scope, snapshotDate, grossAmount, feeAmount }",
+                  "meta": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lỗi dữ liệu đầu vào (ProblemDetails RFC7807)"
+          },
+          "401": {
+            "description": "Chưa đăng nhập (Unauthorized)"
+          },
+          "403": {
+            "description": "Không có quyền thực thi (Forbidden)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "details": "scope, snapshotDate"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Nhập JWT Bearer Token để chạy thử nghiệm API"
+      }
+    }
+  },
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "AI Assistant"
+    },
+    {
+      "name": "Auction & Art Trade"
+    },
+    {
+      "name": "Commission & Escrow Core"
+    },
+    {
+      "name": "Creator Revenue Analytics"
+    },
+    {
+      "name": "Notification"
+    },
+    {
+      "name": "Payment & Deposit"
+    },
+    {
+      "name": "Payout"
+    },
+    {
+      "name": "Voucher"
+    },
+    {
+      "name": "Wallet & Transaction"
+    },
+    {
+      "name": "Workroom Chat"
+    }
+  ]
+}
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+  </body>
+</html>
