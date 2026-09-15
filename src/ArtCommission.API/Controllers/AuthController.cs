@@ -16,6 +16,7 @@ public class AuthController : ApiControllerBase
     /// Register a new user account (UC-01)
     /// </summary>
     [HttpPost("register")]
+    [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Register([FromBody] RegisterCommand command, CancellationToken cancellationToken)
@@ -33,6 +34,7 @@ public class AuthController : ApiControllerBase
     /// Authenticate user and issue JWT Access + Refresh Tokens (UC-02)
     /// </summary>
     [HttpPost("login")]
+    [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Login([FromBody] LoginCommand command, CancellationToken cancellationToken)
@@ -53,6 +55,7 @@ public class AuthController : ApiControllerBase
     /// Refresh JWT Access Token using Refresh Token Rotation (UC-02)
     /// </summary>
     [HttpPost("refresh-token")]
+    [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenCommand command, CancellationToken cancellationToken)
@@ -73,7 +76,7 @@ public class AuthController : ApiControllerBase
     /// Revoke Refresh Token / Logout (UC-02)
     /// </summary>
     [HttpPost("revoke-token")]
-    [Authorize]
+    [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> RevokeToken([FromBody] RevokeTokenCommand command, CancellationToken cancellationToken)
@@ -94,6 +97,7 @@ public class AuthController : ApiControllerBase
     /// Send password reset token email (UC-03)
     /// </summary>
     [HttpPost("forgot-password")]
+    [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordCommand command, CancellationToken cancellationToken)
     {
@@ -105,6 +109,7 @@ public class AuthController : ApiControllerBase
     /// Reset password using token (UC-03)
     /// </summary>
     [HttpPost("reset-password")]
+    [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordCommand command, CancellationToken cancellationToken)

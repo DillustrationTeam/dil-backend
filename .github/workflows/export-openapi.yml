@@ -1,0 +1,104 @@
+name: 📄 Export OpenAPI → Deploy Scalar Docs to Netlify
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src/ArtCommission.API/**'
+      - 'src/ArtCommission.Application/**'
+      - 'src/ArtCommission.Domain/**'
+  workflow_dispatch: # Cho phép trigger thủ công từ GitHub UI
+
+jobs:
+  export-and-deploy:
+    name: Export OpenAPI JSON & Deploy Scalar Docs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: 📦 Restore NuGet packages
+        run: dotnet restore
+
+      - name: 🏗️ Build solution (Release)
+        run: dotnet build --no-restore --configuration Release
+
+      - name: 🔧 Install dotnet-swagger CLI tool
+        run: dotnet tool install -g Swashbuckle.AspNetCore.Cli --version 6.6.2
+
+      - name: 📤 Export openapi.json từ compiled DLL
+        run: |
+          mkdir -p scalar-site
+          dotnet swagger tofile \
+            --output scalar-site/openapi.json \
+            src/ArtCommission.API/bin/Release/net8.0/ArtCommission.API.dll \
+            v1
+
+      - name: 🎨 Tạo Scalar HTML page (static)
+        run: |
+          cat > scalar-site/index.html << 'HTMLEOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <title>Dillustration API Docs</title>
+            <meta name="description" content="Interactive REST API reference for the Dillustration art commission platform. Browse, test, and explore all endpoints." />
+            <link rel="icon" type="image/svg+xml" href="https://scalar.com/favicon.svg" />
+          </head>
+          <body>
+            <script
+              id="api-reference"
+              data-url="./openapi.json"
+              data-configuration='{
+                "theme": "purple",
+                "layout": "modern",
+                "showSidebar": true,
+                "searchHotKey": "k",
+                "defaultHttpClient": {
+                  "targetKey": "javascript",
+                  "clientKey": "fetch"
+                },
+                "authentication": {
+                  "preferredSecurityScheme": "Bearer",
+                  "http": {
+                    "bearer": { "token": "" }
+                  }
+                },
+                "servers": [
+                  {
+                    "url": "https://artcommission-api.azurewebsites.net",
+                    "description": "Production"
+                  },
+                  {
+                    "url": "https://localhost:7001",
+                    "description": "Local Development"
+                  }
+                ]
+              }'
+            ></script>
+            <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+          </body>
+          </html>
+          HTMLEOF
+
+      - name: 🌐 Deploy to Netlify
+        uses: nwtgck/actions-netlify@v3.0
+        with:
+          publish-dir: ./scalar-site
+          production-branch: main
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          deploy-message: "📄 API Docs updated — ${{ github.sha }}"
+          enable-pull-request-comment: true
+          enable-commit-comment: false
+          overwrites-pull-request-comment: true
+          alias: scalar-docs
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
