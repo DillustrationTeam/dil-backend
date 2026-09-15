@@ -7,7 +7,7 @@ on:
       - 'src/ArtCommission.API/**'
       - 'src/ArtCommission.Application/**'
       - 'src/ArtCommission.Domain/**'
-  workflow_dispatch: # Cho phép trigger thủ công từ GitHub UI
+  workflow_dispatch:
 
 jobs:
   export-and-deploy:
@@ -30,7 +30,9 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: 🔧 Install dotnet-swagger CLI tool
-        run: dotnet tool install -g Swashbuckle.AspNetCore.Cli --version 6.6.2
+        run: |
+          dotnet tool install -g Swashbuckle.AspNetCore.Cli --version 6.6.2
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
       - name: 📤 Export openapi.json từ compiled DLL
         run: |
@@ -49,7 +51,7 @@ jobs:
             <meta charset="UTF-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1.0" />
             <title>Dillustration API Docs</title>
-            <meta name="description" content="Interactive REST API reference for the Dillustration art commission platform. Browse, test, and explore all endpoints." />
+            <meta name="description" content="Interactive REST API reference for the Dillustration art commission platform." />
             <link rel="icon" type="image/svg+xml" href="https://scalar.com/favicon.svg" />
           </head>
           <body>
