@@ -38,7 +38,7 @@ jobs:
       - name: 📤 Export openapi.json từ compiled DLL
         run: |
           mkdir -p scalar-site
-          dotnet swagger tofile \
+          swagger tofile \
             --output scalar-site/openapi.json \
             src/ArtCommission.API/bin/Release/net8.0/ArtCommission.API.dll \
             v1
