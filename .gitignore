@@ -438,3 +438,9 @@ appsettings.Local.json
 
 # Scalar API Docs — openapi.json được CI generate, không commit thủ công
 scalar-site/openapi.json
+# Secrets — chặn .env ở mọi cấp thư mục (kể cả D:\SEP490_Dillustration\.env nằm ngoài repo)
+# Lý do: khi file bị ignore ở nơi khác, `git add -f` hoặc thao tác nhầm vẫn có thể đẩy secret lên.
+.env
+.env.*
+!.env.example
+

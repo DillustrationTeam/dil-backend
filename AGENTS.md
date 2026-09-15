@@ -11,6 +11,7 @@
 5. [`docs/04-api-conventions.md`](docs/04-api-conventions.md) — REST pattern, response envelope, auth, SignalR, rate limit
 6. [`docs/05-use-cases.md`](docs/05-use-cases.md) — danh sách 7 Actor chuẩn hóa, mô hình Multi-role User, specs 34 use cases
 7. [`docs/06-auth-implementation-plan.md`](docs/06-auth-implementation-plan.md) — kế hoạch triển khai code chi tiết cho Module Auth / Identity
+8. [`docs/07-payos-integration-guide.md`](docs/07-payos-integration-guide.md) — **tích hợp payOS & gán webhook**: lấy 3 key, lưu secret đúng cách, mở tunnel HTTPS, test thanh toán không cần tiền thật. Đọc trước khi chạy module thanh toán ở máy local.
 
 
 ## Tech stack (tóm tắt — chi tiết xem docs/)
