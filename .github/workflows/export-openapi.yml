@@ -88,17 +88,16 @@ jobs:
           </html>
           HTMLEOF
 
+      - name: 🔧 Install Netlify CLI
+        run: npm install -g netlify-cli
+
       - name: 🌐 Deploy to Netlify
-        uses: nwtgck/actions-netlify@v3.0
-        with:
-          publish-dir: ./scalar-site
-          production-branch: main
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          deploy-message: "📄 API Docs updated — ${{ github.sha }}"
-          enable-pull-request-comment: true
-          enable-commit-comment: false
-          overwrites-pull-request-comment: true
-          alias: scalar-docs
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            netlify deploy --dir=scalar-site --prod
+          else
+            netlify deploy --dir=scalar-site --alias=${{ github.ref_name }}
+          fi
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
