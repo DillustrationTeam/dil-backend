@@ -15,6 +15,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Scalar.AspNetCore;
 using PayOS;
 using PayOsOptions = ArtCommission.Infrastructure.ExternalServices.PayOs.PayOsOptions;
 
@@ -119,27 +120,56 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:3000", "https://localhost:3000")
+        policy.WithOrigins(
+                "http://localhost:3000",
+                "https://localhost:3000",
+                // ↓ Thay bằng Netlify URL thực tế của dự án
+                "https://dillustration-api-docs.netlify.app"
+            )
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
     });
+
+    // Policy riêng cho Scalar docs page fetch openapi.json (không cần credentials)
+    options.AddPolicy("AllowScalarDocs", policy =>
+    {
+        policy.WithOrigins(
+                "https://dillustration-api-docs.netlify.app"
+            )
+              .AllowAnyHeader()
+              .WithMethods("GET")
+              .SetIsOriginAllowedToAllowWildcardSubdomains();
+    });
 });
 
-// 7. Add Controllers & Swagger
+// 7. Add Controllers & OpenAPI (Swashbuckle + Scalar)
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "ArtCommission (Dillustration) API", Version = "v1" });
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "ArtCommission (Dillustration) API",
+        Version = "v1",
+        Description = "REST API for the Dillustration art commission platform. " +
+                      "JWT Bearer authentication required for protected endpoints.",
+        Contact = new OpenApiContact
+        {
+            Name = "Dillustration Team",
+            Email = "support@dillustration.art"
+        }
+    });
 
+    // Dùng Http scheme chuẩn (bearer) thay vì ApiKey — Scalar hiểu đúng hơn
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
+        Description = "JWT Authorization. Nhập token vào ô bên dưới (không cần prefix \"Bearer \").",
         Name = "Authorization",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.ApiKey,
-        Scheme = "Bearer"
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
     });
 
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
@@ -192,10 +222,30 @@ using (var scope = app.Services.CreateScope())
 }
 
 // Configure HTTP request pipeline
+// openapi/v1.json luôn public (cả Production) để GitHub Actions export & Scalar Netlify fetch được
+app.UseSwagger(options =>
+{
+    options.RouteTemplate = "openapi/{documentName}.json";
+});
+
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    // Swagger UI giữ nguyên cho dev
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/openapi/v1.json", "ArtCommission API v1");
+        c.RoutePrefix = "swagger";
+    });
+
+    // Scalar UI — UI đẹp hơn cho dev local
+    app.MapScalarApiReference(options =>
+    {
+        options
+            .WithTitle("Dillustration API Docs")
+            .WithTheme(ScalarTheme.Purple)
+            .WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient)
+            .WithOpenApiRoutePattern("/openapi/{documentName}.json");
+    });
 }
 
 app.UseHttpsRedirection();
