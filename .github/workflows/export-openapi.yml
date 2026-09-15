@@ -7,6 +7,7 @@ on:
       - 'src/ArtCommission.API/**'
       - 'src/ArtCommission.Application/**'
       - 'src/ArtCommission.Domain/**'
+      - '.github/workflows/**'  # Thêm dòng này để workflow tự kích hoạt khi bạn sửa file YAML
   workflow_dispatch:
 
 jobs:
@@ -94,7 +95,9 @@ jobs:
         run: npm install -g netlify-cli
 
       - name: 🌐 Deploy to Netlify
-        run: netlify deploy --dir=scalar-site --prod
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          netlify deploy \
+            --dir=scalar-site \
+            --prod \
+            --site=${{ secrets.NETLIFY_SITE_ID }} \
+            --auth=${{ secrets.NETLIFY_AUTH_TOKEN }}
