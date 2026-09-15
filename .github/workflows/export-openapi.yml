@@ -94,12 +94,7 @@ jobs:
         run: npm install -g netlify-cli
 
       - name: 🌐 Deploy to Netlify
-        run: |
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            netlify deploy --dir=scalar-site --prod
-          else
-            netlify deploy --dir=scalar-site --alias=${{ github.ref_name }}
-          fi
+        run: netlify deploy --dir=scalar-site --prod
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
