@@ -7,3 +7,4 @@ public abstract class BaseEntity
     public DateTimeOffset? UpdatedAt { get; set; }
     public bool IsDeleted { get; set; }
 }
+

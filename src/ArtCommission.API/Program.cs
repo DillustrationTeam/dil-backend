@@ -2,6 +2,7 @@ using System.Text;
 using ArtCommission.API.BackgroundWorkers;
 using ArtCommission.Application.Auth.Commands.Register;
 using ArtCommission.Application.Common.Interfaces;
+using ArtCommission.Application.Commission.Interfaces;
 using ArtCommission.Application.Payment.Common;
 using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Infrastructure.ExternalServices.PayOs;
@@ -186,6 +187,23 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 });
+
+// Register DbContext (SQL Server or InMemory fallback)
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+{
+    var connStr = builder.Configuration.GetConnectionString("DefaultConnection");
+    if (!string.IsNullOrEmpty(connStr))
+    {
+        options.UseSqlServer(connStr);
+    }
+    else
+    {
+        options.UseInMemoryDatabase("ArtCommissionDb");
+    }
+});
+
+// Register Application Services
+builder.Services.AddScoped<ICommissionService, CommissionService>();
 
 var app = builder.Build();
 
