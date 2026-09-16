@@ -43,58 +43,6 @@ jobs:
             src/ArtCommission.API/bin/Release/net8.0/ArtCommission.API.dll \
             v1
 
-      - name: 🎨 Tạo Scalar HTML page (static)
-        run: |
-          cat > scalar-site/index.html << 'HTMLEOF'
-          <!DOCTYPE html>
-          <html lang="en">
-          <head>
-            <meta charset="UTF-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <title>Dillustration API Docs</title>
-            <meta name="description" content="Interactive REST API reference for the Dillustration art commission platform." />
-            <link rel="icon" type="image/svg+xml" href="https://scalar.com/favicon.svg" />
-          </head>
-          <body>
-            <script
-              id="api-reference"
-              data-url="./openapi.json"
-              data-configuration='{
-                "theme": "purple",
-                "layout": "modern",
-                "showSidebar": true,
-                "searchHotKey": "k",
-                "defaultHttpClient": {
-                  "targetKey": "javascript",
-                  "clientKey": "fetch"
-                },
-                "authentication": {
-                  "preferredSecurityScheme": "Bearer",
-                  "http": {
-                    "bearer": { "token": "" }
-                  }
-                },
-                "servers": [
-                  {
-                    "url": "https://artcommission-api.azurewebsites.net",
-                    "description": "Production"
-                  },
-                  {
-                    "url": "https://localhost:7208",
-                    "description": "Local Development (HTTPS)"
-                  },
-                  {
-                    "url": "http://localhost:5075",
-                    "description": "Local Development (HTTP)"
-                  }
-                ]
-              }'
-            ></script>
-            <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
-          </body>
-          </html>
-          HTMLEOF
-
       - name: 🔧 Install Netlify CLI
         run: npm install -g netlify-cli
 
