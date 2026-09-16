@@ -48,10 +48,12 @@ jobs:
 
       - name: 🌐 Deploy to Netlify
         run: |
+          SITE_NAME="${NETLIFY_SITE_ID:-dillustration-api}"
+          echo "Deploying Scalar Docs to Netlify site: $SITE_NAME"
           netlify deploy \
             --dir=scalar-site \
             --prod \
-            --site="$NETLIFY_SITE_ID" \
+            --site="$SITE_NAME" \
             --auth="$NETLIFY_AUTH_TOKEN"
         env:
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
