@@ -1,5 +1,6 @@
 using System.Reflection;
 using ArtCommission.Application.Common.Interfaces;
+using ArtCommission.Domain.Entities.ArtistStudio;
 using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Domain.Entities.Payment;
 using Microsoft.AspNetCore.Identity;
@@ -15,6 +16,13 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     }
 
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+
+    // Module Artist Studio
+    public DbSet<CreatorProfile> CreatorProfiles => Set<CreatorProfile>();
+    public DbSet<Artwork> Artworks => Set<Artwork>();
+    public DbSet<Tag> Tags => Set<Tag>();
+    public DbSet<ArtworkTag> ArtworkTags => Set<ArtworkTag>();
+    public DbSet<Follow> Follows => Set<Follow>();
 
     // Module Payment & Wallet (UC47/UC48/UC49)
     public DbSet<Wallet> Wallets => Set<Wallet>();
