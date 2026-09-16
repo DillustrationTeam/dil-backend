@@ -7,14 +7,15 @@
 3. Pull nhánh chính mới nhất trước khi tạo nhánh mới — tránh conflict migration EF Core (2 người cùng thêm migration trên nhánh cũ → lệch model snapshot).
 4. Nếu đổi schema (thêm/sửa entity) → chạy `dotnet ef migrations add` **trước khi push**, không để người khác tự chạy giúp — tên migration phải mô tả đúng thay đổi.
 
-## Branch naming
+## Branch naming (Bắt buộc kèm Mã định danh/Tên người làm — VD: de190123)
 
 ```
-feature/<module>-<mo-ta-ngan>     # feature/commission-milestone-approve
-fix/<module>-<mo-ta-ngan>         # fix/payment-webhook-double-process
-chore/<mo-ta-ngan>                # chore/update-agents-md
+feature/<dev-id>-<module>-<mo-ta-ngan>     # feature/de190123-auth-identity-setup
+fix/<dev-id>-<module>-<mo-ta-ngan>         # fix/de190123-payment-webhook-double-process
+chore/<dev-id>-<mo-ta-ngan>                # chore/de190123-update-docs-auth
 ```
 
+`<dev-id>` = Mã định danh/Tên thành viên thực hiện (VD: `de190123`).
 `<module>` = auth, artist-studio, marketplace, commission, payment, chat, admin.
 
 ## Commit convention (Conventional Commits)
@@ -29,6 +30,9 @@ chore: bump EF Core to 8.0.x
 ```
 
 Prefix bắt buộc: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`. Scope trong ngoặc = tên module.
+
+⚠️ **Lưu ý quan trọng khi commit:** Tuyệt đối **KHÔNG đính kèm dòng `Co-authored-by`** trong commit message (chỉ giữ thông tin tác giả duy nhất là tài khoản Git của người dùng).
+
 
 ## Trước khi mở PR
 
