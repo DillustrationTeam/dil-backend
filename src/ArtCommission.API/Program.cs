@@ -123,8 +123,7 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(
                 "http://localhost:3000",
                 "https://localhost:3000",
-                // ↓ Thay bằng Netlify URL thực tế của dự án
-                "https://dillustration-api-docs.netlify.app"
+                "https://dillustration-api.netlify.app"
             )
               .AllowAnyHeader()
               .AllowAnyMethod()
@@ -135,7 +134,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowScalarDocs", policy =>
     {
         policy.WithOrigins(
-                "https://dillustration-api-docs.netlify.app"
+                "https://dillustration-api.netlify.app"
             )
               .AllowAnyHeader()
               .WithMethods("GET")
