@@ -1,4 +1,5 @@
 using ArtCommission.Domain.Entities.ArtistStudio;
+using ArtCommission.Domain.Entities.Notifications;
 using ArtCommission.Domain.Entities.Payment;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -28,6 +29,13 @@ public interface IApplicationDbContext
     DbSet<BankAccount> BankAccounts { get; }
     DbSet<PayoutRequest> PayoutRequests { get; }
     DbSet<PlatformConfig> PlatformConfigs { get; }
+
+    // Module Voucher (UC50)
+    DbSet<Voucher> Vouchers { get; }
+    DbSet<VoucherRedemption> VoucherRedemptions { get; }
+
+    // Module Notification (UC45)
+    DbSet<Notification> Notifications { get; }
 
     DbSet<T> Set<T>() where T : class;
 
