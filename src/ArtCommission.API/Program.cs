@@ -221,16 +221,11 @@ using (var scope = app.Services.CreateScope())
         // => phải xoá DB một lần rồi chạy lại để migration áp dụng được từ đầu.
         await dbContext.Database.MigrateAsync();
 
-        var roleManager = services.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
-        var roles = new[] { "Administrator", "Moderator", "Creator", "Client" };
-        foreach (var role in roles)
-        {
-            if (!await roleManager.RoleExistsAsync(role))
-            {
-                await roleManager.CreateAsync(new IdentityRole<Guid>(role));
-            }
-        }
-        logger.LogInformation("Database initialized and default roles seeded successfully.");
+        await SeedDataInitializer.InitializeAsync(
+            dbContext,
+            services.GetRequiredService<UserManager<ApplicationUser>>(),
+            services.GetRequiredService<RoleManager<IdentityRole<Guid>>>());
+        logger.LogInformation("Database initialized and demo seed data ensured successfully.");
     }
     catch (Exception ex)
     {
