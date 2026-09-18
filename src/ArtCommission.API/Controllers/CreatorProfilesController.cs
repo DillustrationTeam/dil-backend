@@ -85,6 +85,7 @@ public class CreatorProfilesController : ApiControllerBase
         return OkEnvelope(data);
     }
 
+    [AllowAnonymous]
     [HttpGet("artworks")]
     public async Task<IActionResult> GetArtworks(CancellationToken cancellationToken)
     {
@@ -97,6 +98,7 @@ public class CreatorProfilesController : ApiControllerBase
         return OkEnvelope(data);
     }
 
+    [AllowAnonymous]
     [HttpGet("artworks/{id:guid}")]
     public async Task<IActionResult> GetArtworkById(Guid id, CancellationToken cancellationToken)
     {
