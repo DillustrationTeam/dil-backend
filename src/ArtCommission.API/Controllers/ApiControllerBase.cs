@@ -58,4 +58,18 @@ public abstract class ApiControllerBase : ControllerBase
             }
         });
     }
+
+    protected IActionResult NotFoundEnvelope(params string[] errors)
+    {
+        return NotFound(new
+        {
+            data = (object?)null,
+            meta = (object?)null,
+            error = new
+            {
+                title = "Not Found",
+                details = errors
+            }
+        });
+    }
 }

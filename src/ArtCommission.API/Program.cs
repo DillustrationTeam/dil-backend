@@ -1,8 +1,11 @@
 using System.Text;
 using ArtCommission.API.BackgroundWorkers;
+using ArtCommission.API.Common;
+using ArtCommission.API.Hubs;
 using ArtCommission.Application.Auth.Commands.Register;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.Commission.Interfaces;
+using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
 using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Infrastructure.ExternalServices.PayOs;
@@ -87,6 +90,12 @@ builder.Services.AddSingleton<PayOSClient>(sp =>
 
 builder.Services.AddScoped<IPaymentGateway, PayOsPaymentGateway>();
 
+// 3e. UC45 — Notification: ghi DB + đẩy SignalR real-time
+builder.Services.AddScoped<INotificationPublisher, SignalRNotificationPublisher>();
+
+// 3f. UC50 — Voucher: kiểm tra mã dùng chung (checkout, redeem)
+builder.Services.AddScoped<IVoucherCheckService, VoucherCheckService>();
+
 // 4. Add MediatR & FluentValidation
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(RegisterCommand).Assembly));
 builder.Services.AddValidatorsFromAssembly(typeof(RegisterCommand).Assembly);
@@ -113,6 +122,25 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = audience,
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey)),
         ClockSkew = TimeSpan.Zero
+    };
+
+    // SignalR handshake qua WebSocket KHÔNG gửi được header Authorization,
+    // nên client phải truyền token qua query-string: /hubs/notifications?access_token=...
+    // Chỉ đọc từ query-string cho đúng route hub, không nới lỏng cho REST.
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+
+            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+            {
+                context.Token = accessToken;
+            }
+
+            return Task.CompletedTask;
+        }
     };
 });
 
@@ -146,6 +174,9 @@ builder.Services.AddCors(options =>
 // 7. Add Controllers & OpenAPI (Swashbuckle + Scalar)
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
+
+// 7b. UC45 — SignalR cho Notification Center (hub ở API/Hubs/NotificationHub.cs)
+builder.Services.AddSignalR();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo
@@ -273,5 +304,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// UC45 — SignalR hub. Client kết nối: /hubs/notifications?access_token={jwt}
+app.MapHub<NotificationHub>("/hubs/notifications");
 
 app.Run();

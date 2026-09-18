@@ -82,9 +82,13 @@ public class FollowConfiguration : IEntityTypeConfiguration<Follow>
             .HasForeignKey(x => x.CreatorProfileId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // PHẢI là NoAction, KHÔNG được Cascade:
+        // Users → CreatorProfiles → Follows và Users → Follows là HAI đường cascade
+        // cùng trỏ về bảng Follows ⇒ SQL Server chặn tạo FK
+        // ("may cause cycles or multiple cascade paths", lỗi 1785).
         builder.HasOne(x => x.Follower)
             .WithMany()
             .HasForeignKey(x => x.FollowerUserId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.NoAction);
     }
 }

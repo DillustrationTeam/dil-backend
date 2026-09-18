@@ -4,6 +4,7 @@ using ArtCommission.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace ArtCommission.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260918085937_AddArtistStudioAndCommissionSchema")]
+    partial class AddArtistStudioAndCommissionSchema
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -588,90 +591,6 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.ToTable("RefreshTokens", (string)null);
                 });
 
-            modelBuilder.Entity("ArtCommission.Domain.Entities.Notifications.Notification", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Body")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<string>("Channel")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)")
-                        .HasDefaultValue("InApp");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("DedupKey")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("FailedReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<bool>("IsDeleted")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
-
-                    b.Property<bool>("IsRead")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
-
-                    b.Property<string>("NotificationTitle")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("NotificationType")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<DateTimeOffset?>("ReadAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid?>("RefId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("RefType")
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<DateTimeOffset?>("SentAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId", "CreatedAt")
-                        .HasDatabaseName("IX_Notification_UserId_CreatedAt");
-
-                    b.HasIndex("UserId", "DedupKey")
-                        .IsUnique()
-                        .HasDatabaseName("UX_Notification_UserId_DedupKey")
-                        .HasFilter("[DedupKey] IS NOT NULL");
-
-                    b.HasIndex("UserId", "IsRead")
-                        .HasDatabaseName("IX_Notification_UserId_IsRead");
-
-                    b.ToTable("Notification", (string)null);
-                });
-
             modelBuilder.Entity("ArtCommission.Domain.Entities.Payment.BankAccount", b =>
                 {
                     b.Property<Guid>("Id")
@@ -952,144 +871,6 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("UX_PlatformConfig_Key");
 
                     b.ToTable("PlatformConfig", (string)null);
-                });
-
-            modelBuilder.Entity("ArtCommission.Domain.Entities.Payment.Voucher", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid?>("CreatedByUserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("DiscountType")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<decimal>("DiscountValue")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateOnly>("EndDate")
-                        .HasColumnType("date");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
-
-                    b.Property<bool>("IsDeleted")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
-
-                    b.Property<decimal?>("MaxDiscountAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("MinOrderAmount")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)")
-                        .HasDefaultValue(0m);
-
-                    b.Property<string>("Name")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<int>("Scope")
-                        .HasColumnType("int");
-
-                    b.Property<DateOnly>("StartDate")
-                        .HasColumnType("date");
-
-                    b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("UsageLimit")
-                        .HasColumnType("int");
-
-                    b.Property<int>("UsedCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(0);
-
-                    b.Property<string>("VoucherCode")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedByUserId")
-                        .HasDatabaseName("IX_Voucher_CreatedByUserId");
-
-                    b.HasIndex("IsDeleted")
-                        .HasDatabaseName("IX_Voucher_IsDeleted");
-
-                    b.HasIndex("VoucherCode")
-                        .IsUnique()
-                        .HasDatabaseName("UX_Voucher_VoucherCode");
-
-                    b.HasIndex("IsActive", "StartDate", "EndDate")
-                        .HasDatabaseName("IX_Voucher_Active_Window");
-
-                    b.ToTable("Voucher", (string)null);
-                });
-
-            modelBuilder.Entity("ArtCommission.Domain.Entities.Payment.VoucherRedemption", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("DiscountAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("FinalAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("OrderAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateTimeOffset>("RedeemedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid>("RefId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("RefType")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("VoucherId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId")
-                        .HasDatabaseName("IX_VoucherRedemption_UserId");
-
-                    b.HasIndex("RefType", "RefId")
-                        .IsUnique()
-                        .HasDatabaseName("UX_VoucherRedemption_Ref");
-
-                    b.HasIndex("VoucherId", "UserId")
-                        .HasDatabaseName("IX_VoucherRedemption_Voucher_User");
-
-                    b.ToTable("VoucherRedemption", (string)null);
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.Payment.Wallet", b =>
@@ -1456,17 +1237,6 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("ArtCommission.Domain.Entities.Notifications.Notification", b =>
-                {
-                    b.HasOne("ArtCommission.Domain.Entities.Identity.ApplicationUser", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("ArtCommission.Domain.Entities.Payment.BankAccount", b =>
                 {
                     b.HasOne("ArtCommission.Domain.Entities.Identity.ApplicationUser", null)
@@ -1508,31 +1278,6 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("BankAccount");
-                });
-
-            modelBuilder.Entity("ArtCommission.Domain.Entities.Payment.Voucher", b =>
-                {
-                    b.HasOne("ArtCommission.Domain.Entities.Identity.ApplicationUser", null)
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-                });
-
-            modelBuilder.Entity("ArtCommission.Domain.Entities.Payment.VoucherRedemption", b =>
-                {
-                    b.HasOne("ArtCommission.Domain.Entities.Identity.ApplicationUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("ArtCommission.Domain.Entities.Payment.Voucher", "Voucher")
-                        .WithMany("Redemptions")
-                        .HasForeignKey("VoucherId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Voucher");
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.Payment.Wallet", b =>
@@ -1635,11 +1380,6 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("ArtCommission.Domain.Entities.Identity.ApplicationUser", b =>
                 {
                     b.Navigation("RefreshTokens");
-                });
-
-            modelBuilder.Entity("ArtCommission.Domain.Entities.Payment.Voucher", b =>
-                {
-                    b.Navigation("Redemptions");
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.Payment.Wallet", b =>
