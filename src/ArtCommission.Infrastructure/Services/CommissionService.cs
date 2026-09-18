@@ -60,7 +60,9 @@ public class CommissionService : ICommissionService
 
     public async Task<(List<CommissionDto> Items, int TotalItems)> GetCommissionsAsync(string? status, string? role, Guid userId, int page = 1, int pageSize = 10, CancellationToken cancellationToken = default)
     {
-        var query = _dbContext.Commissions.AsNoTracking().AsQueryable();
+        var query = _dbContext.Commissions
+            .AsNoTracking()
+            .Where(c => c.ClientId == userId || c.CreatorId == userId);
 
         if (string.Equals(role, "Client", StringComparison.OrdinalIgnoreCase))
         {
@@ -86,7 +88,7 @@ public class CommissionService : ICommissionService
         return (items, totalItems);
     }
 
-    public async Task<CommissionDetailDto?> GetCommissionByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<CommissionDetailDto?> GetCommissionByIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
         var commission = await _dbContext.Commissions
             .Include(c => c.Milestones)
@@ -96,6 +98,7 @@ public class CommissionService : ICommissionService
             .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
 
         if (commission == null) return null;
+        EnsureParticipant(commission, userId);
 
         var detailDto = MapToDetailDto(commission);
         return detailDto;
@@ -105,6 +108,7 @@ public class CommissionService : ICommissionService
     {
         var commission = await _dbContext.Commissions.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
         if (commission == null) throw new KeyNotFoundException("Không tìm thấy đơn hàng commission.");
+        EnsureCreator(commission, creatorId);
 
         if (string.Equals(request.Action, "Accept", StringComparison.OrdinalIgnoreCase))
         {
@@ -134,6 +138,7 @@ public class CommissionService : ICommissionService
     {
         var commission = await _dbContext.Commissions.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
         if (commission == null) throw new KeyNotFoundException("Không tìm thấy đơn hàng commission.");
+        EnsureClient(commission, clientId);
 
         commission.EscrowHeldAmount = commission.FinalPrice;
         commission.EscrowStatus = EscrowStatus.Deposited;
@@ -146,6 +151,8 @@ public class CommissionService : ICommissionService
 
     public async Task<MilestoneDto> SubmitMilestoneWipAsync(Guid commissionId, Guid milestoneId, SubmitMilestoneRequest request, Guid creatorId, CancellationToken cancellationToken = default)
     {
+        var commission = await GetCommissionAsync(commissionId, cancellationToken);
+        EnsureCreator(commission, creatorId);
         var milestone = await _dbContext.Milestones.FirstOrDefaultAsync(m => m.Id == milestoneId && m.CommissionId == commissionId, cancellationToken);
         if (milestone == null) throw new KeyNotFoundException("Không tìm thấy cột mốc milestone.");
 
@@ -164,6 +171,7 @@ public class CommissionService : ICommissionService
     {
         var commission = await _dbContext.Commissions.Include(c => c.Milestones).FirstOrDefaultAsync(c => c.Id == commissionId, cancellationToken);
         if (commission == null) throw new KeyNotFoundException("Không tìm thấy đơn hàng commission.");
+        EnsureClient(commission, clientId);
 
         var milestone = commission.Milestones.FirstOrDefault(m => m.Id == milestoneId);
         if (milestone == null) throw new KeyNotFoundException("Không tìm thấy cột mốc milestone.");
@@ -185,6 +193,8 @@ public class CommissionService : ICommissionService
 
     public async Task<MilestoneDto> RequestMilestoneRevisionAsync(Guid commissionId, Guid milestoneId, RequestRevisionRequest request, Guid clientId, CancellationToken cancellationToken = default)
     {
+        var commission = await GetCommissionAsync(commissionId, cancellationToken);
+        EnsureClient(commission, clientId);
         var milestone = await _dbContext.Milestones.FirstOrDefaultAsync(m => m.Id == milestoneId && m.CommissionId == commissionId, cancellationToken);
         if (milestone == null) throw new KeyNotFoundException("Không tìm thấy cột mốc milestone.");
 
@@ -201,6 +211,7 @@ public class CommissionService : ICommissionService
     {
         var commission = await _dbContext.Commissions.Include(c => c.Milestones).FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
         if (commission == null) throw new KeyNotFoundException("Không tìm thấy đơn hàng commission.");
+        EnsureCreator(commission, creatorId);
 
         commission.Status = CommissionStatus.SubmittedFinal;
         commission.UpdatedAt = DateTimeOffset.UtcNow;
@@ -220,6 +231,7 @@ public class CommissionService : ICommissionService
     {
         var commission = await _dbContext.Commissions.Include(c => c.Milestones).FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
         if (commission == null) throw new KeyNotFoundException("Không tìm thấy đơn hàng commission.");
+        EnsureClient(commission, clientId);
 
         commission.Status = CommissionStatus.Completed;
         commission.EscrowStatus = EscrowStatus.Released;
@@ -237,6 +249,7 @@ public class CommissionService : ICommissionService
     {
         var commission = await _dbContext.Commissions.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
         if (commission == null) throw new KeyNotFoundException("Không tìm thấy đơn hàng commission.");
+        EnsureParticipant(commission, userId);
 
         commission.Status = CommissionStatus.Cancelled;
         commission.EscrowStatus = EscrowStatus.Refunded;
@@ -249,6 +262,9 @@ public class CommissionService : ICommissionService
 
     public async Task<DisputeDto> CreateDisputeAsync(Guid id, CreateDisputeRequest request, Guid raisedById, CancellationToken cancellationToken = default)
     {
+        var commission = await GetCommissionAsync(id, cancellationToken);
+        EnsureParticipant(commission, raisedById);
+
         var dispute = new Dispute
         {
             CommissionId = id,
@@ -260,26 +276,27 @@ public class CommissionService : ICommissionService
 
         _dbContext.Disputes.Add(dispute);
 
-        var commission = await _dbContext.Commissions.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
-        if (commission != null)
-        {
-            commission.Status = CommissionStatus.Disputed;
-            commission.EscrowStatus = EscrowStatus.Disputed;
-        }
+        commission.Status = CommissionStatus.Disputed;
+        commission.EscrowStatus = EscrowStatus.Disputed;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return MapToDisputeDto(dispute);
     }
 
-    public async Task<DisputeDto?> GetDisputeByCommissionIdAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<DisputeDto?> GetDisputeByCommissionIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
+        var commission = await GetCommissionAsync(id, cancellationToken);
+        EnsureParticipant(commission, userId);
         var dispute = await _dbContext.Disputes.AsNoTracking().FirstOrDefaultAsync(d => d.CommissionId == id, cancellationToken);
         return dispute == null ? null : MapToDisputeDto(dispute);
     }
 
     public async Task<ReviewDto> CreateReviewAsync(Guid id, CreateReviewRequest request, Guid reviewerId, CancellationToken cancellationToken = default)
     {
+        var commission = await GetCommissionAsync(id, cancellationToken);
+        EnsureClient(commission, reviewerId);
+
         var review = new Review
         {
             CommissionId = id,
@@ -298,6 +315,8 @@ public class CommissionService : ICommissionService
     {
         var review = await _dbContext.Reviews.FirstOrDefaultAsync(r => r.CommissionId == id, cancellationToken);
         if (review == null) throw new KeyNotFoundException("Không tìm thấy đánh giá cho đơn hàng này.");
+        var commission = await GetCommissionAsync(id, cancellationToken);
+        EnsureCreator(commission, creatorId);
 
         review.ReviewerReply = replyComment;
         review.UpdatedAt = DateTimeOffset.UtcNow;
@@ -308,6 +327,36 @@ public class CommissionService : ICommissionService
     }
 
     #region Helper Mappers
+    private async Task<Commission> GetCommissionAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var commission = await _dbContext.Commissions.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+        return commission ?? throw new KeyNotFoundException("Không tìm thấy đơn hàng commission.");
+    }
+
+    private static void EnsureClient(Commission commission, Guid userId)
+    {
+        if (commission.ClientId != userId)
+        {
+            throw new UnauthorizedAccessException("Chỉ Client sở hữu commission mới được thực hiện thao tác này.");
+        }
+    }
+
+    private static void EnsureCreator(Commission commission, Guid userId)
+    {
+        if (commission.CreatorId != userId)
+        {
+            throw new UnauthorizedAccessException("Chỉ Creator sở hữu commission mới được thực hiện thao tác này.");
+        }
+    }
+
+    private static void EnsureParticipant(Commission commission, Guid userId)
+    {
+        if (commission.ClientId != userId && commission.CreatorId != userId)
+        {
+            throw new UnauthorizedAccessException("Bạn không có quyền truy cập commission này.");
+        }
+    }
+
     private static CommissionDto MapToDto(Commission c)
     {
         return new CommissionDto

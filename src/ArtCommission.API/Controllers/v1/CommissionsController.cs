@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace ArtCommission.API.Controllers.v1;
 
 [ApiController]
+[Authorize]
 [Route("api/v1/commissions")]
 public class CommissionsController : ControllerBase
 {
@@ -56,7 +57,7 @@ public class CommissionsController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetCommissionById(Guid id, CancellationToken ct)
     {
-        var result = await _commissionService.GetCommissionByIdAsync(id, ct);
+        var result = await _commissionService.GetCommissionByIdAsync(id, GetCurrentUserId(), ct);
         if (result == null) return NotFound(new ApiResponse<object>(null, null, new { message = "Không tìm thấy đơn vẽ." }));
         return Ok(new ApiResponse<CommissionDetailDto>(result));
     }
@@ -177,7 +178,7 @@ public class CommissionsController : ControllerBase
     [HttpGet("{id:guid}/disputes")]
     public async Task<IActionResult> GetDisputeByCommissionId(Guid id, CancellationToken ct)
     {
-        var result = await _commissionService.GetDisputeByCommissionIdAsync(id, ct);
+        var result = await _commissionService.GetDisputeByCommissionIdAsync(id, GetCurrentUserId(), ct);
         if (result == null) return NotFound(new ApiResponse<object>(null, null, new { message = "Chưa có tranh chấp cho đơn hàng này." }));
         return Ok(new ApiResponse<DisputeDto>(result));
     }

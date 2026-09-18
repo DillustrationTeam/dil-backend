@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.AspNetCore.Diagnostics;
 using ArtCommission.API.BackgroundWorkers;
 using ArtCommission.Application.Auth.Commands.Register;
 using ArtCommission.Application.Common.Interfaces;
@@ -206,6 +207,25 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddScoped<ICommissionService, CommissionService>();
 
 var app = builder.Build();
+
+app.UseExceptionHandler(exceptionApp => exceptionApp.Run(async context =>
+{
+    var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
+    var (statusCode, title) = exception switch
+    {
+        UnauthorizedAccessException => (StatusCodes.Status403Forbidden, "Forbidden"),
+        KeyNotFoundException => (StatusCodes.Status404NotFound, "Not Found"),
+        _ => (StatusCodes.Status500InternalServerError, "Internal Server Error")
+    };
+
+    context.Response.StatusCode = statusCode;
+    await context.Response.WriteAsJsonAsync(new
+    {
+        data = (object?)null,
+        meta = (object?)null,
+        error = new { title, details = new[] { exception?.Message ?? "An unexpected error occurred." } }
+    });
+}));
 
 // Auto-initialize Database & Seed Roles on Startup
 using (var scope = app.Services.CreateScope())
