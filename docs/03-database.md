@@ -1,7 +1,7 @@
 # Thiết kế Database — ArtCommission (Dillustration)
 
-SQL Server, EF Core 8 **Code-First**, 1 `AppDbContext` duy nhất (lý do xem [`docs/01-architecture.md`](01-architecture.md)).
-Entity Models và Fluent API configurations là nguồn sự thật của schema; thay đổi schema phải đi kèm EF Core migration.
+SQL Server, EF Core 8 **Database-First**, 1 `AppDbContext` duy nhất (lý do xem [`docs/01-architecture.md`](01-architecture.md)).
+Tạo và quản lý Schema bảng trước trên SQL Server qua SQL DDL Scripts, sau đó ánh xạ (Mapping) vào EF Core 8 Entity Models.
 
 ---
 
