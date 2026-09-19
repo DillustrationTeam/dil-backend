@@ -5,7 +5,7 @@ namespace ArtCommission.Domain.Entities.ArtistStudio;
 
 public class Artwork : BaseEntity
 {
-    public Guid CreatorId { get; set; }
+    public Guid CreatorProfileId { get; set; }
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string ImageUrl { get; set; } = string.Empty;

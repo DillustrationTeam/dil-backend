@@ -1,3 +1,5 @@
+using ArtCommission.Domain.Entities.ArtistStudio;
+using ArtCommission.Domain.Entities.Notifications;
 using ArtCommission.Domain.Entities.Payment;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -13,6 +15,13 @@ namespace ArtCommission.Application.Common.Interfaces;
 /// </summary>
 public interface IApplicationDbContext
 {
+    // Module Artist Studio
+    DbSet<CreatorProfile> CreatorProfiles { get; }
+    DbSet<Artwork> Artworks { get; }
+    DbSet<Tag> Tags { get; }
+    DbSet<ArtworkTag> ArtworkTags { get; }
+    DbSet<Follow> Follows { get; }
+
     // Module Payment & Wallet
     DbSet<Wallet> Wallets { get; }
     DbSet<WalletTransaction> WalletTransactions { get; }
@@ -20,6 +29,15 @@ public interface IApplicationDbContext
     DbSet<BankAccount> BankAccounts { get; }
     DbSet<PayoutRequest> PayoutRequests { get; }
     DbSet<PlatformConfig> PlatformConfigs { get; }
+
+    // Module Voucher (UC50)
+    DbSet<Voucher> Vouchers { get; }
+    DbSet<VoucherRedemption> VoucherRedemptions { get; }
+
+    // Module Notification (UC45)
+    DbSet<Notification> Notifications { get; }
+
+    DbSet<T> Set<T>() where T : class;
 
     /// <summary>
     /// Truy cập DatabaseFacade để mở transaction ACID

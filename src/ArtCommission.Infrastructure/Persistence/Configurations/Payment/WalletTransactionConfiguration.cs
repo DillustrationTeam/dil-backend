@@ -30,6 +30,11 @@ public class WalletTransactionConfiguration : IEntityTypeConfiguration<WalletTra
             .HasPrecision(18, 2)
             .IsRequired();
 
+        builder.Property(t => t.LockedBalanceAfter)
+            .HasPrecision(18, 2)
+            .HasDefaultValue(0m)
+            .IsRequired();
+
         builder.Property(t => t.RefType)
             .HasMaxLength(30);
 

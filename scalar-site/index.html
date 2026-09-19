@@ -1,22 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dillustration API Docs</title>
-  <meta name="description" content="Interactive REST API reference for the Dillustration art commission platform. Browse, test, and explore all endpoints." />
+  <meta name="description"
+    content="Interactive REST API reference for the Dillustration art commission platform. Browse, test, and explore all endpoints." />
   <link rel="icon" type="image/svg+xml" href="https://scalar.com/favicon.svg" />
 </head>
+
 <body>
   <!--
     data-url="./openapi.json" → đọc file tĩnh (CI-generated)
     Thay bằng URL backend thực tế khi backend đã deploy public:
       data-url="https://your-backend.azurewebsites.net/openapi/v1.json"
   -->
-  <script
-    id="api-reference"
-    data-url="./openapi.json"
-    data-configuration='{
+  <script id="api-reference" data-url="./openapi.json" data-configuration='{
       "theme": "purple",
       "layout": "modern",
       "showSidebar": true,
@@ -33,10 +33,6 @@
       },
       "servers": [
         {
-          "url": "https://artcommission-api.azurewebsites.net",
-          "description": "Production"
-        },
-        {
           "url": "https://localhost:7208",
           "description": "Local Development (HTTPS)"
         },
@@ -45,8 +41,8 @@
           "description": "Local Development (HTTP)"
         }
       ]
-    }'
-  ></script>
+    }'></script>
   <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
 </body>
+
 </html>

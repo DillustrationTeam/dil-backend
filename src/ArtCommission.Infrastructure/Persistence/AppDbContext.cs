@@ -2,6 +2,7 @@ using System.Reflection;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Entities.ArtistStudio;
 using ArtCommission.Domain.Entities.Identity;
+using ArtCommission.Domain.Entities.Notifications;
 using ArtCommission.Domain.Entities.Payment;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -17,11 +18,12 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
 
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
-    // Module ArtistStudio
+    // Module Artist Studio
     public DbSet<CreatorProfile> CreatorProfiles => Set<CreatorProfile>();
     public DbSet<Artwork> Artworks => Set<Artwork>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<ArtworkTag> ArtworkTags => Set<ArtworkTag>();
+    public DbSet<Follow> Follows => Set<Follow>();
 
     // Module Payment & Wallet (UC47/UC48/UC49)
     public DbSet<Wallet> Wallets => Set<Wallet>();
@@ -30,6 +32,13 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
     public DbSet<PayoutRequest> PayoutRequests => Set<PayoutRequest>();
     public DbSet<PlatformConfig> PlatformConfigs => Set<PlatformConfig>();
+
+    // Module Voucher (UC50)
+    public DbSet<Voucher> Vouchers => Set<Voucher>();
+    public DbSet<VoucherRedemption> VoucherRedemptions => Set<VoucherRedemption>();
+
+    // Module Notification (UC45)
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

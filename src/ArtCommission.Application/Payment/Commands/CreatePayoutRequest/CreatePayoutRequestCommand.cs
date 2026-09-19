@@ -94,10 +94,6 @@ public class CreatePayoutRequestCommandHandler
                 ["Số dư khả dụng không đủ để thực hiện yêu cầu rút tiền."]);
         }
 
-        // TRỪ VÍ NGAY (theo đúng spec) — không đợi Admin duyệt
-        wallet.Balance -= request.Amount;
-        wallet.UpdatedAt = DateTimeOffset.UtcNow;
-
         var payoutRequest = new PayoutRequest
         {
             UserId = request.UserId,
@@ -111,11 +107,11 @@ public class CreatePayoutRequestCommandHandler
 
         _db.PayoutRequests.Add(payoutRequest);
 
-        // Ghi sổ cái (BalanceAfter lấy sau khi đã trừ)
-        await _walletService.RecordTransactionAsync(
+        // TRỪ VÍ NGAY (theo đúng spec) — không đợi Admin duyệt.
+        // DebitAsync kiểm tra đủ số dư + trừ Balance + ghi sổ cái, không tách rời được.
+        await _walletService.DebitAsync(
             wallet,
             WalletTransactionType.Payout,
-            WalletTransactionDirection.Out,
             request.Amount,
             nameof(PayoutRequest),
             payoutRequest.Id,
