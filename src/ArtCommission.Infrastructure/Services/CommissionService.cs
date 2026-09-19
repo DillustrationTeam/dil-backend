@@ -10,14 +10,71 @@ namespace ArtCommission.Infrastructure.Services;
 public class CommissionService : ICommissionService
 {
     private readonly ApplicationDbContext _dbContext;
+    private readonly AppDbContext _identityDb;
 
-    public CommissionService(ApplicationDbContext dbContext)
+    public CommissionService(ApplicationDbContext dbContext, AppDbContext identityDb)
     {
         _dbContext = dbContext;
+        _identityDb = identityDb;
+    }
+
+    private static void RequireClient(Commission commission, Guid userId)
+    {
+        if (userId == Guid.Empty || commission.ClientId != userId)
+            throw new UnauthorizedAccessException("You are not the client for this commission.");
+    }
+
+    private static void RequireCreator(Commission commission, Guid userId)
+    {
+        if (userId == Guid.Empty || commission.CreatorId != userId)
+            throw new UnauthorizedAccessException("You are not the creator for this commission.");
+    }
+
+    private static void RequireParticipant(Commission commission, Guid userId)
+    {
+        if (userId == Guid.Empty || (commission.ClientId != userId && commission.CreatorId != userId))
+            throw new UnauthorizedAccessException("You are not a participant in this commission.");
+    }
+
+    private static void RequireFundedWork(Commission commission)
+    {
+        if (commission.Status != CommissionStatus.InProgress ||
+            commission.EscrowStatus is not (EscrowStatus.Deposited or EscrowStatus.PartialReleased) ||
+            commission.EscrowHeldAmount <= 0)
+            throw new InvalidOperationException("The commission must be accepted and funded before milestone work.");
+    }
+
+    private static void RequireCurrentMilestone(Commission commission, Milestone milestone)
+    {
+        if (milestone.Sequence != commission.CurrentStage)
+            throw new InvalidOperationException("Only the current milestone can be changed.");
     }
 
     public async Task<CommissionDto> CreateCommissionAsync(CreateCommissionRequest request, Guid clientId, CancellationToken cancellationToken = default)
     {
+        if (clientId == Guid.Empty || request.CreatorId == Guid.Empty || clientId == request.CreatorId)
+            throw new ArgumentException("A valid, distinct client and creator are required.");
+        if (request.TotalPrice <= 0 || decimal.Round(request.TotalPrice, 2) != request.TotalPrice)
+            throw new ArgumentException("TotalPrice must be a positive amount in cents.");
+        var milestones = request.Milestones?.OrderBy(m => m.Sequence).ToList();
+        if (milestones is null || milestones.Count == 0 ||
+            !milestones.Select(m => m.Sequence).SequenceEqual(Enumerable.Range(1, milestones.Count)) ||
+            milestones.Any(m => m.Price <= 0) ||
+            Math.Abs(milestones.Sum(m => m.Price) - request.TotalPrice) > 0.01m)
+            throw new ArgumentException("Milestones must be ordered from 1, have positive prices, and total the commission price.");
+        var roundedPrices = milestones.Take(milestones.Count - 1)
+            .Select(m => decimal.Round(m.Price, 2, MidpointRounding.AwayFromZero)).ToList();
+        roundedPrices.Add(request.TotalPrice - roundedPrices.Sum());
+        if (roundedPrices.Any(price => price <= 0))
+            throw new ArgumentException("Each milestone must cost at least 0.01.");
+        var creatorHasRole = await _identityDb.UserRoles
+            .Join(_identityDb.Roles, userRole => userRole.RoleId, role => role.Id,
+                (userRole, role) => new { userRole.UserId, role.Name })
+            .AnyAsync(x => x.UserId == request.CreatorId && x.Name == "Creator", cancellationToken);
+        if (!creatorHasRole || !await _identityDb.CreatorProfiles
+                .AnyAsync(p => p.UserId == request.CreatorId && !p.IsDeleted, cancellationToken))
+            throw new ArgumentException("CreatorId must identify an active creator profile.");
+
         var discountAmount = 0.00m;
         var finalPrice = request.TotalPrice - discountAmount;
 
@@ -38,18 +95,16 @@ public class CommissionService : ICommissionService
             DeadlineAt = request.DeadlineAt
         };
 
-        if (request.Milestones != null && request.Milestones.Any())
+        for (var index = 0; index < milestones.Count; index++)
         {
-            foreach (var m in request.Milestones)
+            var milestone = milestones[index];
+            commission.Milestones.Add(new Milestone
             {
-                commission.Milestones.Add(new Milestone
-                {
-                    Sequence = m.Sequence,
-                    Title = m.Title,
-                    Price = m.Price,
-                    Status = MilestoneStatus.Pending
-                });
-            }
+                Sequence = milestone.Sequence,
+                Title = milestone.Title,
+                Price = roundedPrices[index],
+                Status = MilestoneStatus.Pending
+            });
         }
 
         _dbContext.Commissions.Add(commission);
@@ -60,7 +115,9 @@ public class CommissionService : ICommissionService
 
     public async Task<(List<CommissionDto> Items, int TotalItems)> GetCommissionsAsync(string? status, string? role, Guid userId, int page = 1, int pageSize = 10, CancellationToken cancellationToken = default)
     {
-        var query = _dbContext.Commissions.AsNoTracking().AsQueryable();
+        if (userId == Guid.Empty) throw new UnauthorizedAccessException("A valid user identity is required.");
+        var query = _dbContext.Commissions.AsNoTracking()
+            .Where(c => c.ClientId == userId || c.CreatorId == userId);
 
         if (string.Equals(role, "Client", StringComparison.OrdinalIgnoreCase))
         {
@@ -71,8 +128,10 @@ public class CommissionService : ICommissionService
             query = query.Where(c => c.CreatorId == userId);
         }
 
-        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<CommissionStatus>(status, true, out var parsedStatus))
+        if (!string.IsNullOrWhiteSpace(status))
         {
+            if (!Enum.TryParse<CommissionStatus>(status, true, out var parsedStatus) || !Enum.IsDefined(parsedStatus))
+                throw new ArgumentException("Invalid commission status.");
             query = query.Where(c => c.Status == parsedStatus);
         }
 
@@ -86,7 +145,7 @@ public class CommissionService : ICommissionService
         return (items, totalItems);
     }
 
-    public async Task<CommissionDetailDto?> GetCommissionByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<CommissionDetailDto?> GetCommissionByIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
         var commission = await _dbContext.Commissions
             .Include(c => c.Milestones)
@@ -96,6 +155,7 @@ public class CommissionService : ICommissionService
             .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
 
         if (commission == null) return null;
+        RequireParticipant(commission, userId);
 
         var detailDto = MapToDetailDto(commission);
         return detailDto;
@@ -103,8 +163,12 @@ public class CommissionService : ICommissionService
 
     public async Task<CommissionDto> RespondCommissionAsync(Guid id, RespondCommissionRequest request, Guid creatorId, CancellationToken cancellationToken = default)
     {
-        var commission = await _dbContext.Commissions.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+        var commission = await _dbContext.Commissions.Include(c => c.Milestones)
+            .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
         if (commission == null) throw new KeyNotFoundException("Không tìm thấy đơn hàng commission.");
+        RequireCreator(commission, creatorId);
+        if (commission.Status is not (CommissionStatus.PendingAcceptance or CommissionStatus.Negotiating))
+            throw new InvalidOperationException("Only a pending or negotiating commission can be answered.");
 
         if (string.Equals(request.Action, "Accept", StringComparison.OrdinalIgnoreCase))
         {
@@ -116,12 +180,25 @@ public class CommissionService : ICommissionService
         }
         else if (string.Equals(request.Action, "Negotiate", StringComparison.OrdinalIgnoreCase))
         {
-            commission.Status = CommissionStatus.Negotiating;
-            if (request.NegotiatePrice.HasValue)
+            if (request.NegotiatePrice is not { } newPrice || newPrice <= commission.DiscountAmount ||
+                decimal.Round(newPrice, 2) != newPrice)
+                throw new ArgumentException("NegotiatePrice must be a positive amount in cents.");
+            var ordered = commission.Milestones.OrderBy(m => m.Sequence).ToList();
+            var previousTotal = ordered.Sum(m => m.Price);
+            if (ordered.Count == 0 || previousTotal <= 0 || newPrice < ordered.Count * 0.01m)
+                throw new InvalidOperationException("The negotiated price cannot cover all milestones.");
+            var allocated = 0m;
+            for (var index = 0; index < ordered.Count; index++)
             {
-                commission.TotalPrice = request.NegotiatePrice.Value;
-                commission.FinalPrice = request.NegotiatePrice.Value - commission.DiscountAmount;
+                var price = index == ordered.Count - 1 ? newPrice - allocated :
+                    decimal.Round(newPrice * ordered[index].Price / previousTotal, 2, MidpointRounding.AwayFromZero);
+                if (price <= 0) throw new InvalidOperationException("Each negotiated milestone must cost at least 0.01.");
+                ordered[index].Price = price;
+                allocated += price;
             }
+            commission.TotalPrice = newPrice;
+            commission.FinalPrice = newPrice - commission.DiscountAmount;
+            commission.Status = CommissionStatus.Negotiating;
         }
 
         commission.UpdatedAt = DateTimeOffset.UtcNow;
@@ -134,6 +211,11 @@ public class CommissionService : ICommissionService
     {
         var commission = await _dbContext.Commissions.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
         if (commission == null) throw new KeyNotFoundException("Không tìm thấy đơn hàng commission.");
+        RequireClient(commission, clientId);
+        if (commission.Status != CommissionStatus.InProgress)
+            throw new InvalidOperationException("The creator must accept the commission before escrow deposit.");
+        if (commission.EscrowStatus != EscrowStatus.Pending || commission.EscrowHeldAmount != 0)
+            throw new InvalidOperationException("Escrow has already been deposited for this commission.");
 
         commission.EscrowHeldAmount = commission.FinalPrice;
         commission.EscrowStatus = EscrowStatus.Deposited;
@@ -146,8 +228,15 @@ public class CommissionService : ICommissionService
 
     public async Task<MilestoneDto> SubmitMilestoneWipAsync(Guid commissionId, Guid milestoneId, SubmitMilestoneRequest request, Guid creatorId, CancellationToken cancellationToken = default)
     {
+        var commission = await _dbContext.Commissions.FirstOrDefaultAsync(c => c.Id == commissionId, cancellationToken)
+            ?? throw new KeyNotFoundException("Không tìm thấy đơn hàng commission.");
+        RequireCreator(commission, creatorId);
         var milestone = await _dbContext.Milestones.FirstOrDefaultAsync(m => m.Id == milestoneId && m.CommissionId == commissionId, cancellationToken);
         if (milestone == null) throw new KeyNotFoundException("Không tìm thấy cột mốc milestone.");
+        RequireFundedWork(commission);
+        RequireCurrentMilestone(commission, milestone);
+        if (milestone.Status is not (MilestoneStatus.Pending or MilestoneStatus.RevisionRequested))
+            throw new InvalidOperationException("Only a pending or revision-requested milestone can be submitted.");
 
         milestone.WipPreviewUrl = request.WipFileUrl;
         milestone.WatermarkedUrl = request.WipFileUrl; // Watermark applied
@@ -164,16 +253,23 @@ public class CommissionService : ICommissionService
     {
         var commission = await _dbContext.Commissions.Include(c => c.Milestones).FirstOrDefaultAsync(c => c.Id == commissionId, cancellationToken);
         if (commission == null) throw new KeyNotFoundException("Không tìm thấy đơn hàng commission.");
+        RequireClient(commission, clientId);
 
         var milestone = commission.Milestones.FirstOrDefault(m => m.Id == milestoneId);
         if (milestone == null) throw new KeyNotFoundException("Không tìm thấy cột mốc milestone.");
+        RequireFundedWork(commission);
+        RequireCurrentMilestone(commission, milestone);
+        if (milestone.Status != MilestoneStatus.Submitted)
+            throw new InvalidOperationException("The milestone must be submitted before approval.");
+        if (commission.EscrowHeldAmount < milestone.Price || commission.DisbursedAmount + milestone.Price > commission.FinalPrice)
+            throw new InvalidOperationException("Insufficient escrow for milestone approval.");
 
         milestone.Status = MilestoneStatus.Approved;
         milestone.ApprovedAt = DateTimeOffset.UtcNow;
         milestone.UpdatedAt = DateTimeOffset.UtcNow;
 
         commission.DisbursedAmount += milestone.Price;
-        commission.EscrowHeldAmount = Math.Max(0, commission.EscrowHeldAmount - milestone.Price);
+        commission.EscrowHeldAmount -= milestone.Price;
         commission.CurrentStage += 1;
         commission.EscrowStatus = commission.EscrowHeldAmount == 0 ? EscrowStatus.Released : EscrowStatus.PartialReleased;
         commission.UpdatedAt = DateTimeOffset.UtcNow;
@@ -185,8 +281,15 @@ public class CommissionService : ICommissionService
 
     public async Task<MilestoneDto> RequestMilestoneRevisionAsync(Guid commissionId, Guid milestoneId, RequestRevisionRequest request, Guid clientId, CancellationToken cancellationToken = default)
     {
+        var commission = await _dbContext.Commissions.FirstOrDefaultAsync(c => c.Id == commissionId, cancellationToken)
+            ?? throw new KeyNotFoundException("Không tìm thấy đơn hàng commission.");
+        RequireClient(commission, clientId);
         var milestone = await _dbContext.Milestones.FirstOrDefaultAsync(m => m.Id == milestoneId && m.CommissionId == commissionId, cancellationToken);
         if (milestone == null) throw new KeyNotFoundException("Không tìm thấy cột mốc milestone.");
+        RequireFundedWork(commission);
+        RequireCurrentMilestone(commission, milestone);
+        if (milestone.Status != MilestoneStatus.Submitted)
+            throw new InvalidOperationException("The milestone must be submitted before a revision can be requested.");
 
         milestone.Status = MilestoneStatus.RevisionRequested;
         milestone.RevisionCount += 1;
@@ -201,6 +304,11 @@ public class CommissionService : ICommissionService
     {
         var commission = await _dbContext.Commissions.Include(c => c.Milestones).FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
         if (commission == null) throw new KeyNotFoundException("Không tìm thấy đơn hàng commission.");
+        RequireCreator(commission, creatorId);
+        if (commission.Status != CommissionStatus.InProgress || commission.EscrowStatus != EscrowStatus.Released ||
+            commission.EscrowHeldAmount != 0 || commission.DisbursedAmount != commission.FinalPrice ||
+            commission.Milestones.Count == 0 || commission.Milestones.Any(m => m.Status != MilestoneStatus.Approved))
+            throw new InvalidOperationException("All funded milestones must be approved before final delivery.");
 
         commission.Status = CommissionStatus.SubmittedFinal;
         commission.UpdatedAt = DateTimeOffset.UtcNow;
@@ -220,6 +328,13 @@ public class CommissionService : ICommissionService
     {
         var commission = await _dbContext.Commissions.Include(c => c.Milestones).FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
         if (commission == null) throw new KeyNotFoundException("Không tìm thấy đơn hàng commission.");
+        RequireClient(commission, clientId);
+        var lastMilestone = commission.Milestones.OrderByDescending(m => m.Sequence).FirstOrDefault();
+        if (commission.Status != CommissionStatus.SubmittedFinal || commission.EscrowStatus != EscrowStatus.Released ||
+            commission.EscrowHeldAmount != 0 || commission.DisbursedAmount != commission.FinalPrice ||
+            commission.Milestones.Any(m => m.Status != MilestoneStatus.Approved) ||
+            string.IsNullOrWhiteSpace(lastMilestone?.FinalDeliverableUrl))
+            throw new InvalidOperationException("A fully approved final delivery is required before completion.");
 
         commission.Status = CommissionStatus.Completed;
         commission.EscrowStatus = EscrowStatus.Released;
@@ -227,8 +342,7 @@ public class CommissionService : ICommissionService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        var lastDeliverable = commission.Milestones.LastOrDefault()?.FinalDeliverableUrl ?? "https://storage.dillustration.com/deliverables/final.png";
-        var presignedUrl = $"{lastDeliverable}?token=s3-presigned-download-access";
+        var presignedUrl = $"{lastMilestone.FinalDeliverableUrl}?token=s3-presigned-download-access";
 
         return (MapToDto(commission), presignedUrl);
     }
@@ -237,9 +351,12 @@ public class CommissionService : ICommissionService
     {
         var commission = await _dbContext.Commissions.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
         if (commission == null) throw new KeyNotFoundException("Không tìm thấy đơn hàng commission.");
+        RequireParticipant(commission, userId);
+        if (commission.Status is not (CommissionStatus.PendingAcceptance or CommissionStatus.Negotiating or CommissionStatus.InProgress) ||
+            commission.EscrowStatus != EscrowStatus.Pending || commission.EscrowHeldAmount != 0 || commission.DisbursedAmount != 0)
+            throw new InvalidOperationException("Only an unfunded active commission can be cancelled directly.");
 
         commission.Status = CommissionStatus.Cancelled;
-        commission.EscrowStatus = EscrowStatus.Refunded;
         commission.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -249,6 +366,12 @@ public class CommissionService : ICommissionService
 
     public async Task<DisputeDto> CreateDisputeAsync(Guid id, CreateDisputeRequest request, Guid raisedById, CancellationToken cancellationToken = default)
     {
+        var commission = await _dbContext.Commissions.FirstOrDefaultAsync(c => c.Id == id, cancellationToken)
+            ?? throw new KeyNotFoundException("Không tìm thấy đơn hàng commission.");
+        RequireParticipant(commission, raisedById);
+        if (commission.Status is CommissionStatus.Cancelled or CommissionStatus.Completed or CommissionStatus.Disputed ||
+            await _dbContext.Disputes.AnyAsync(d => d.CommissionId == id, cancellationToken))
+            throw new InvalidOperationException("This commission cannot be disputed again.");
         var dispute = new Dispute
         {
             CommissionId = id,
@@ -260,26 +383,33 @@ public class CommissionService : ICommissionService
 
         _dbContext.Disputes.Add(dispute);
 
-        var commission = await _dbContext.Commissions.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
-        if (commission != null)
-        {
-            commission.Status = CommissionStatus.Disputed;
+        commission.Status = CommissionStatus.Disputed;
+        if (commission.EscrowHeldAmount > 0)
             commission.EscrowStatus = EscrowStatus.Disputed;
-        }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return MapToDisputeDto(dispute);
     }
 
-    public async Task<DisputeDto?> GetDisputeByCommissionIdAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<DisputeDto?> GetDisputeByCommissionIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
+        var commission = await _dbContext.Commissions.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+        if (commission == null) return null;
+        RequireParticipant(commission, userId);
         var dispute = await _dbContext.Disputes.AsNoTracking().FirstOrDefaultAsync(d => d.CommissionId == id, cancellationToken);
         return dispute == null ? null : MapToDisputeDto(dispute);
     }
 
     public async Task<ReviewDto> CreateReviewAsync(Guid id, CreateReviewRequest request, Guid reviewerId, CancellationToken cancellationToken = default)
     {
+        var commission = await _dbContext.Commissions.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, cancellationToken)
+            ?? throw new KeyNotFoundException("Không tìm thấy đơn hàng commission.");
+        RequireClient(commission, reviewerId);
+        if (commission.Status != CommissionStatus.Completed)
+            throw new InvalidOperationException("The commission must be completed before review.");
+        if (await _dbContext.Reviews.AnyAsync(r => r.CommissionId == id, cancellationToken))
+            throw new InvalidOperationException("This commission has already been reviewed.");
         var review = new Review
         {
             CommissionId = id,
@@ -296,8 +426,15 @@ public class CommissionService : ICommissionService
 
     public async Task<ReviewDto> ReplyReviewAsync(Guid id, string replyComment, Guid creatorId, CancellationToken cancellationToken = default)
     {
+        var commission = await _dbContext.Commissions.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, cancellationToken)
+            ?? throw new KeyNotFoundException("Không tìm thấy đơn hàng commission.");
+        RequireCreator(commission, creatorId);
+        if (commission.Status != CommissionStatus.Completed)
+            throw new InvalidOperationException("Only a completed commission review can be answered.");
         var review = await _dbContext.Reviews.FirstOrDefaultAsync(r => r.CommissionId == id, cancellationToken);
         if (review == null) throw new KeyNotFoundException("Không tìm thấy đánh giá cho đơn hàng này.");
+        if (!string.IsNullOrWhiteSpace(review.ReviewerReply))
+            throw new InvalidOperationException("This review has already been answered.");
 
         review.ReviewerReply = replyComment;
         review.UpdatedAt = DateTimeOffset.UtcNow;
