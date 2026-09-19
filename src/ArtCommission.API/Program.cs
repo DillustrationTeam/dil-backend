@@ -13,8 +13,11 @@ using ArtCommission.Infrastructure.Identity;
 using ArtCommission.Infrastructure.Persistence;
 using ArtCommission.Infrastructure.Services;
 using FluentValidation;
+using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -129,6 +132,19 @@ builder.Services.AddAuthentication(options =>
     // Chỉ đọc từ query-string cho đúng route hub, không nới lỏng cho REST.
     options.Events = new JwtBearerEvents
     {
+        OnChallenge = async context =>
+        {
+            context.HandleResponse();
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            await context.Response.WriteAsJsonAsync(ApiErrors.Create(401, "Unauthorized",
+                "A valid access token is required.", context.HttpContext.TraceIdentifier));
+        },
+        OnForbidden = async context =>
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await context.Response.WriteAsJsonAsync(ApiErrors.Create(403, "Forbidden",
+                "You do not have permission to access this resource.", context.HttpContext.TraceIdentifier));
+        },
         OnMessageReceived = context =>
         {
             var accessToken = context.Request.Query["access_token"];
@@ -172,7 +188,18 @@ builder.Services.AddCors(options =>
 });
 
 // 7. Add Controllers & OpenAPI (Swashbuckle + Scalar)
-builder.Services.AddControllers();
+builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var errors = context.ModelState
+            .Where(entry => entry.Value?.Errors.Count > 0)
+            .ToDictionary(entry => entry.Key,
+                entry => entry.Value!.Errors.Select(error => error.ErrorMessage).ToArray());
+        return new BadRequestObjectResult(ApiErrors.Create(400, "Bad Request",
+            "One or more validation errors occurred.", context.HttpContext.TraceIdentifier, errors));
+    };
+});
 builder.Services.AddEndpointsApiExplorer();
 
 // 7b. UC45 — SignalR cho Notification Center (hub ở API/Hubs/NotificationHub.cs)
@@ -237,6 +264,24 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddScoped<ICommissionService, CommissionService>();
 
 var app = builder.Build();
+
+app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
+{
+    var exception = context.Features.Get<IExceptionHandlerPathFeature>()?.Error;
+    var (status, title, detail) = exception switch
+    {
+        DbUpdateConcurrencyException => (409, "Conflict", "This commission changed while your request was being processed. Please retry."),
+        DbUpdateException { InnerException: SqlException { Number: 2601 or 2627 } } => (409, "Conflict", "A record with the same key already exists."),
+        KeyNotFoundException => (404, "Not Found", exception.Message),
+        UnauthorizedAccessException => (403, "Forbidden", exception.Message),
+        ArgumentException => (400, "Bad Request", exception.Message),
+        InvalidOperationException => (400, "Bad Request", exception.Message),
+        _ => (500, "Internal Server Error", "An unexpected error occurred.")
+    };
+    app.Logger.LogError(exception, "API request failed with status {StatusCode}", status);
+    context.Response.StatusCode = status;
+    await context.Response.WriteAsJsonAsync(ApiErrors.Create(status, title, detail, context.TraceIdentifier));
+}));
 
 // Auto-initialize Database & Seed Roles on Startup
 using (var scope = app.Services.CreateScope())

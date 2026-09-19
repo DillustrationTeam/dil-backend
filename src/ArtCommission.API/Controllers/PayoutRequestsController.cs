@@ -129,12 +129,7 @@ public class PayoutRequestsController : ApiControllerBase
 
         if (notFound)
         {
-            return NotFound(new
-            {
-                data = (object?)null,
-                meta = (object?)null,
-                error = new { title = "Not Found", details = errors }
-            });
+            return NotFoundEnvelope(errors);
         }
 
         return BadRequestEnvelope(errors);

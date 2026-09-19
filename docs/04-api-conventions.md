@@ -16,7 +16,13 @@ Mọi endpoint trả về đúng shape này, kể cả list rỗng hay lỗi. Kh
 
 ## Error
 
-Dùng `ProblemDetails` (RFC7807) built-in ASP.NET Core. FluentValidation error + business exception đều map qua đây. **Không** để raw exception/stack trace lộ ra client — log đầy đủ qua Serilog, client chỉ nhận `title`/`detail`/`traceId`.
+Mọi phản hồi REST do ứng dụng tạo dùng envelope. Với lỗi, `data` và `meta` là `null`, còn `error` chứa các trường của ASP.NET Core `ProblemDetails` (`type`, `title`, `status`, `detail`) và `traceId`; lỗi validation có thêm `errors` theo tên trường. Mã HTTP khớp với `error.status`. Ví dụ:
+
+```json
+{ "data": null, "meta": null, "error": { "type": "https://httpstatuses.com/404", "title": "Not Found", "status": 404, "detail": "Resource not found.", "traceId": "..." } }
+```
+
+Middleware xác thực, model validation và exception handler phải dùng cùng shape này. `KeyNotFoundException` → 404, thiếu/sai quyền → 401/403, input hoặc trạng thái nghiệp vụ sai → 400, xung đột ghi đồng thời hoặc bản ghi duy nhất trùng → 409, lỗi không dự kiến → 500 với thông điệp trung tính. **Không** để raw exception/stack trace lộ ra client; log server giữ chi tiết. Webhook thanh toán có thể dùng body xác nhận riêng theo hợp đồng với cổng thanh toán.
 
 ## Pagination
 
