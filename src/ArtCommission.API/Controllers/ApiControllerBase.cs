@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using ArtCommission.API.Common;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 
@@ -33,43 +34,16 @@ public abstract class ApiControllerBase : ControllerBase
 
     protected IActionResult BadRequestEnvelope(params string[] errors)
     {
-        return BadRequest(new
-        {
-            data = (object?)null,
-            meta = (object?)null,
-            error = new
-            {
-                title = "Bad Request",
-                details = errors
-            }
-        });
+        return BadRequest(ApiErrors.Create(400, "Bad Request", string.Join(" ", errors), HttpContext.TraceIdentifier));
     }
 
     protected IActionResult UnauthorizedEnvelope(string message = "Unauthorized access.")
     {
-        return Unauthorized(new
-        {
-            data = (object?)null,
-            meta = (object?)null,
-            error = new
-            {
-                title = "Unauthorized",
-                details = new[] { message }
-            }
-        });
+        return Unauthorized(ApiErrors.Create(401, "Unauthorized", message, HttpContext.TraceIdentifier));
     }
 
     protected IActionResult NotFoundEnvelope(params string[] errors)
     {
-        return NotFound(new
-        {
-            data = (object?)null,
-            meta = (object?)null,
-            error = new
-            {
-                title = "Not Found",
-                details = errors
-            }
-        });
+        return NotFound(ApiErrors.Create(404, "Not Found", string.Join(" ", errors), HttpContext.TraceIdentifier));
     }
 }
