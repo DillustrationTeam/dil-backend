@@ -12,6 +12,8 @@ public class ReviewConfiguration : IEntityTypeConfiguration<Review>
 
         builder.HasKey(r => r.Id);
 
+        builder.HasIndex(r => r.CommissionId).IsUnique();
+
         builder.Property(r => r.Comment)
             .HasMaxLength(1000);
 
@@ -27,6 +29,8 @@ public class DisputeConfiguration : IEntityTypeConfiguration<Dispute>
         builder.ToTable("Disputes");
 
         builder.HasKey(d => d.Id);
+
+        builder.HasIndex(d => d.CommissionId).IsUnique();
 
         builder.Property(d => d.Reason)
             .IsRequired()
