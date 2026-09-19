@@ -1,6 +1,7 @@
 using System.Reflection;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Entities.ArtistStudio;
+using ArtCommission.Domain.Entities.CreatorApplication;
 using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Domain.Entities.Notifications;
 using ArtCommission.Domain.Entities.Payment;
@@ -39,6 +40,8 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
 
     // Module Notification (UC45)
     public DbSet<Notification> Notifications => Set<Notification>();
+
+    public DbSet<CreatorApplication> CreatorApplications => Set<CreatorApplication>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
