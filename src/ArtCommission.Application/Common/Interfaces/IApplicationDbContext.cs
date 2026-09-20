@@ -39,6 +39,15 @@ public interface IApplicationDbContext
     
     DbSet<ArtCommission.Domain.Entities.CreatorApplication.CreatorApplication> CreatorApplications { get; }
 
+    // Module Commission & Dispute (UC10/UC14/UC27/UC30)
+    DbSet<ArtCommission.Domain.Entities.Commission.Commission> Commissions { get; }
+    DbSet<ArtCommission.Domain.Entities.Commission.Dispute> Disputes { get; }
+    DbSet<ArtCommission.Domain.Entities.Commission.Milestone> Milestones { get; }
+    DbSet<ArtCommission.Domain.Entities.Commission.Review> Reviews { get; }
+
+    // Module Chat (UC26)
+    DbSet<ArtCommission.Domain.Entities.Chat.Message> Messages { get; }
+
     DbSet<T> Set<T>() where T : class;
 
     /// <summary>

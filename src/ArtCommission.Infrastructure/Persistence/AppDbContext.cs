@@ -38,10 +38,18 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<Voucher> Vouchers => Set<Voucher>();
     public DbSet<VoucherRedemption> VoucherRedemptions => Set<VoucherRedemption>();
 
-    // Module Notification (UC45)
     public DbSet<Notification> Notifications => Set<Notification>();
 
     public DbSet<CreatorApplication> CreatorApplications => Set<CreatorApplication>();
+
+    // Module Commission & Dispute (UC10/UC14/UC27/UC30)
+    public DbSet<ArtCommission.Domain.Entities.Commission.Commission> Commissions => Set<ArtCommission.Domain.Entities.Commission.Commission>();
+    public DbSet<ArtCommission.Domain.Entities.Commission.Dispute> Disputes => Set<ArtCommission.Domain.Entities.Commission.Dispute>();
+    public DbSet<ArtCommission.Domain.Entities.Commission.Milestone> Milestones => Set<ArtCommission.Domain.Entities.Commission.Milestone>();
+    public DbSet<ArtCommission.Domain.Entities.Commission.Review> Reviews => Set<ArtCommission.Domain.Entities.Commission.Review>();
+
+    // Module Chat (UC26)
+    public DbSet<ArtCommission.Domain.Entities.Chat.Message> Messages => Set<ArtCommission.Domain.Entities.Chat.Message>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

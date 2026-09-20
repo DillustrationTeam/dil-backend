@@ -7,5 +7,6 @@ public enum EscrowStatus
     PartialReleased = 3,
     Released = 4,
     Refunded = 5,
-    Disputed = 6
+    Disputed = 6,
+    Split = 7
 }
