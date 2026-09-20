@@ -14,6 +14,21 @@ public class Artwork : BaseEntity
     public string ModerationStatus { get; set; } = "Pending";
     public int ViewCount { get; set; }
 
+    // AI Vision Scan Confidence Metrics (SCR-20)
+    public decimal? SafeScore { get; set; }
+    public decimal? AdultScore { get; set; }
+    public decimal? ViolenceScore { get; set; }
+
+    // Artwork Metadata & Moderation Reason
+    public string? FlagReason { get; set; }
+    public string? Resolution { get; set; }
+    public long? FileSizeBytes { get; set; }
+
+    // Moderation Audit Trail
+    public Guid? ModeratorId { get; set; }
+    public string? ModerationNote { get; set; }
+    public DateTimeOffset? ModeratedAt { get; set; }
+
     public CreatorProfile? CreatorProfile { get; set; }
     public ICollection<ArtworkTag> ArtworkTags { get; set; } = new List<ArtworkTag>();
 }

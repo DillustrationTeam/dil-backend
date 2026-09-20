@@ -28,7 +28,7 @@ public interface IApplicationDbContext
     DbSet<PaymentOrder> PaymentOrders { get; }
     DbSet<BankAccount> BankAccounts { get; }
     DbSet<PayoutRequest> PayoutRequests { get; }
-    DbSet<PlatformConfig> PlatformConfigs { get; }
+    DbSet<ArtCommission.Domain.Entities.Payment.PlatformConfig> PlatformConfigs { get; }
 
     // Module Voucher (UC50)
     DbSet<Voucher> Vouchers { get; }

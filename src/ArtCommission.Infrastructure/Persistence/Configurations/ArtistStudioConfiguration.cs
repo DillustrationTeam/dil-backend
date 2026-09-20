@@ -40,6 +40,13 @@ public class ArtworkConfiguration : IEntityTypeConfiguration<Artwork>
         builder.Property(x => x.ImageUrl).HasMaxLength(500).IsRequired();
         builder.Property(x => x.ThumbnailUrl).HasMaxLength(500);
         builder.Property(x => x.ModerationStatus).HasMaxLength(20).HasDefaultValue("Pending");
+
+        builder.Property(x => x.SafeScore).HasPrecision(5, 4);
+        builder.Property(x => x.AdultScore).HasPrecision(5, 4);
+        builder.Property(x => x.ViolenceScore).HasPrecision(5, 4);
+        builder.Property(x => x.FlagReason).HasMaxLength(200);
+        builder.Property(x => x.Resolution).HasMaxLength(50);
+        builder.Property(x => x.ModerationNote).HasMaxLength(1000);
     }
 }
 
