@@ -7,7 +7,6 @@
     <UserSecretsId>15900198-9ec9-46f9-b125-9585a1e7b901</UserSecretsId>
     <!-- Export openapi.json tại build time (không cần app chạy / DB) -->
     <OpenApiGenerateDocumentsOnBuild>true</OpenApiGenerateDocumentsOnBuild>
-    <OpenApiDocumentsDirectory>$(OutputPath)</OpenApiDocumentsDirectory>
   </PropertyGroup>
 
   <ItemGroup>
