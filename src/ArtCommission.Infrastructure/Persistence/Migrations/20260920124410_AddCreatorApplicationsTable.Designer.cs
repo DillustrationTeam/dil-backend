@@ -4,6 +4,7 @@ using ArtCommission.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace ArtCommission.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260920124410_AddCreatorApplicationsTable")]
+    partial class AddCreatorApplicationsTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -231,7 +234,6 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("CurrentStage")
-                        .IsConcurrencyToken()
                         .HasColumnType("int");
 
                     b.Property<DateTimeOffset?>("DeadlineAt")
@@ -253,7 +255,6 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("EscrowStatus")
-                        .IsConcurrencyToken()
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
@@ -266,7 +267,6 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasColumnType("bit");
 
                     b.Property<string>("Status")
-                        .IsConcurrencyToken()
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
@@ -345,8 +345,7 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CommissionId")
-                        .IsUnique();
+                    b.HasIndex("CommissionId");
 
                     b.ToTable("Disputes", (string)null);
                 });
@@ -384,7 +383,6 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("Status")
-                        .IsConcurrencyToken()
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
@@ -452,8 +450,7 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CommissionId")
-                        .IsUnique();
+                    b.HasIndex("CommissionId");
 
                     b.ToTable("Reviews", (string)null);
                 });
