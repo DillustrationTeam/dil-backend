@@ -1,4 +1,5 @@
 using ArtCommission.Domain.Entities.ArtistStudio;
+using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Domain.Entities.Notifications;
 using ArtCommission.Domain.Entities.Payment;
 using Microsoft.EntityFrameworkCore;
@@ -47,6 +48,11 @@ public interface IApplicationDbContext
 
     // Module Chat (UC26)
     DbSet<ArtCommission.Domain.Entities.Chat.Message> Messages { get; }
+
+    // Module Identity & User Sanctions (SCR-23 / UC31)
+    DbSet<ApplicationUser> Users { get; }
+    DbSet<UserSanction> UserSanctions { get; }
+    DbSet<RefreshToken> RefreshTokens { get; }
 
     DbSet<T> Set<T>() where T : class;
 

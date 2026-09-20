@@ -51,6 +51,9 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     // Module Chat (UC26)
     public DbSet<ArtCommission.Domain.Entities.Chat.Message> Messages => Set<ArtCommission.Domain.Entities.Chat.Message>();
 
+    // Module Identity & User Sanctions (SCR-23 / UC31)
+    public DbSet<UserSanction> UserSanctions => Set<UserSanction>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
