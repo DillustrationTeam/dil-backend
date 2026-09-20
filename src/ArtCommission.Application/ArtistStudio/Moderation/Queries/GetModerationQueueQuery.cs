@@ -1,9 +1,9 @@
-using ArtCommission.Application.Admin.Moderation.DTOs;
+using ArtCommission.Application.ArtistStudio.Moderation.DTOs;
 using ArtCommission.Application.Common.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
-namespace ArtCommission.Application.Admin.Moderation.Queries;
+namespace ArtCommission.Application.ArtistStudio.Moderation.Queries;
 
 /// <summary>
 /// Query lấy danh sách hàng đợi kiểm duyệt tác phẩm (SCR-20).
@@ -77,6 +77,7 @@ public class GetModerationQueueQueryHandler
                 CreatorAvatarUrl = x.CreatorProfile != null ? x.CreatorProfile.BannerUrl : null,
                 ImageUrl = x.ImageUrl,
                 ThumbnailUrl = x.ThumbnailUrl,
+                Style = x.Style,
                 SafeScore = x.SafeScore,
                 FlagReason = x.FlagReason,
                 ModerationStatus = x.ModerationStatus,

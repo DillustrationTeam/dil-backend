@@ -9,6 +9,9 @@ public class Artwork : BaseEntity
     public string? Description { get; set; }
     public string ImageUrl { get; set; } = string.Empty;
     public string? ThumbnailUrl { get; set; }
+    public string? WatermarkedUrl { get; set; } // Ảnh có watermark bảo hộ tác quyền (database.sql)
+    public string? Style { get; set; } // Phong cách tranh (database.sql)
+    public int LikeCount { get; set; } // Lượt thích (database.sql)
     public bool IsAiGenerated { get; set; }
     public decimal? AiDetectionScore { get; set; }
     public string ModerationStatus { get; set; } = "Pending";

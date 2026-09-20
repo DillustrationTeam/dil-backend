@@ -1,4 +1,4 @@
-namespace ArtCommission.Application.Admin.Moderation.DTOs;
+namespace ArtCommission.Application.ArtistStudio.Moderation.DTOs;
 
 /// <summary>
 /// DTO chứa thông tin chi tiết thanh tra tác phẩm kèm kết quả scan AI và danh sách tag (SCR-20).
@@ -10,6 +10,9 @@ public record ArtworkInspectionDetailDto
     public string? Description { get; init; }
     public string ImageUrl { get; init; } = string.Empty;
     public string? ThumbnailUrl { get; init; }
+    public string? WatermarkedUrl { get; init; }
+    public string? Style { get; init; }
+    public int LikeCount { get; init; }
     public string? Resolution { get; init; }
     public long? FileSizeBytes { get; init; }
     public DateTimeOffset CreatedAt { get; init; }

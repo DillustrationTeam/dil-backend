@@ -1,4 +1,4 @@
-namespace ArtCommission.Application.Admin.Moderation.DTOs;
+namespace ArtCommission.Application.ArtistStudio.Moderation.DTOs;
 
 /// <summary>
 /// DTO biểu diễn một tác phẩm trong hàng đợi kiểm duyệt (SCR-20).
@@ -13,6 +13,7 @@ public record ModerationQueueItemDto
     public string? CreatorAvatarUrl { get; init; }
     public string ImageUrl { get; init; } = string.Empty;
     public string? ThumbnailUrl { get; init; }
+    public string? Style { get; init; }
 
     /// <summary>
     /// Tỷ lệ an toàn được phát hiện bởi AI (e.g. 0.984 tương đương 98.4% SAFE).

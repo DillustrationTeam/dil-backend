@@ -21,6 +21,10 @@ public class CreatorProfileConfiguration : IEntityTypeConfiguration<CreatorProfi
         builder.Property(x => x.WebsiteUrl).HasMaxLength(500);
         builder.Property(x => x.BannerUrl).HasMaxLength(500);
         builder.Property(x => x.Location).HasMaxLength(200);
+        builder.Property(x => x.IsAiVerified).HasDefaultValue(false);
+        builder.Property(x => x.CommissionSlots).HasDefaultValue(0);
+        builder.Property(x => x.CompletedOrdersCount).HasDefaultValue(0);
+        builder.Property(x => x.RateCard);
     }
 }
 
@@ -39,6 +43,9 @@ public class ArtworkConfiguration : IEntityTypeConfiguration<Artwork>
         builder.Property(x => x.Title).HasMaxLength(200).IsRequired();
         builder.Property(x => x.ImageUrl).HasMaxLength(500).IsRequired();
         builder.Property(x => x.ThumbnailUrl).HasMaxLength(500);
+        builder.Property(x => x.WatermarkedUrl).HasMaxLength(500);
+        builder.Property(x => x.Style).HasMaxLength(100);
+        builder.Property(x => x.LikeCount).HasDefaultValue(0);
         builder.Property(x => x.ModerationStatus).HasMaxLength(20).HasDefaultValue("Pending");
 
         builder.Property(x => x.SafeScore).HasPrecision(5, 4);

@@ -1,6 +1,6 @@
-using ArtCommission.Application.Admin.Moderation.Commands;
-using ArtCommission.Application.Admin.Moderation.DTOs;
-using ArtCommission.Application.Admin.Moderation.Queries;
+using ArtCommission.Application.ArtistStudio.Moderation.Commands;
+using ArtCommission.Application.ArtistStudio.Moderation.DTOs;
+using ArtCommission.Application.ArtistStudio.Moderation.Queries;
 using ArtCommission.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

@@ -11,7 +11,8 @@ public record ReviewCreatorApplicationCommand(
     Guid ApplicationId,
     Guid ModeratorId,
     ApplicationStatus Status,
-    string? ReviewNote
+    string? ReviewNote,
+    bool GrantAiVerifiedBadge = true
 ) : IRequest<(bool Success, string[] Errors)>;
 
 public class ReviewCreatorApplicationCommandValidator : 
@@ -26,13 +27,15 @@ public class ReviewCreatorApplicationCommandValidator :
             .NotEmpty().WithMessage("Invalid Moderator ID.");   
 
         RuleFor(c => c.Status)
-            .Must(s => s == ApplicationStatus.Approved || s == ApplicationStatus.Rejected)
-            .WithMessage("Application status must only be Approved or Rejected.");
+            .Must(s => s == ApplicationStatus.Approved || 
+                       s == ApplicationStatus.Rejected || 
+                       s == ApplicationStatus.AdditionalProofRequested)
+            .WithMessage("Application status must only be Approved, Rejected, or AdditionalProofRequested.");
 
-        When (c => c.Status == ApplicationStatus.Rejected, () =>
+        When(c => c.Status == ApplicationStatus.Rejected || c.Status == ApplicationStatus.AdditionalProofRequested, () =>
         {
             RuleFor(c => c.ReviewNote)
-                .NotEmpty().WithMessage("Please enter reason for rejection.")
+                .NotEmpty().WithMessage("Please enter reason/note for this decision.")
                 .MaximumLength(1000).WithMessage("Review note cannot exceed 1000 characters.");
         });  
     }
@@ -44,6 +47,7 @@ public class ReviewCreatorApplicationCommandHandler
 {
     private readonly IApplicationDbContext _db;
     private readonly IIdentityService _identityService;
+
     public ReviewCreatorApplicationCommandHandler(
         IApplicationDbContext db,
         IIdentityService identityService)
@@ -51,6 +55,7 @@ public class ReviewCreatorApplicationCommandHandler
         _db = db;
         _identityService = identityService;
     }
+
     public async Task<(bool Success, string[] Errors)> Handle(
         ReviewCreatorApplicationCommand request, 
         CancellationToken cancellationToken
@@ -71,12 +76,13 @@ public class ReviewCreatorApplicationCommandHandler
 
         if (application == null)
         {
-            return (false, new[] {"Creator application not found."});
+            return (false, new[] { "Creator application not found." });
         }
 
-        if (application.Status != ApplicationStatus.Pending)
+        if (application.Status != ApplicationStatus.Pending && 
+            application.Status != ApplicationStatus.AdditionalProofRequested)
         {
-            return (false, new[] {$"This creator application has already been processed with status {application.Status}"});
+            return (false, new[] { $"This creator application has already been processed with status {application.Status}" });
         }
 
         if (request.Status == ApplicationStatus.Approved)
@@ -91,21 +97,27 @@ public class ReviewCreatorApplicationCommandHandler
                 return (false, roleErrors);
             }
 
-            var hasProfile = await _db.CreatorProfiles
-                .AnyAsync(c => c.UserId == application.ApplicantId 
+            var profile = await _db.CreatorProfiles
+                .FirstOrDefaultAsync(c => c.UserId == application.ApplicantId 
                 && !c.IsDeleted, cancellationToken);
 
-            if (!hasProfile)
+            if (profile == null)
             {
                 var newProfile = new ArtCommission.Domain.Entities.ArtistStudio.CreatorProfile
                 {
                     UserId = application.ApplicantId,
                     DisplayName = application.Applicant?.FullName ?? "Creator",
                     IsApproved = true,
+                    IsAiVerified = request.GrantAiVerifiedBadge,
                     IsAcceptingOrders = true
                 };
 
                 _db.CreatorProfiles.Add(newProfile);
+            }
+            else
+            {
+                profile.IsApproved = true;
+                profile.IsAiVerified = request.GrantAiVerifiedBadge;
             }
         }
 

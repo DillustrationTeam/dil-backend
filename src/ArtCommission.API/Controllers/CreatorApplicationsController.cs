@@ -36,7 +36,9 @@ public class CreatorApplicationsController : ApiControllerBase
             ApplicantId: CurrentUserId,
             PortfolioLinks: request.PortfolioLinks,
             SocialLinks: request.SocialLinks,
-            IdProofUrl: request.IdProofUrl
+            IdProofUrl: request.IdProofUrl,
+            PrimaryStyle: request.PrimaryStyle,
+            SpeedpaintVideoUrl: request.SpeedpaintVideoUrl
         );
 
         var (success, applicationId, errors) = await Mediator.Send(command, cancellationToken);
@@ -50,7 +52,7 @@ public class CreatorApplicationsController : ApiControllerBase
 
     /// <summary>
     /// Lấy danh sách các đơn đăng ký (Dành cho Moderator và Administrator).
-    /// Hỗ trợ lọc theo trạng thái (Pending, Approved, Rejected) và phân trang.
+    /// Hỗ trợ lọc theo trạng thái (Pending, Approved, Rejected, AdditionalProofRequested) và phân trang.
     /// </summary>
     [HttpGet]
     [Authorize(Roles = ModOrAdminRoles)]
@@ -64,14 +66,15 @@ public class CreatorApplicationsController : ApiControllerBase
         CancellationToken cancellationToken = default)
     {
         var query = new GetCreatorApplicationsQuery(status, page, pageSize);
-        var (items, totalCount) = await Mediator.Send(query, cancellationToken);
+        var (items, totalCount, pendingCount) = await Mediator.Send(query, cancellationToken);
 
         return OkEnvelope(items, new
         {
             page,
             pageSize,
             totalCount,
-            totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
+            totalPages = (int)Math.Ceiling(totalCount / (double)pageSize),
+            pendingCount
         });
     }
 
@@ -100,8 +103,8 @@ public class CreatorApplicationsController : ApiControllerBase
     }
 
     /// <summary>
-    /// Phê duyệt hoặc Từ chối đơn đăng ký (Dành cho Moderator và Administrator).
-    /// Khi duyệt thành công, hệ thống tự động cấp role Creator và khởi tạo CreatorProfile.
+    /// Phê duyệt, Yêu cầu bổ sung bằng chứng, hoặc Từ chối đơn đăng ký (Dành cho Moderator và Administrator).
+    /// Khi duyệt thành công, hệ thống tự động cấp role Creator, khởi tạo/cập nhật CreatorProfile và cấp huy hiệu vẽ tay (IsAiVerified).
     /// </summary>
     [HttpPut("{id:guid}/review")]
     [Authorize(Roles = ModOrAdminRoles)]
@@ -123,7 +126,8 @@ public class CreatorApplicationsController : ApiControllerBase
             ApplicationId: id,
             ModeratorId: CurrentUserId,
             Status: request.Status,
-            ReviewNote: request.ReviewNote
+            ReviewNote: request.ReviewNote,
+            GrantAiVerifiedBadge: request.GrantAiVerifiedBadge
         );
 
         var (success, errors) = await Mediator.Send(command, cancellationToken);

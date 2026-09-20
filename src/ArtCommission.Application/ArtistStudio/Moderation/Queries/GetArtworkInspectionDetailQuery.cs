@@ -1,10 +1,10 @@
-using ArtCommission.Application.Admin.Moderation.DTOs;
+using ArtCommission.Application.ArtistStudio.Moderation.DTOs;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Entities.Identity;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
-namespace ArtCommission.Application.Admin.Moderation.Queries;
+namespace ArtCommission.Application.ArtistStudio.Moderation.Queries;
 
 /// <summary>
 /// Query lấy chi tiết thanh tra tác phẩm phục vụ kiểm duyệt nội dung (SCR-20).
@@ -59,6 +59,9 @@ public class GetArtworkInspectionDetailQueryHandler : IRequestHandler<GetArtwork
             Description = artwork.Description,
             ImageUrl = artwork.ImageUrl,
             ThumbnailUrl = artwork.ThumbnailUrl,
+            WatermarkedUrl = artwork.WatermarkedUrl,
+            Style = artwork.Style,
+            LikeCount = artwork.LikeCount,
             Resolution = artwork.Resolution,
             FileSizeBytes = artwork.FileSizeBytes,
             CreatedAt = artwork.CreatedAt,

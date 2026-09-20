@@ -1,4 +1,4 @@
-namespace ArtCommission.Application.Admin.PlatformConfig.DTOs;
+namespace ArtCommission.Application.Payment.PlatformConfig.DTOs;
 
 /// <summary>
 /// DTO chứa các thông số cấu hình phí sàn và chính sách vận hành (SCR-18 / UC33).

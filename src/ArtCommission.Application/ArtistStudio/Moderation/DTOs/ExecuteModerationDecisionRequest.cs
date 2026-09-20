@@ -1,4 +1,4 @@
-namespace ArtCommission.Application.Admin.Moderation.DTOs;
+namespace ArtCommission.Application.ArtistStudio.Moderation.DTOs;
 
 /// <summary>
 /// Payload gửi lên khi Moderator/Admin ra quyết định kiểm duyệt tác phẩm (SCR-20).

@@ -3,7 +3,7 @@ using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
-namespace ArtCommission.Application.Admin.Moderation.Commands;
+namespace ArtCommission.Application.ArtistStudio.Moderation.Commands;
 
 /// <summary>
 /// Command thực thi quyết định kiểm duyệt tác phẩm (SCR-20 / UC28).

@@ -43,9 +43,14 @@ public class CreatorApplicationConfiguration : IEntityTypeConfiguration<CreatorA
                .HasMaxLength(500)
                .IsRequired();
 
-        builder.Property(c => c.IdProofUrl)
-               .HasMaxLength(500)
-               .IsRequired();
+        builder.Property(c => c.PrimaryStyle)
+               .HasMaxLength(100);
+
+        builder.Property(c => c.SpeedpaintVideoUrl)
+               .HasMaxLength(500);
+
+        builder.Property(c => c.IsNationalIdVerified)
+               .HasDefaultValue(false);
 
         builder.HasIndex(c => new {c.ApplicantId, c.Status});
     }

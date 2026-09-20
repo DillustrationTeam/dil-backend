@@ -1,6 +1,6 @@
-using ArtCommission.Application.Admin.PlatformConfig.Commands;
-using ArtCommission.Application.Admin.PlatformConfig.DTOs;
-using ArtCommission.Application.Admin.PlatformConfig.Queries;
+using ArtCommission.Application.Payment.PlatformConfig.Commands;
+using ArtCommission.Application.Payment.PlatformConfig.DTOs;
+using ArtCommission.Application.Payment.PlatformConfig.Queries;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -45,7 +45,8 @@ public class AdminPlatformConfigController : ApiControllerBase
             PlatformFeePercent: request.PlatformFeePercent,
             MilestoneAutoApprovalDays: request.MilestoneAutoApprovalDays,
             DefaultFreeRevisionLimit: request.DefaultFreeRevisionLimit,
-            PresignedUrlExpirationMinutes: request.PresignedUrlExpirationMinutes
+            PresignedUrlExpirationMinutes: request.PresignedUrlExpirationMinutes,
+            AdminId: CurrentUserId
         );
 
         var (success, data, errors) = await Mediator.Send(command, cancellationToken);

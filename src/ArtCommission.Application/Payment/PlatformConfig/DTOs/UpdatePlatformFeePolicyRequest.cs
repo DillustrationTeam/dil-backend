@@ -1,4 +1,4 @@
-namespace ArtCommission.Application.Admin.PlatformConfig.DTOs;
+namespace ArtCommission.Application.Payment.PlatformConfig.DTOs;
 
 /// <summary>
 /// Request payload cập nhật cấu hình phí sàn và chính sách (SCR-18).

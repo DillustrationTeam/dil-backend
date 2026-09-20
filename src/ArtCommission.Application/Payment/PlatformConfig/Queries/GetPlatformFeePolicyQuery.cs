@@ -1,11 +1,11 @@
 using System.Globalization;
-using ArtCommission.Application.Admin.PlatformConfig.DTOs;
 using ArtCommission.Application.Common.Interfaces;
+using ArtCommission.Application.Payment.PlatformConfig.DTOs;
 using ArtCommission.Domain.Entities.Payment;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
-namespace ArtCommission.Application.Admin.PlatformConfig.Queries;
+namespace ArtCommission.Application.Payment.PlatformConfig.Queries;
 
 /// <summary>
 /// Query lấy thông tin cấu hình phí sàn và các chính sách vận hành (SCR-18 / UC33).
@@ -26,8 +26,11 @@ public class GetPlatformFeePolicyQueryHandler : IRequestHandler<GetPlatformFeePo
         var targetKeys = new[]
         {
             PlatformConfigKeys.PlatformFeePercent,
+            PlatformConfigKeys.PlatformFeeRateSqlKey,
             PlatformConfigKeys.MilestoneAutoApprovalDays,
+            PlatformConfigKeys.EscrowHoldDaysSqlKey,
             PlatformConfigKeys.DefaultFreeRevisionLimit,
+            PlatformConfigKeys.MaxRevisionCountSqlKey,
             PlatformConfigKeys.PresignedUrlExpirationMinutes
         };
 
@@ -44,16 +47,23 @@ public class GetPlatformFeePolicyQueryHandler : IRequestHandler<GetPlatformFeePo
         {
             platformFeePercent = parsedFee;
         }
+        else if (configDict.TryGetValue(PlatformConfigKeys.PlatformFeeRateSqlKey, out var rateStr) &&
+            decimal.TryParse(rateStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedRate))
+        {
+            platformFeePercent = parsedRate <= 1.0m ? parsedRate * 100m : parsedRate;
+        }
 
         int milestoneAutoApprovalDays = 7;
-        if (configDict.TryGetValue(PlatformConfigKeys.MilestoneAutoApprovalDays, out var daysStr) &&
+        if ((configDict.TryGetValue(PlatformConfigKeys.MilestoneAutoApprovalDays, out var daysStr) ||
+             configDict.TryGetValue(PlatformConfigKeys.EscrowHoldDaysSqlKey, out daysStr)) &&
             int.TryParse(daysStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedDays))
         {
             milestoneAutoApprovalDays = parsedDays;
         }
 
         int defaultFreeRevisionLimit = 2;
-        if (configDict.TryGetValue(PlatformConfigKeys.DefaultFreeRevisionLimit, out var revStr) &&
+        if ((configDict.TryGetValue(PlatformConfigKeys.DefaultFreeRevisionLimit, out var revStr) ||
+             configDict.TryGetValue(PlatformConfigKeys.MaxRevisionCountSqlKey, out revStr)) &&
             int.TryParse(revStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedRev))
         {
             defaultFreeRevisionLimit = parsedRev;
