@@ -36,6 +36,8 @@ public interface IApplicationDbContext
 
     // Module Notification (UC45)
     DbSet<Notification> Notifications { get; }
+    
+    DbSet<ArtCommission.Domain.Entities.CreatorApplication.CreatorApplication> CreatorApplications { get; }
 
     DbSet<T> Set<T>() where T : class;
 
