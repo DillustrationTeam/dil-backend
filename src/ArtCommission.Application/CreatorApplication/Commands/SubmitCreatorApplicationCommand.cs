@@ -11,7 +11,9 @@ public record SubmitCreatorApplicationCommand(
     Guid ApplicantId, 
     List<string> PortfolioLinks,
     List<string>? SocialLinks,
-    string IdProofUrl
+    string IdProofUrl,
+    string? PrimaryStyle = null,
+    string? SpeedpaintVideoUrl = null
 ) : IRequest<(bool Success, Guid? ApplicationId, string[] Errors)>;
 
 public class SubmitCreatorApplicationCommandValidator : 
@@ -97,6 +99,8 @@ public class SubmitCreatorApplicationCommandHandler
             PortfolioLinks = request.PortfolioLinks,
             SocialLinks = request.SocialLinks ?? new List<string>(),
             IdProofUrl = request.IdProofUrl,
+            PrimaryStyle = request.PrimaryStyle,
+            SpeedpaintVideoUrl = request.SpeedpaintVideoUrl,
             Status = ApplicationStatus.Pending,
             SubmittedAt = DateTimeOffset.UtcNow
         };

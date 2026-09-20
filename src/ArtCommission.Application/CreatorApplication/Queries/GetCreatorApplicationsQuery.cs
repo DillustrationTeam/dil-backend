@@ -1,7 +1,6 @@
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.CreatorApplication.DTOs;
 using ArtCommission.Domain.Enums;
-
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,10 +10,10 @@ public record GetCreatorApplicationsQuery(
     ApplicationStatus? Status = null,
     int Page = 1,
     int PageSize = 10
-) : IRequest<(List<CreatorApplicationResponseDto> Items, int TotalCount)>;
+) : IRequest<(List<CreatorApplicationResponseDto> Items, int TotalCount, int PendingCount)>;
 
 public class GetCreatorApplicationsQueryHandler 
-    : IRequestHandler<GetCreatorApplicationsQuery, (List<CreatorApplicationResponseDto> Items, int TotalCount)>
+    : IRequestHandler<GetCreatorApplicationsQuery, (List<CreatorApplicationResponseDto> Items, int TotalCount, int PendingCount)>
 {
     private const int MaxPageSize = 50;
 
@@ -25,12 +24,15 @@ public class GetCreatorApplicationsQueryHandler
         _db = db;
     }
 
-    public async Task<(List<CreatorApplicationResponseDto> Items, int TotalCount)> Handle(
+    public async Task<(List<CreatorApplicationResponseDto> Items, int TotalCount, int PendingCount)> Handle(
         GetCreatorApplicationsQuery request,
         CancellationToken cancellationToken)
     {
         var page = request.Page <= 0 ? 1 : request.Page;
         var pageSize = request.PageSize <= 0 ? 10 : Math.Min(request.PageSize, MaxPageSize);
+
+        var pendingCount = await _db.CreatorApplications
+            .CountAsync(c => c.Status == ApplicationStatus.Pending && !c.IsDeleted, cancellationToken);
 
         var query = _db.CreatorApplications
             .AsNoTracking()
@@ -53,10 +55,14 @@ public class GetCreatorApplicationsQueryHandler
             {
                 Id = c.Id,
                 ApplicantName = c.Applicant != null ? c.Applicant.FullName : string.Empty,
+                ApplicantUsername = c.Applicant != null ? (c.Applicant.UserName ?? string.Empty) : string.Empty,
                 ApplicantEmail = c.Applicant != null ? (c.Applicant.Email ?? string.Empty) : string.Empty,
+                PrimaryStyle = c.PrimaryStyle,
                 PortfolioLinks = c.PortfolioLinks,
+                SpeedpaintVideoUrl = c.SpeedpaintVideoUrl,
                 SocialLinks = c.SocialLinks,
                 IdProofUrl = c.IdProofUrl,
+                IsNationalIdVerified = c.IsNationalIdVerified,
                 Status = c.Status.ToString(), 
                 ReviewedByModId = c.ReviewedByModId,
                 ReviewedByModName = c.ReviewedByMod != null ? c.ReviewedByMod.FullName : null,
@@ -66,6 +72,6 @@ public class GetCreatorApplicationsQueryHandler
             })
             .ToListAsync(cancellationToken);
 
-        return (items, totalCount);
+        return (items, totalCount, pendingCount);
     }
 }

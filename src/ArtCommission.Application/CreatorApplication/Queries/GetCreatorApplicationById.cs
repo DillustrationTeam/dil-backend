@@ -1,7 +1,5 @@
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.CreatorApplication.DTOs;
-using ArtCommission.Domain.Enums;
-
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,7 +12,6 @@ public record GetCreatorApplicationByIdQuery(
 public class GetCreatorApplicationByIdQueryHandler 
     : IRequestHandler<GetCreatorApplicationByIdQuery, CreatorApplicationResponseDto?>
 {
-
     private readonly IApplicationDbContext _db;
 
     public GetCreatorApplicationByIdQueryHandler(IApplicationDbContext db)
@@ -35,10 +32,14 @@ public class GetCreatorApplicationByIdQueryHandler
             {
                 Id = c.Id,
                 ApplicantName = c.Applicant != null ? c.Applicant.FullName : string.Empty,
+                ApplicantUsername = c.Applicant != null ? (c.Applicant.UserName ?? string.Empty) : string.Empty,
                 ApplicantEmail = c.Applicant != null ? (c.Applicant.Email ?? string.Empty) : string.Empty,
+                PrimaryStyle = c.PrimaryStyle,
                 PortfolioLinks = c.PortfolioLinks,
+                SpeedpaintVideoUrl = c.SpeedpaintVideoUrl,
                 SocialLinks = c.SocialLinks,
                 IdProofUrl = c.IdProofUrl,
+                IsNationalIdVerified = c.IsNationalIdVerified,
                 Status = c.Status.ToString(),
                 ReviewedByModId = c.ReviewedByModId,
                 ReviewedByModName = c.ReviewedByMod != null ? c.ReviewedByMod.FullName : null,

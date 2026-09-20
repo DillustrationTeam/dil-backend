@@ -24,7 +24,10 @@ public enum NotificationType
     PaymentSucceeded,
 
     /// <summary>Yêu cầu rút tiền đổi trạng thái — duyệt hoặc từ chối (UC49).</summary>
-    PayoutStatusChanged
+    PayoutStatusChanged,
+
+    /// <summary>Thông báo chế tài xử phạt tài khoản (SCR-23 / UC31).</summary>
+    UserSanctionAlert
 }
 
 public static class NotificationTypeNames
@@ -35,9 +38,10 @@ public static class NotificationTypeNames
     public const string DeadlineRiskWarning = nameof(NotificationType.DeadlineRiskWarning);
     public const string PaymentSucceeded = nameof(NotificationType.PaymentSucceeded);
     public const string PayoutStatusChanged = nameof(NotificationType.PayoutStatusChanged);
+    public const string UserSanctionAlert = nameof(NotificationType.UserSanctionAlert);
 
     public static readonly string[] All =
-        [OutbidAlert, AuctionEndingSoon, AuctionWon, DeadlineRiskWarning, PaymentSucceeded, PayoutStatusChanged];
+        [OutbidAlert, AuctionEndingSoon, AuctionWon, DeadlineRiskWarning, PaymentSucceeded, PayoutStatusChanged, UserSanctionAlert];
 }
 
 /// <summary>
