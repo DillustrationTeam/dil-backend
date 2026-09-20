@@ -1,5 +1,6 @@
 using System.Reflection;
 using ArtCommission.Application.Common.Interfaces;
+using ArtCommission.Domain.Entities.Commission;
 using ArtCommission.Domain.Entities.ArtistStudio;
 using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Domain.Entities.Notifications;
@@ -24,6 +25,11 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<ArtworkTag> ArtworkTags => Set<ArtworkTag>();
     public DbSet<Follow> Follows => Set<Follow>();
+
+    public DbSet<Commission> Commissions => Set<Commission>();
+    public DbSet<Milestone> Milestones => Set<Milestone>();
+    public DbSet<Review> Reviews => Set<Review>();
+    public DbSet<Dispute> Disputes => Set<Dispute>();
 
     // Module Payment & Wallet (UC47/UC48/UC49)
     public DbSet<Wallet> Wallets => Set<Wallet>();

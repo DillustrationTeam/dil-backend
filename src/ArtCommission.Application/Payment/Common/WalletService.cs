@@ -328,6 +328,8 @@ public class WalletService : IWalletService
             {
                 Deposit = g.Where(t => t.Type == WalletTransactionType.Deposit)
                            .Sum(t => (decimal?)t.Amount) ?? 0m,
+                CommissionEarning = g.Where(t => t.Type == WalletTransactionType.CommissionEarning)
+                                     .Sum(t => (decimal?)t.Amount) ?? 0m,
                 Refund = g.Where(t => t.Type == WalletTransactionType.Refund)
                           .Sum(t => (decimal?)t.Amount) ?? 0m,
                 RefundFromHold = g.Where(t => t.Type == WalletTransactionType.RefundFromHold)
@@ -365,6 +367,7 @@ public class WalletService : IWalletService
         // Số dư khả dụng: cộng tiền vào, trừ tiền ra.
         // Payout ở đây là tiền đã trừ lúc tạo yêu cầu; nếu Admin từ chối thì có thêm dòng Refund.
         var expectedBalance = sums.Deposit
+                              + sums.CommissionEarning
                               + sums.Refund
                               + sums.RefundFromHold
                               + sums.Adjustment

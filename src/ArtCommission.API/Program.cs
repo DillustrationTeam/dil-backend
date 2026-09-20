@@ -1,4 +1,5 @@
 using System.Text;
+using System.Net.Mail;
 using ArtCommission.API.BackgroundWorkers;
 using ArtCommission.API.Common;
 using ArtCommission.API.Hubs;
@@ -14,6 +15,7 @@ using ArtCommission.Infrastructure.Persistence;
 using ArtCommission.Infrastructure.Services;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -219,20 +221,6 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// Register DbContext (SQL Server or InMemory fallback)
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-{
-    var connStr = builder.Configuration.GetConnectionString("DefaultConnection");
-    if (!string.IsNullOrEmpty(connStr))
-    {
-        options.UseSqlServer(connStr);
-    }
-    else
-    {
-        options.UseInMemoryDatabase("ArtCommissionDb");
-    }
-});
-
 // Register Application Services
 builder.Services.AddScoped<ICommissionService, CommissionService>();
 
@@ -270,6 +258,35 @@ using (var scope = app.Services.CreateScope())
 }
 
 // Configure HTTP request pipeline
+app.UseExceptionHandler(handler => handler.Run(async context =>
+{
+    var error = context.Features.Get<IExceptionHandlerFeature>()?.Error;
+    context.Response.StatusCode = error switch
+    {
+        UnauthorizedAccessException => StatusCodes.Status403Forbidden,
+        SmtpException => StatusCodes.Status503ServiceUnavailable,
+        KeyNotFoundException => StatusCodes.Status404NotFound,
+        ArgumentException => StatusCodes.Status400BadRequest,
+        InvalidOperationException or DbUpdateConcurrencyException => StatusCodes.Status409Conflict,
+        _ => StatusCodes.Status500InternalServerError
+    };
+    await context.Response.WriteAsJsonAsync(new
+    {
+        data = (object?)null,
+        meta = (object?)null,
+        error = new
+        {
+            title = "Request failed",
+            details = new[] { context.Response.StatusCode switch
+            {
+                500 => "Internal server error.",
+                503 => "Email service unavailable.",
+                _ => error?.Message ?? "Request failed."
+            } }
+        }
+    });
+}));
+
 // openapi/v1.json luôn public (cả Production) để GitHub Actions export & Scalar Netlify fetch được
 app.UseSwagger(options =>
 {

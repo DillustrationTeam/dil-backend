@@ -9,13 +9,16 @@ namespace ArtCommission.Domain.Enums;
 ///   - <see cref="RefundFromHold"/> : tiền chuyển từ ĐANG GIỮ về số dư khả dụng
 ///
 /// Nhờ tách riêng, công thức đối soát luôn đúng:
-///   Balance       = Deposit + Refund − Payout − EscrowHold + RefundFromHold + Adjustment
+///   Balance       = Deposit + CommissionEarning + Refund − Payout − EscrowHold + RefundFromHold + Adjustment
 ///   LockedBalance = EscrowHold − EscrowRelease − RefundFromHold
 /// </summary>
 public enum WalletTransactionType
 {
     /// <summary>Nạp tiền vào ví qua cổng thanh toán (UC48).</summary>
     Deposit,
+
+    /// <summary>Tiền Creator nhận khi Client duyệt milestone.</summary>
+    CommissionEarning,
 
     /// <summary>Khoá tiền vào escrow / khoá cọc khi đặt giá đấu giá.</summary>
     EscrowHold,
@@ -45,6 +48,7 @@ public enum WalletTransactionType
 public static class WalletTransactionTypeNames
 {
     public const string Deposit = nameof(WalletTransactionType.Deposit);
+    public const string CommissionEarning = nameof(WalletTransactionType.CommissionEarning);
     public const string EscrowHold = nameof(WalletTransactionType.EscrowHold);
     public const string EscrowRelease = nameof(WalletTransactionType.EscrowRelease);
     public const string Refund = nameof(WalletTransactionType.Refund);
@@ -54,5 +58,5 @@ public static class WalletTransactionTypeNames
     public const string Adjustment = nameof(WalletTransactionType.Adjustment);
 
     public static readonly string[] All =
-        [Deposit, EscrowHold, EscrowRelease, Refund, RefundFromHold, Payout, PlatformFee, Adjustment];
+        [Deposit, CommissionEarning, EscrowHold, EscrowRelease, Refund, RefundFromHold, Payout, PlatformFee, Adjustment];
 }
