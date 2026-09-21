@@ -27,7 +27,10 @@ public enum NotificationType
     PayoutStatusChanged,
 
     /// <summary>Thông báo chế tài xử phạt tài khoản (SCR-23 / UC31).</summary>
-    UserSanctionAlert
+    UserSanctionAlert,
+
+    /// <summary>Kết quả duyệt đơn đăng ký Creator thay đổi — Approved/Rejected/AdditionalProofRequested (UC29).</summary>
+    CreatorApplicationStatusChanged
 }
 
 public static class NotificationTypeNames
@@ -39,9 +42,10 @@ public static class NotificationTypeNames
     public const string PaymentSucceeded = nameof(NotificationType.PaymentSucceeded);
     public const string PayoutStatusChanged = nameof(NotificationType.PayoutStatusChanged);
     public const string UserSanctionAlert = nameof(NotificationType.UserSanctionAlert);
+    public const string CreatorApplicationStatusChanged = nameof(NotificationType.CreatorApplicationStatusChanged);
 
     public static readonly string[] All =
-        [OutbidAlert, AuctionEndingSoon, AuctionWon, DeadlineRiskWarning, PaymentSucceeded, PayoutStatusChanged, UserSanctionAlert];
+        [OutbidAlert, AuctionEndingSoon, AuctionWon, DeadlineRiskWarning, PaymentSucceeded, PayoutStatusChanged, UserSanctionAlert, CreatorApplicationStatusChanged];
 }
 
 /// <summary>

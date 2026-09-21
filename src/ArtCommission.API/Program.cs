@@ -8,6 +8,7 @@ using ArtCommission.Application.Commission.Interfaces;
 using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
 using ArtCommission.Domain.Entities.Identity;
+using ArtCommission.Infrastructure.ExternalServices.Cloudinary;
 using ArtCommission.Infrastructure.ExternalServices.PayOs;
 using ArtCommission.Infrastructure.Identity;
 using ArtCommission.Infrastructure.Persistence;
@@ -93,6 +94,11 @@ builder.Services.AddSingleton<PayOSClient>(sp =>
 });
 
 builder.Services.AddScoped<IPaymentGateway, PayOsPaymentGateway>();
+
+// 3d-2. Cloudinary Signed Upload — client tự upload file thẳng lên Cloudinary, server chỉ ký.
+// Secret lấy từ User Secrets (dev) hoặc biến môi trường Cloudinary__ApiSecret.
+builder.Services.Configure<CloudinaryOptions>(builder.Configuration.GetSection(CloudinaryOptions.SectionName));
+builder.Services.AddScoped<ICloudinarySignatureService, CloudinarySignatureService>();
 
 // 3e. UC45 — Notification: ghi DB + đẩy SignalR real-time
 builder.Services.AddScoped<INotificationPublisher, SignalRNotificationPublisher>();

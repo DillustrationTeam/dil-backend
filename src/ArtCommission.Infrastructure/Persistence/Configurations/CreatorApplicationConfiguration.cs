@@ -43,6 +43,10 @@ public class CreatorApplicationConfiguration : IEntityTypeConfiguration<CreatorA
                .HasMaxLength(500)
                .IsRequired();
 
+        builder.Property(c => c.IdProofBackUrl)
+               .HasMaxLength(500)
+               .IsRequired();
+
         builder.Property(c => c.PrimaryStyle)
                .HasMaxLength(100);
 

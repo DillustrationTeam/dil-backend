@@ -37,6 +37,7 @@ public class CreatorApplicationsController : ApiControllerBase
             PortfolioLinks: request.PortfolioLinks,
             SocialLinks: request.SocialLinks,
             IdProofUrl: request.IdProofUrl,
+            IdProofBackUrl: request.IdProofBackUrl,
             PrimaryStyle: request.PrimaryStyle,
             SpeedpaintVideoUrl: request.SpeedpaintVideoUrl
         );
@@ -48,6 +49,24 @@ public class CreatorApplicationsController : ApiControllerBase
         }
 
         return OkEnvelope(new { applicationId });
+    }
+
+    /// <summary>
+    /// Xem đơn đăng ký Creator MỚI NHẤT của chính mình (Dành cho User/Client tự kiểm tra trạng thái).
+    /// Trả <c>data: null</c> nếu chưa từng nộp đơn nào — không phải lỗi.
+    /// </summary>
+    [HttpGet("me")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetMyApplication(CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var application = await Mediator.Send(new GetMyCreatorApplicationQuery(CurrentUserId), cancellationToken);
+        return OkEnvelope(application);
     }
 
     /// <summary>

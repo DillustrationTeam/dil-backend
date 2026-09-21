@@ -39,6 +39,7 @@ public class GetCreatorApplicationByIdQueryHandler
                 SpeedpaintVideoUrl = c.SpeedpaintVideoUrl,
                 SocialLinks = c.SocialLinks,
                 IdProofUrl = c.IdProofUrl,
+                IdProofBackUrl = c.IdProofBackUrl,
                 IsNationalIdVerified = c.IsNationalIdVerified,
                 Status = c.Status.ToString(),
                 ReviewedByModId = c.ReviewedByModId,
