@@ -337,14 +337,21 @@ public class RevenueQueryService : IRevenueQueryService
         List<Guid> walletIds,
         DateTimeOffset from,
         DateTimeOffset to,
-        CancellationToken cancellationToken) =>
-        await _db.WalletTransactions
+        CancellationToken cancellationToken)
+    {
+        // PHẢI sao chép sang biến cục bộ rồi dùng Contains.
+        // Gọi thẳng RevenueLedgerRules.IsRelevant(t.Type) trong Where sẽ khiến EF Core
+        // không dịch được sang SQL (lỗi "could not be translated") và trả HTTP 400.
+        // Dạng mảng cục bộ .Contains(cột) thì EF dịch được thành mệnh đề IN (...).
+        var relevantTypes = RevenueLedgerRules.RelevantTypes;
+
+        return await _db.WalletTransactions
             .AsNoTracking()
             .Where(t => walletIds.Contains(t.WalletId)
                         && !t.IsDeleted
                         && t.CreatedAt >= from
                         && t.CreatedAt <= to
-                        && RevenueLedgerRules.IsRelevant(t.Type))
+                        && relevantTypes.Contains(t.Type))
             .Select(t => new Domain.Entities.Payment.WalletTransaction
             {
                 Id = t.Id,
@@ -357,6 +364,7 @@ public class RevenueQueryService : IRevenueQueryService
                 CreatedAt = t.CreatedAt
             })
             .ToListAsync(cancellationToken);
+    }
 
     // ------------------------------------------------------------------
     // Nhóm theo thời gian
