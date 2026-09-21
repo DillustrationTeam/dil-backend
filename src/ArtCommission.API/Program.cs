@@ -2,12 +2,19 @@ using System.Text;
 using ArtCommission.API.BackgroundWorkers;
 using ArtCommission.API.Common;
 using ArtCommission.API.Hubs;
+using ArtCommission.Application.Ai.Common;
 using ArtCommission.Application.Auth.Commands.Register;
+using ArtCommission.Application.Auction.Common;
+using ArtCommission.Application.Chat.Common;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.Commission.Interfaces;
 using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
+using ArtCommission.Application.Revenue.Common;
 using ArtCommission.Domain.Entities.Identity;
+using ArtCommission.Infrastructure.ExternalServices.Common;
+using ArtCommission.Infrastructure.ExternalServices.Gemini;
+using ArtCommission.Infrastructure.ExternalServices.Google;
 using ArtCommission.Infrastructure.ExternalServices.PayOs;
 using ArtCommission.Infrastructure.Identity;
 using ArtCommission.Infrastructure.Persistence;
@@ -19,6 +26,7 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -27,6 +35,31 @@ using PayOS;
 using PayOsOptions = ArtCommission.Infrastructure.ExternalServices.PayOs.PayOsOptions;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ---------------------------------------------------------------------------
+// Nạp khoá Gemini từ .env ở thư mục cha của repo Code.
+//
+// VÌ SAO phải tự nạp: ASP.NET Core KHÔNG đọc file .env. Cả nhóm để khoá dịch vụ
+// ngoài (payOS, Gemini) trong một .env chung ở D:\SEP490_Dillustration\.env, nên
+// app phải tự tìm và đọc file đó thì khoá mới có hiệu lực.
+//
+// PHẠM VI CỐ Ý HẸP: chỉ lấy khoá Gemini. Các khoá payOS vẫn đọc từ User Secrets /
+// biến môi trường như trước — nạp thêm .env cho payOS sẽ âm thầm đổi hành vi module
+// thanh toán của người khác, không nằm trong phạm vi task này.
+//
+// Ưu tiên: nếu Gemini:ApiKey đã có từ User Secrets / biến môi trường thì GIỮ NGUYÊN,
+// không ghi đè bằng .env.
+// ---------------------------------------------------------------------------
+var geminiApiKeyFromEnv = ReadGeminiApiKeyFromEnvFile(builder.Environment.ContentRootPath);
+
+if (!string.IsNullOrWhiteSpace(geminiApiKeyFromEnv)
+    && string.IsNullOrWhiteSpace(builder.Configuration[$"{GeminiOptions.SectionName}:ApiKey"]))
+{
+    builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+    {
+        [$"{GeminiOptions.SectionName}:ApiKey"] = geminiApiKeyFromEnv
+    });
+}
 
 // 1. Add Infrastructure Persistence & DbContext
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
@@ -98,6 +131,69 @@ builder.Services.AddScoped<INotificationPublisher, SignalRNotificationPublisher>
 
 // 3f. UC50 — Voucher: kiểm tra mã dùng chung (checkout, redeem)
 builder.Services.AddScoped<IVoucherCheckService, VoucherCheckService>();
+
+// 3g. UC32–UC35 — Auction: cọc đấu giá + chốt phiên (dùng chung IWalletService)
+builder.Services.AddScoped<IAuctionMoneyService, AuctionMoneyService>();
+builder.Services.AddScoped<IAuctionSettlementService, AuctionSettlementService>();
+
+// 3h. UC43 — Workroom Chat: phân giải phòng, kiểm quyền thành viên
+builder.Services.AddScoped<IChatRoomService, ChatRoomService>();
+
+// 3i. Lưu file: chat attachment + link tải file gốc có hạn
+builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection(StorageOptions.SectionName));
+
+// Chuẩn hoá đường dẫn lưu file thành ABSOLUTE ngay lúc cấu hình.
+// VÌ SAO: middleware static files và FileStorageService phải trỏ vào CÙNG một thư mục.
+// Nếu mỗi bên tự ghép đường dẫn tương đối theo một gốc khác nhau (ContentRootPath so với
+// CurrentDirectory) thì file ghi vào chỗ này nhưng được phục vụ ở chỗ khác ⇒ link 404.
+builder.Services.PostConfigure<StorageOptions>(options =>
+{
+    if (!Path.IsPathRooted(options.LocalRootPath))
+    {
+        options.LocalRootPath = Path.Combine(
+            builder.Environment.ContentRootPath, options.LocalRootPath);
+    }
+});
+
+builder.Services.AddScoped<IFileStorageService, FileStorageService>();
+
+// 3j. UC44/UC46 — AI Assistant dùng Google AI Studio (Gemini)
+// Key lấy từ biến môi trường Gemini__ApiKey hoặc User Secrets; KHÔNG để trong appsettings.json.
+builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection(GeminiOptions.SectionName));
+
+// Một instance GeminiAiClient phục vụ CẢ chatbot và dịch tin nhắn: cùng một endpoint,
+// cùng một key. Đăng ký typed client để HttpClient được quản lý vòng đời đúng cách.
+builder.Services.AddHttpClient<GeminiAiClient>(client =>
+{
+    var timeoutSeconds = builder.Configuration.GetValue<int?>($"{GeminiOptions.SectionName}:TimeoutSeconds") ?? 45;
+    client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+});
+
+builder.Services.AddScoped<IAiChatClient>(sp => sp.GetRequiredService<GeminiAiClient>());
+
+// 3j-bis. UC43 — DỊCH TIN NHẮN dùng Google Translate, KHÔNG dùng mô hình sinh văn bản:
+// nhanh hơn, rẻ hơn và không tự đổi ngôn ngữ đích. Có GoogleTranslate:ApiKey thì gọi
+// Cloud Translation v2 chính thức; không có key thì dùng endpoint công khai.
+// Gemini giữ làm DỰ PHÒNG khi Google lỗi/bị chặn mạng.
+builder.Services.Configure<GoogleTranslateOptions>(
+    builder.Configuration.GetSection(GoogleTranslateOptions.SectionName));
+
+builder.Services.AddHttpClient<GoogleTranslateClient>(client =>
+{
+    var timeoutSeconds = builder.Configuration.GetValue<int?>($"{GoogleTranslateOptions.SectionName}:TimeoutSeconds") ?? 20;
+    client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+});
+
+builder.Services.AddScoped<ITranslationClient>(sp => new FallbackTranslationClient(
+    sp.GetRequiredService<GoogleTranslateClient>(),
+    sp.GetRequiredService<GeminiAiClient>(),
+    sp.GetRequiredService<ILogger<FallbackTranslationClient>>()));
+
+builder.Services.AddScoped<IAiContextBuilder, AiContextBuilder>();
+builder.Services.AddScoped<IDeadlineRiskPredictor, DeadlineRiskPredictor>();
+
+// 3k. UC51 — Creator Revenue Analytics: đọc sổ cái ví
+builder.Services.AddScoped<IRevenueQueryService, RevenueQueryService>();
 
 // 4. Add MediatR & FluentValidation
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(RegisterCommand).Assembly));
@@ -343,6 +439,24 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+// File đính kèm chat và file bàn giao được phục vụ từ thư mục Storage:LocalRootPath,
+// KHÔNG phụ thuộc wwwroot (thư mục này có thể không tồn tại trong repo).
+// Dùng PhysicalFileProvider trỏ thẳng vào thư mục upload đã chuẩn hoá absolute:
+//  - tạo thư mục nếu chưa có, tránh lỗi khởi động ở máy mới clone;
+//  - không bật directory browsing nên chỉ truy cập được file có đường dẫn chính xác.
+var storageOptions = app.Services.GetRequiredService<IOptions<StorageOptions>>().Value;
+
+if (!string.IsNullOrWhiteSpace(storageOptions.LocalRootPath))
+{
+    Directory.CreateDirectory(storageOptions.LocalRootPath);
+
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(storageOptions.LocalRootPath),
+        RequestPath = storageOptions.PublicBasePath
+    });
+}
+
 app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
@@ -353,4 +467,63 @@ app.MapControllers();
 // UC45 — SignalR hub. Client kết nối: /hubs/notifications?access_token={jwt}
 app.MapHub<NotificationHub>("/hubs/notifications");
 
+// UC43 — SignalR hub chat. Client kết nối: /hubs/chat?access_token={jwt}
+app.MapHub<ChatHub>("/hubs/chat");
+
 app.Run();
+
+/// <summary>
+/// Tìm file .env ở thư mục cha và đọc giá trị khoá <c>Gemini-Ai-Key</c>.
+///
+/// Tìm ngược lên tối đa 6 cấp từ thư mục chạy. Con số này không tuỳ tiện:
+/// .env nằm ở gốc workspace, cách ContentRootPath (src/ArtCommission.API) ĐÚNG 5 cấp
+///   ArtCommission.API → src → dil-backend → Code → SEP490_Dillustration.
+/// Để 6 để còn dư một cấp khi repo được đặt sâu hơn, mà vẫn không quét ngược ra
+/// ngoài workspace.
+///
+/// Trả về null nếu không có file / không có khoá. KHÔNG log giá trị khoá.
+/// </summary>
+static string? ReadGeminiApiKeyFromEnvFile(string startDirectory)
+{
+    const string keyName = "Gemini-Ai-Key";
+    const int maxDepth = 6;
+
+    var directory = new DirectoryInfo(startDirectory);
+
+    for (var depth = 0; depth < maxDepth && directory is not null; depth++)
+    {
+        var candidate = Path.Combine(directory.FullName, ".env");
+
+        if (File.Exists(candidate))
+        {
+            foreach (var rawLine in File.ReadAllLines(candidate))
+            {
+                var line = rawLine.Trim();
+
+                if (line.Length == 0 || line.StartsWith('#'))
+                {
+                    continue;
+                }
+
+                var separator = line.IndexOf('=');
+                if (separator <= 0)
+                {
+                    continue;
+                }
+
+                var name = line[..separator].Trim();
+                if (!string.Equals(name, keyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var value = line[(separator + 1)..].Trim().Trim('"', '\'');
+                return string.IsNullOrWhiteSpace(value) ? null : value;
+            }
+        }
+
+        directory = directory.Parent;
+    }
+
+    return null;
+}

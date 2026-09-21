@@ -39,7 +39,7 @@ public class GetMyWalletQueryHandler
         {
             return (true, new WalletOverviewDto(
                 Wallet: new WalletDto(Guid.Empty, 0m, 0m, "VND", WalletStatusNames.Active),
-                Summary: new WalletSummaryDto(0m, 0m)
+                Summary: new WalletSummaryDto(0m, 0m, 0m)
             ), []);
         }
 
@@ -57,6 +57,19 @@ public class GetMyWalletQueryHandler
                             p.Id == t.RefId.Value && p.Status == PayoutStatus.Processed))
             .SumAsync(t => (decimal?)t.Amount, cancellationToken) ?? 0m;
 
+        // Tiền đang CHỜ RÚT: yêu cầu rút ở trạng thái Pending — ví đã trừ nhưng Admin
+        // chưa chuyển khoản. Tách riêng khỏi "tổng đã rút" vì khoản này còn có thể
+        // bị Admin từ chối và hoàn lại ví.
+        var pendingPayout = await _db.WalletTransactions
+            .AsNoTracking()
+            .Where(t => t.WalletId == wallet.Id
+                        && t.Type == WalletTransactionType.Payout
+                        && !t.IsDeleted
+                        && t.RefId != null
+                        && _db.PayoutRequests.Any(p =>
+                            p.Id == t.RefId.Value && p.Status == PayoutStatus.Pending))
+            .SumAsync(t => (decimal?)t.Amount, cancellationToken) ?? 0m;
+
         // Tiền đang giữ escrow: Wallet.LockedBalance là nguồn duy nhất.
         // Module Commission/Auction ghi vào đây qua IWalletService.HoldFundsAsync.
         var escrowHeld = wallet.LockedBalance;
@@ -69,7 +82,7 @@ public class GetMyWalletQueryHandler
                 Currency: wallet.Currency,
                 WalletStatus: wallet.Status.ToString()
             ),
-            Summary: new WalletSummaryDto(escrowHeld, totalWithdrawn)
+            Summary: new WalletSummaryDto(escrowHeld, totalWithdrawn, pendingPayout)
         ), []);
     }
 }

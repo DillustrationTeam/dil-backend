@@ -94,20 +94,44 @@ public class ResolveDisputeArbitrationCommandHandler
                 var clientWallet = await _walletService.GetOrCreateWalletAsync(commission.ClientId, cancellationToken);
                 var creatorWallet = await _walletService.GetOrCreateWalletAsync(commission.CreatorId, cancellationToken);
 
-                // Giảm LockedBalance của Client tương ứng với tiền Escrow được giải phóng
-                if (clientWallet.LockedBalance > 0)
-                {
-                    var unlockAmount = Math.Min(clientWallet.LockedBalance, totalLockedEscrow);
-                    clientWallet.LockedBalance -= unlockAmount;
-                    clientWallet.UpdatedAt = DateTimeOffset.UtcNow;
-                }
+                // ------------------------------------------------------------------
+                // SỬA 3 LỖI SỔ CÁI Ở KHỐI NÀY (trước đây làm ví Creator luôn lệch khi đối soát):
+                //
+                // 1. LockedBalance của Client bị trừ thẳng vào entity, KHÔNG ghi dòng sổ cái.
+                //    VerifyLedgerConsistencyAsync tính LockedBalance từ sổ cái
+                //    (EscrowHold − EscrowRelease − RefundFromHold) nên phần bị trừ tay này
+                //    không bao giờ khớp. Nay dùng RefundHeldFundsAsync / ReleaseFundsAsync —
+                //    mỗi hàm cập nhật LockedBalance VÀ ghi một dòng sổ cái trong cùng bước.
+                //
+                // 2. Tiền trả Creator ghi bằng EscrowRelease — sai chiều. EscrowRelease mang
+                //    nghĩa "rời khỏi phần đang giữ của NGƯỜI TRẢ", nên công thức đối soát
+                //    trừ nhầm LockedBalance của Creator (ví Creator vốn không có tiền đang giữ).
+                //    Phía người nhận phải là EscrowReceive (chiều VÀO số dư khả dụng).
+                //
+                // 3. Phí sàn chỉ được trừ bằng lời trong ghi chú, không có dòng PlatformFee
+                //    nào được ghi. Hệ quả: Creator nhận tiền gộp mà sổ cái không có phí,
+                //    nên báo cáo doanh thu/phí của sàn thiếu hẳn phần này. Nay ghi đủ 2 dòng
+                //    (EscrowReceive + PlatformFee) để mọi báo cáo cộng ra đúng.
+                // ------------------------------------------------------------------
 
-                // Gọi WalletService để cộng tiền vào ví Client (loại transaction: Refund)
+                // Escrow THỰC CÓ trong LockedBalance có thể nhỏ hơn EscrowHeldAmount trên đơn
+                // (dữ liệu lệch từ lần xử lý trước, hoặc Admin sửa tay). Phân bổ theo số trên
+                // đơn trong khi ví không đủ tiền sẽ TẠO RA tiền từ hư không, nên phải phân bổ
+                // theo số thực có. RefundHeldFundsAsync cũng sẽ ném lỗi nếu vượt LockedBalance.
+                var effectiveEscrow = Math.Min(clientWallet.LockedBalance, totalLockedEscrow);
+
+                // Tính lại phân bổ theo số thực có, giữ nguyên tỉ lệ phán quyết.
+                clientRefundAmount = Math.Round(effectiveEscrow * (request.ClientRefundPercent / 100m), 2);
+                creatorGrossAmount = effectiveEscrow - clientRefundAmount;
+                platformFee = Math.Round(creatorGrossAmount * (feePercent / 100m), 2);
+                creatorPayAmount = Math.Max(0m, creatorGrossAmount - platformFee);
+
+                // (1) Phần hoàn về Client: LockedBalance → Balance.
                 if (clientRefundAmount > 0)
                 {
-                    await _walletService.CreditAsync(
+                    await _walletService.RefundHeldFundsAsync(
                         clientWallet,
-                        WalletTransactionType.Refund,
+                        WalletTransactionType.RefundFromHold,
                         clientRefundAmount,
                         "Commission",
                         commission.Id,
@@ -115,16 +139,42 @@ public class ResolveDisputeArbitrationCommandHandler
                         cancellationToken);
                 }
 
-                // Gọi WalletService để cộng tiền vào ví Creator (loại transaction: EscrowRelease, trừ platform fee nếu có quy định)
-                if (creatorPayAmount > 0)
+                // (2) Phần trả Creator: rời hẳn khỏi LockedBalance của Client.
+                if (creatorGrossAmount > 0)
+                {
+                    await _walletService.ReleaseFundsAsync(
+                        clientWallet,
+                        WalletTransactionType.EscrowRelease,
+                        creatorGrossAmount,
+                        "Commission",
+                        commission.Id,
+                        $"Giải ngân tiền cọc Escrow theo phán quyết tranh chấp (Mã vụ: {dispute.Id}): {request.AdminNote}",
+                        cancellationToken);
+                }
+
+                // (3) Creator nhận khoản gộp — chiều VÀO số dư khả dụng.
+                if (creatorGrossAmount > 0)
                 {
                     await _walletService.CreditAsync(
                         creatorWallet,
-                        WalletTransactionType.EscrowRelease,
-                        creatorPayAmount,
+                        WalletTransactionType.EscrowReceive,
+                        creatorGrossAmount,
                         "Commission",
                         commission.Id,
-                        $"Giải ngân tiền cọc Escrow theo phán quyết tranh chấp (Đã trừ {feePercent}% phí sàn {platformFee:N0} VND): {request.AdminNote}",
+                        $"Nhận tiền cọc Escrow theo phán quyết tranh chấp (Mã vụ: {dispute.Id}): {request.AdminNote}",
+                        cancellationToken);
+                }
+
+                // (4) Phí sàn — chiều RA, ghi thành dòng riêng để báo cáo phí của sàn đủ số.
+                if (platformFee > 0)
+                {
+                    await _walletService.DebitAsync(
+                        creatorWallet,
+                        WalletTransactionType.PlatformFee,
+                        platformFee,
+                        "Commission",
+                        commission.Id,
+                        $"Phí nền tảng {feePercent}% trên tiền giải ngân tranh chấp (Mã vụ: {dispute.Id})",
                         cancellationToken);
                 }
             }
