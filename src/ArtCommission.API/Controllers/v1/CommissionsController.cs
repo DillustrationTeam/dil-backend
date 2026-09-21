@@ -75,6 +75,19 @@ public class CommissionsController : ControllerBase
     }
 
     /// <summary>
+    /// Client chấp nhận hoặc từ chối đề xuất giá đang chờ từ Creator.
+    /// </summary>
+    [HttpPatch("{id:guid}/counteroffer")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> RespondToCounteroffer(Guid id, [FromBody] RespondToCounterofferRequest request, CancellationToken ct)
+    {
+        var result = await _commissionService.RespondToCounterofferAsync(id, request.Accept, GetCurrentUserId(), ct);
+        return Ok(new ApiResponse<CommissionDto>(result));
+    }
+
+    /// <summary>
     /// POST /api/v1/commissions/{id}/escrow/deposit
     /// Client đặt cọc nạp tiền ký quỹ Escrow
     /// </summary>

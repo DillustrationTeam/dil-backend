@@ -138,6 +138,10 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("RateCardJson")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("RateCard");
+
                     b.Property<decimal>("RatingAverage")
                         .HasColumnType("decimal(18,2)");
 
@@ -278,6 +282,7 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
+                        .IsConcurrencyToken()
                         .HasColumnType("datetimeoffset");
 
                     b.Property<Guid?>("VoucherId")

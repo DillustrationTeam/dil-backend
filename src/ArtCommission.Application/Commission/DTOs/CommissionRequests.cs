@@ -3,12 +3,11 @@ namespace ArtCommission.Application.Commission.DTOs;
 public class CreateCommissionRequest
 {
     public Guid CreatorId { get; set; }
+    public Guid PackageId { get; set; }
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
     public DateTimeOffset? DeadlineAt { get; set; }
-    public decimal TotalPrice { get; set; }
     public string? VoucherCode { get; set; }
-    public List<MilestoneCreateDto> Milestones { get; set; } = new();
 }
 
 public class RespondCommissionRequest
@@ -16,6 +15,11 @@ public class RespondCommissionRequest
     public string Action { get; set; } = string.Empty; // Accept, Reject, Negotiate
     public decimal? NegotiatePrice { get; set; }
     public string? RejectReason { get; set; }
+}
+
+public class RespondToCounterofferRequest
+{
+    public bool Accept { get; set; }
 }
 
 public class SubmitMilestoneRequest

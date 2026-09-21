@@ -1,3 +1,4 @@
+using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Commission.DTOs;
 using ArtCommission.Application.Commission.Interfaces;
 using ArtCommission.Application.Commission.Validators;
@@ -26,14 +27,20 @@ public class CommissionService : ICommissionService
         RequireUser(clientId);
         var validation = new CreateCommissionRequestValidator().Validate(request);
         if (!validation.IsValid) throw new ArgumentException(string.Join(" ", validation.Errors.Select(e => e.ErrorMessage)));
-        if (request.Milestones.Any(m => m.Price <= 0 || m.Sequence <= 0)
-            || request.Milestones.Select(m => m.Sequence).Distinct().Count() != request.Milestones.Count
-            || request.Milestones.Sum(m => m.Price) != request.TotalPrice)
-            throw new ArgumentException("Milestone prices and sequences must be valid and prices must equal total price.");
-        if (!await _dbContext.CreatorProfiles.AnyAsync(p => p.Id == request.CreatorId && !p.IsDeleted && p.IsAcceptingOrders, cancellationToken))
-            throw new ArgumentException("Creator profile is unavailable.");
+        var creator = await _dbContext.CreatorProfiles.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == request.CreatorId && !p.IsDeleted, cancellationToken);
+        if (creator is null || !creator.IsAcceptingOrders)
+            throw new ArgumentException("Creator hiện không nhận đơn.");
+
+        var packages = CreatorRateCard.Read(creator.RateCardJson);
+        CreatorRateCard.Write(packages);
+        var selectedPackage = packages.FirstOrDefault(package => package.Id == request.PackageId);
+        if (selectedPackage is null)
+            throw new ArgumentException("Gói giá đã thay đổi hoặc không còn khả dụng. Vui lòng chọn lại.");
+
+        var totalPrice = selectedPackage.Price;
         var discountAmount = 0.00m;
-        var finalPrice = request.TotalPrice - discountAmount;
+        var finalPrice = totalPrice - discountAmount;
 
         var commission = new Commission
         {
@@ -41,7 +48,7 @@ public class CommissionService : ICommissionService
             Description = request.Description,
             ClientId = clientId,
             CreatorId = request.CreatorId,
-            TotalPrice = request.TotalPrice,
+            TotalPrice = totalPrice,
             DiscountAmount = discountAmount,
             FinalPrice = finalPrice,
             EscrowHeldAmount = 0.00m,
@@ -52,18 +59,15 @@ public class CommissionService : ICommissionService
             DeadlineAt = request.DeadlineAt
         };
 
-        if (request.Milestones != null && request.Milestones.Any())
+        foreach (var milestone in selectedPackage.Milestones)
         {
-            foreach (var m in request.Milestones)
+            commission.Milestones.Add(new Milestone
             {
-                commission.Milestones.Add(new Milestone
-                {
-                    Sequence = m.Sequence,
-                    Title = m.Title,
-                    Price = m.Price,
-                    Status = MilestoneStatus.Pending
-                });
-            }
+                Sequence = milestone.Sequence,
+                Title = milestone.Title,
+                Price = milestone.Price,
+                Status = MilestoneStatus.Pending
+            });
         }
 
         _dbContext.Commissions.Add(commission);
@@ -128,7 +132,7 @@ public class CommissionService : ICommissionService
         var commission = await OwnedCommissionAsync(id, creatorId, creator: true, cancellationToken);
         var validation = new RespondCommissionRequestValidator().Validate(request);
         if (!validation.IsValid) throw new ArgumentException(string.Join(" ", validation.Errors.Select(e => e.ErrorMessage)));
-        if (commission.Status is not (CommissionStatus.PendingAcceptance or CommissionStatus.Negotiating))
+        if (commission.Status != CommissionStatus.PendingAcceptance)
             throw new InvalidOperationException("Commission cannot be changed in this state.");
 
         if (string.Equals(request.Action, "Accept", StringComparison.OrdinalIgnoreCase))
@@ -157,6 +161,18 @@ public class CommissionService : ICommissionService
         commission.UpdatedAt = DateTimeOffset.UtcNow;
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        return MapToDto(commission);
+    }
+
+    public async Task<CommissionDto> RespondToCounterofferAsync(Guid id, bool accept, Guid clientId, CancellationToken cancellationToken = default)
+    {
+        var commission = await OwnedCommissionAsync(id, clientId, creator: false, cancellationToken);
+        if (commission.Status != CommissionStatus.Negotiating)
+            throw new InvalidOperationException("Commission has no pending counter-offer.");
+
+        commission.Status = accept ? CommissionStatus.InProgress : CommissionStatus.Cancelled;
+        commission.UpdatedAt = DateTimeOffset.UtcNow;
+        await _dbContext.SaveChangesAsync(cancellationToken);
         return MapToDto(commission);
     }
 
