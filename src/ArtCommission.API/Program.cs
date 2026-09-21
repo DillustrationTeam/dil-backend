@@ -12,7 +12,9 @@ using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
 using ArtCommission.Application.Revenue.Common;
 using ArtCommission.Domain.Entities.Identity;
+using ArtCommission.Infrastructure.ExternalServices.Common;
 using ArtCommission.Infrastructure.ExternalServices.Gemini;
+using ArtCommission.Infrastructure.ExternalServices.Google;
 using ArtCommission.Infrastructure.ExternalServices.PayOs;
 using ArtCommission.Infrastructure.Identity;
 using ArtCommission.Infrastructure.Persistence;
@@ -168,7 +170,24 @@ builder.Services.AddHttpClient<GeminiAiClient>(client =>
 });
 
 builder.Services.AddScoped<IAiChatClient>(sp => sp.GetRequiredService<GeminiAiClient>());
-builder.Services.AddScoped<ITranslationClient>(sp => sp.GetRequiredService<GeminiAiClient>());
+
+// 3j-bis. UC43 — DỊCH TIN NHẮN dùng Google Translate, KHÔNG dùng mô hình sinh văn bản:
+// nhanh hơn, rẻ hơn và không tự đổi ngôn ngữ đích. Có GoogleTranslate:ApiKey thì gọi
+// Cloud Translation v2 chính thức; không có key thì dùng endpoint công khai.
+// Gemini giữ làm DỰ PHÒNG khi Google lỗi/bị chặn mạng.
+builder.Services.Configure<GoogleTranslateOptions>(
+    builder.Configuration.GetSection(GoogleTranslateOptions.SectionName));
+
+builder.Services.AddHttpClient<GoogleTranslateClient>(client =>
+{
+    var timeoutSeconds = builder.Configuration.GetValue<int?>($"{GoogleTranslateOptions.SectionName}:TimeoutSeconds") ?? 20;
+    client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+});
+
+builder.Services.AddScoped<ITranslationClient>(sp => new FallbackTranslationClient(
+    sp.GetRequiredService<GoogleTranslateClient>(),
+    sp.GetRequiredService<GeminiAiClient>(),
+    sp.GetRequiredService<ILogger<FallbackTranslationClient>>()));
 
 builder.Services.AddScoped<IAiContextBuilder, AiContextBuilder>();
 builder.Services.AddScoped<IDeadlineRiskPredictor, DeadlineRiskPredictor>();

@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace ArtCommission.API.Controllers;
 
 /// <summary>Thân request dịch tin nhắn.</summary>
-public sealed record TranslateMessageRequest(string TargetLang);
+public sealed record TranslateMessageRequest(string TargetLang, bool Force = false);
 
 /// <summary>
 /// UC43 — Workroom Chat (5 REST + SignalR <c>/hubs/chat</c>).
@@ -144,7 +144,7 @@ public class ChatController : ApiControllerBase
         }
 
         var (success, data, errors) = await Mediator.Send(
-            new TranslateMessageCommand(CurrentUserId, messageId, request.TargetLang),
+            new TranslateMessageCommand(CurrentUserId, messageId, request.TargetLang, request.Force),
             cancellationToken);
 
         return success ? OkEnvelope(data) : BadRequestEnvelope(errors);

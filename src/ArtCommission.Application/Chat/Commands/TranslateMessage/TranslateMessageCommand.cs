@@ -23,7 +23,12 @@ namespace ArtCommission.Application.Chat.Commands.TranslateMessage;
 public record TranslateMessageCommand(
     Guid UserId,
     Guid MessageId,
-    string TargetLang
+    string TargetLang,
+    /// <summary>
+    /// true ⇒ BỎ QUA bản dịch đã cache và dịch lại (dùng khi bản dịch cũ sai/đổi nhà cung cấp).
+    /// Mặc định false để không tốn thêm lượt gọi AI cho mỗi lần mở phòng.
+    /// </summary>
+    bool Force = false
 ) : IRequest<(bool Success, TranslationResultDto? Data, string[] Errors)>;
 
 public class TranslateMessageCommandValidator : AbstractValidator<TranslateMessageCommand>
@@ -129,7 +134,10 @@ public class TranslateMessageCommandHandler
         }
 
         // Cache: đã có bản dịch cho đúng ngôn ngữ đích và trạng thái Completed.
-        if (message.TranslationStatus == TranslationStatus.Completed
+        // Force = true thì bỏ qua cache để dịch lại (bản dịch cũ có thể sai hoặc do
+        // nhà cung cấp khác sinh ra).
+        if (!request.Force
+            && message.TranslationStatus == TranslationStatus.Completed
             && !string.IsNullOrWhiteSpace(message.TranslatedBody)
             && string.Equals(message.TargetLang, targetLang, StringComparison.OrdinalIgnoreCase))
         {

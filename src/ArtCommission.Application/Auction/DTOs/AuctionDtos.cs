@@ -206,10 +206,19 @@ public sealed record ChatRoomMemberDto(
     DateTimeOffset? LastReadAt
 );
 
+/// <summary>
+/// Phòng chat trả về cho FE (UC43).
+/// </summary>
+/// <param name="CommissionId">
+/// Commission gắn với phòng (null với phòng đấu giá / phòng hỗ trợ).
+/// FE dùng để gọi /commissions/{id}/deadline-risks cho widget tiến độ (UC46)
+/// mà không phải đoán từ tiêu đề phòng.
+/// </param>
 public sealed record ChatRoomDto(
     Guid RoomId,
     string ChatRoomType,
     string ChatRoomTitle,
+    Guid? CommissionId,
     DateTimeOffset? LastMessageAt,
     bool IsLocked,
     IReadOnlyList<ChatRoomMemberDto> Members

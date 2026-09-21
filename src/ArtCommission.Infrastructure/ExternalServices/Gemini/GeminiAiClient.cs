@@ -86,21 +86,45 @@ public class GeminiAiClient : IAiChatClient, ITranslationClient
         // Prompt dịch siết chặt: chỉ trả bản dịch, không giải thích, giữ nguyên
         // xuống dòng và các đoạn code/tên riêng. Nếu không siết, model sẽ thêm
         // "Here is the translation:" và bản dịch lưu vào DB sẽ bẩn.
+        //
+        // ⚠️ LỖI ĐÃ GẶP THẬT: ghi "Dịch đoạn sau sang vi" thì model hiểu nhầm và trả về
+        // TIẾNG ANH cho một tin tiếng Việt (targetLang = "vi"). Vì vậy phải ghi rõ TÊN
+        // ngôn ngữ đích và nói thẳng "không đổi sang ngôn ngữ khác".
+        var target = DescribeLanguage(targetLang);
+
         var system = "Bạn là công cụ dịch thuật. Chỉ trả về bản dịch, không thêm lời dẫn, " +
                      "không giải thích, không đặt trong dấu ngoặc kép. Giữ nguyên xuống dòng, " +
-                     "tên riêng, con số và thuật ngữ kỹ thuật.";
+                     "tên riêng, con số và thuật ngữ kỹ thuật. " +
+                     $"Luôn dịch SANG {target}; tuyệt đối không dịch sang ngôn ngữ khác. " +
+                     $"Nếu văn bản đã ở {target} thì trả lại nguyên văn, không đổi ngôn ngữ.";
 
         var contents = new List<GeminiContent>
         {
             new()
             {
                 Role = "user",
-                Parts = [new GeminiPart { Text = $"Dịch đoạn sau sang {targetLang}:\n\n{text}" }]
+                Parts = [new GeminiPart { Text = $"Dịch đoạn sau sang {target}:\n\n{text}" }]
             }
         };
 
         return SendAsync(contents, system, cancellationToken);
     }
+
+    /// <summary>
+    /// Mã ngôn ngữ → tên đọc được, để model không đoán sai ngôn ngữ đích.
+    /// Mã lạ thì trả lại nguyên mã (hành vi cũ).
+    /// </summary>
+    private static string DescribeLanguage(string code) => code.Trim().ToLowerInvariant() switch
+    {
+        "vi" or "vi-vn" => "tiếng Việt (Vietnamese)",
+        "en" or "en-us" or "en-gb" => "tiếng Anh (English)",
+        "ja" or "ja-jp" => "tiếng Nhật (Japanese)",
+        "ko" or "ko-kr" => "tiếng Hàn (Korean)",
+        "zh" or "zh-cn" or "zh-tw" => "tiếng Trung (Chinese)",
+        "fr" or "fr-fr" => "tiếng Pháp (French)",
+        "es" or "es-es" => "tiếng Tây Ban Nha (Spanish)",
+        _ => code
+    };
 
     // ------------------------------------------------------------------
     // Gọi API

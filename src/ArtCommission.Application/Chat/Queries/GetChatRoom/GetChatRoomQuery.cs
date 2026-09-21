@@ -86,6 +86,7 @@ public class GetChatRoomQueryHandler
             RoomId: room.Id,
             ChatRoomType: room.RoomType.ToString(),
             ChatRoomTitle: room.Title,
+            CommissionId: room.CommissionId,
             LastMessageAt: room.LastMessageAt,
             IsLocked: room.IsLocked,
             Members: members);

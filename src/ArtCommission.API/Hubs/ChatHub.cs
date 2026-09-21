@@ -2,6 +2,7 @@ using System.Security.Claims;
 using ArtCommission.Application.Chat.Commands.MarkRoomRead;
 using ArtCommission.Application.Chat.Commands.SendMessage;
 using ArtCommission.Application.Chat.Common;
+using ArtCommission.Application.Chat.Queries.GetChatMessage;
 using ArtCommission.Application.Chat.Queries.GetChatRoom;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
@@ -110,6 +111,55 @@ public class ChatHub : Hub
         // Phát cho CẢ phòng, kể cả người gửi: nhờ vậy mọi client hiển thị tin theo
         // cùng một thứ tự do server quyết định, không phụ thuộc đồng hồ máy khách.
         await Clients.Group(RoomGroup(room)).SendAsync("ReceiveMessage", message, Context.ConnectionAborted);
+    }
+
+    /// <summary>
+    /// Phát một tin nhắn ĐÃ LƯU cho cả phòng.
+    ///
+    /// Dùng cho luồng tệp/ảnh: file upload qua REST (multipart) nên handler không có
+    /// <c>IHubContext</c>; client upload xong gọi method này để đối tác nhận ngay,
+    /// không phải tải lại trang. Server tự kiểm tra thành viên và tự lấy DTO —
+    /// client chỉ đưa <paramref name="messageId"/>, không tin dữ liệu client gửi.
+    /// </summary>
+    public async Task PublishStoredMessage(Guid roomId, Guid messageId)
+    {
+        var userId = GetUserId();
+        if (userId == Guid.Empty)
+        {
+            return;
+        }
+
+        var (room, _) = await _chatRoomService.ResolveRoomAsync(
+            roomId, userId, Context.ConnectionAborted);
+
+        if (room is null)
+        {
+            await Clients.Caller.SendAsync(
+                "MessageFailed",
+                "Không xác định được phòng để phát tin nhắn.",
+                Context.ConnectionAborted);
+            return;
+        }
+
+        var (success, message, errors) = await _mediator.Send(
+            new GetChatMessageQuery(userId, messageId),
+            Context.ConnectionAborted);
+
+        // Tin nhắn phải THUỘC đúng phòng đang phát — nếu không, thành viên của hai phòng
+        // có thể đẩy nội dung phòng này sang phòng kia.
+        if (!success || message is null || message.RoomId != room.Id)
+        {
+            await Clients.Caller.SendAsync(
+                "MessageFailed",
+                string.Join(" ", errors),
+                Context.ConnectionAborted);
+            return;
+        }
+
+        await Clients.Group(RoomGroup(room.Id)).SendAsync(
+            "ReceiveMessage",
+            message,
+            Context.ConnectionAborted);
     }
 
     /// <summary>Đánh dấu đã đọc; phát trạng thái cho cả phòng để hiện "đã xem".</summary>
