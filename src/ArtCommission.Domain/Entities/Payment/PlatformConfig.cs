@@ -37,6 +37,16 @@ public static class PlatformConfigKeys
     /// <summary>Phần trăm tiền cọc phải khoá khi đặt giá đấu giá.</summary>
     public const string AuctionHoldPercent = "AuctionHoldPercent";
 
+    /// <summary>
+    /// Số giờ người thắng phiên đấu giá phải hoàn tất thanh toán, tính từ lúc chốt phiên.
+    ///
+    /// Bắt buộc phải có giá trị để `Auction.PaymentDeadline` được ghi lúc chốt phiên.
+    /// Không có hạn thanh toán thì endpoint xử lý quá hạn
+    /// (`POST /auctions/{auctionId}/settlement/expire`) luôn từ chối vì không biết
+    /// "quá hạn" là khi nào — endpoint trở thành chết.
+    /// </summary>
+    public const string AuctionPaymentWindowHours = "AuctionPaymentWindowHours";
+
     /// <summary>Bật/tắt chức năng rút tiền ("true"/"false").</summary>
     public const string PayoutEnabled = "PayoutEnabled";
 
