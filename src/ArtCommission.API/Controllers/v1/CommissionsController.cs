@@ -10,6 +10,12 @@ namespace ArtCommission.API.Controllers.v1;
 [ApiController]
 [Authorize]
 [Route("api/v1/commissions")]
+[ProducesResponseType(StatusCodes.Status400BadRequest)]
+[ProducesResponseType(StatusCodes.Status401Unauthorized)]
+[ProducesResponseType(StatusCodes.Status403Forbidden)]
+[ProducesResponseType(StatusCodes.Status404NotFound)]
+[ProducesResponseType(StatusCodes.Status409Conflict)]
+[ProducesResponseType(StatusCodes.Status500InternalServerError)]
 public class CommissionsController : ControllerBase
 {
     private readonly ICommissionService _commissionService;
@@ -22,7 +28,8 @@ public class CommissionsController : ControllerBase
     private Guid GetCurrentUserId()
     {
         var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        return Guid.TryParse(userIdStr, out var id) ? id : Guid.Empty;
+        if (Guid.TryParse(userIdStr, out var id) && id != Guid.Empty) return id;
+        throw new UnauthorizedAccessException("A valid user identity is required.");
     }
 
     /// <summary>
@@ -30,9 +37,12 @@ public class CommissionsController : ControllerBase
     /// Client tạo và gửi Yêu cầu Đặt vẽ (Brief) mới
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Client")]
     public async Task<IActionResult> CreateCommission([FromBody] CreateCommissionRequest request, CancellationToken ct)
     {
         var clientId = GetCurrentUserId();
+        if (request.CreatorId == Guid.Empty)
+            throw new ArgumentException("CreatorId is required.");
         var result = await _commissionService.CreateCommissionAsync(request, clientId, ct);
         return Ok(new ApiResponse<CommissionDto>(result));
     }
@@ -44,6 +54,11 @@ public class CommissionsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetCommissions([FromQuery] string? status, [FromQuery] string? role, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken ct = default)
     {
+        if (page < 1 || pageSize < 1 || pageSize > 100)
+            throw new ArgumentException("Page must be at least 1 and pageSize must be between 1 and 100.");
+        if (role is not null && !string.Equals(role, "Client", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(role, "Creator", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Role must be Client or Creator.");
         var userId = GetCurrentUserId();
         var (items, totalItems) = await _commissionService.GetCommissionsAsync(status, role, userId, page, pageSize, ct);
         var meta = new { page, pageSize, totalItems, totalPages = (int)Math.Ceiling(totalItems / (double)pageSize) };
@@ -58,7 +73,7 @@ public class CommissionsController : ControllerBase
     public async Task<IActionResult> GetCommissionById(Guid id, CancellationToken ct)
     {
         var result = await _commissionService.GetCommissionByIdAsync(id, GetCurrentUserId(), ct);
-        if (result == null) return NotFound(new ApiResponse<object>(null, null, new { message = "Không tìm thấy đơn vẽ." }));
+if (result == null) return NotFound(ApiErrors.Create(404, "Not Found", "Không tìm thấy đơn vẽ.", HttpContext.TraceIdentifier));
         return Ok(new ApiResponse<CommissionDetailDto>(result));
     }
 
@@ -67,6 +82,7 @@ public class CommissionsController : ControllerBase
     /// Creator tiếp nhận Yêu cầu Đặt vẽ (Accept/Reject/Negotiate)
     /// </summary>
     [HttpPatch("{id:guid}/respond")]
+    [Authorize(Roles = "Creator")]
     public async Task<IActionResult> RespondCommission(Guid id, [FromBody] RespondCommissionRequest request, CancellationToken ct)
     {
         var creatorId = GetCurrentUserId();
@@ -79,6 +95,7 @@ public class CommissionsController : ControllerBase
     /// Client đặt cọc nạp tiền ký quỹ Escrow
     /// </summary>
     [HttpPost("{id:guid}/escrow/deposit")]
+    [Authorize(Roles = "Client")]
     public async Task<IActionResult> DepositEscrow(Guid id, [FromQuery] string paymentMethod = "Wallet", CancellationToken ct = default)
     {
         var clientId = GetCurrentUserId();
@@ -91,6 +108,7 @@ public class CommissionsController : ControllerBase
     /// Creator nộp sản phẩm bản phác thảo/lineart (WIP)
     /// </summary>
     [HttpPost("{commissionId:guid}/milestones/{milestoneId:guid}/submit")]
+    [Authorize(Roles = "Creator")]
     public async Task<IActionResult> SubmitMilestoneWip(Guid commissionId, Guid milestoneId, [FromBody] SubmitMilestoneRequest request, CancellationToken ct)
     {
         var creatorId = GetCurrentUserId();
@@ -103,6 +121,7 @@ public class CommissionsController : ControllerBase
     /// Client phê duyệt cột mốc sản phẩm đã nộp & giải ngân
     /// </summary>
     [HttpPatch("{commissionId:guid}/milestones/{milestoneId:guid}/approve")]
+    [Authorize(Roles = "Client")]
     public async Task<IActionResult> ApproveMilestone(Guid commissionId, Guid milestoneId, CancellationToken ct)
     {
         var clientId = GetCurrentUserId();
@@ -115,6 +134,7 @@ public class CommissionsController : ControllerBase
     /// Client gửi yêu cầu sửa đổi (Revision) cho cột mốc tiến độ
     /// </summary>
     [HttpPost("{commissionId:guid}/milestones/{milestoneId:guid}/request-revision")]
+    [Authorize(Roles = "Client")]
     public async Task<IActionResult> RequestMilestoneRevision(Guid commissionId, Guid milestoneId, [FromBody] RequestRevisionRequest request, CancellationToken ct)
     {
         var clientId = GetCurrentUserId();
@@ -127,6 +147,7 @@ public class CommissionsController : ControllerBase
     /// Creator bàn giao sản phẩm gốc hoàn chỉnh file HD lên Cloud Storage
     /// </summary>
     [HttpPost("{id:guid}/deliver")]
+    [Authorize(Roles = "Creator")]
     public async Task<IActionResult> DeliverFinalWork(Guid id, [FromQuery] string finalDeliverableUrl, CancellationToken ct)
     {
         var creatorId = GetCurrentUserId();
@@ -139,6 +160,7 @@ public class CommissionsController : ControllerBase
     /// Client nghiệm thu sản phẩm cuối cùng, hoàn tất đơn hàng
     /// </summary>
     [HttpPatch("{id:guid}/complete")]
+    [Authorize(Roles = "Client")]
     public async Task<IActionResult> CompleteCommission(Guid id, CancellationToken ct)
     {
         var clientId = GetCurrentUserId();
@@ -179,7 +201,7 @@ public class CommissionsController : ControllerBase
     public async Task<IActionResult> GetDisputeByCommissionId(Guid id, CancellationToken ct)
     {
         var result = await _commissionService.GetDisputeByCommissionIdAsync(id, GetCurrentUserId(), ct);
-        if (result == null) return NotFound(new ApiResponse<object>(null, null, new { message = "Chưa có tranh chấp cho đơn hàng này." }));
+if (result == null) return NotFound(ApiErrors.Create(404, "Not Found", "Chưa có tranh chấp cho đơn hàng này.", HttpContext.TraceIdentifier));
         return Ok(new ApiResponse<DisputeDto>(result));
     }
 
@@ -188,6 +210,7 @@ public class CommissionsController : ControllerBase
     /// Client đánh giá số sao (1-5★) và nhận xét dịch vụ
     /// </summary>
     [HttpPost("{id:guid}/reviews")]
+    [Authorize(Roles = "Client")]
     public async Task<IActionResult> CreateReview(Guid id, [FromBody] CreateReviewRequest request, CancellationToken ct)
     {
         var reviewerId = GetCurrentUserId();
@@ -200,6 +223,7 @@ public class CommissionsController : ControllerBase
     /// Creator đăng phản hồi đối với đánh giá của Client
     /// </summary>
     [HttpPost("{id:guid}/reviews/reply")]
+    [Authorize(Roles = "Creator")]
     public async Task<IActionResult> ReplyReview(Guid id, [FromBody] ReplyReviewRequest request, CancellationToken ct)
     {
         var creatorId = GetCurrentUserId();

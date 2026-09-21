@@ -28,6 +28,10 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<decimal?>("AdultScore")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("decimal(5,4)");
+
                     b.Property<decimal?>("AiDetectionScore")
                         .HasColumnType("decimal(18,2)");
 
@@ -40,6 +44,13 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<long?>("FileSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("FlagReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<string>("ImageUrl")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -51,12 +62,30 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
+                    b.Property<DateTimeOffset?>("ModeratedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ModerationNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
                     b.Property<string>("ModerationStatus")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)")
                         .HasDefaultValue("Pending");
+
+                    b.Property<Guid?>("ModeratorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<decimal?>("SafeScore")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("decimal(5,4)");
 
                     b.Property<string>("ThumbnailUrl")
                         .HasMaxLength(500)
@@ -72,6 +101,10 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("ViewCount")
                         .HasColumnType("int");
+
+                    b.Property<decimal?>("ViolenceScore")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("decimal(5,4)");
 
                     b.HasKey("Id");
 
@@ -127,6 +160,11 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsAcceptingOrders")
                         .HasColumnType("bit");
+
+                    b.Property<bool>("IsAiVerified")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
 
                     b.Property<bool>("IsApproved")
                         .HasColumnType("bit");
@@ -231,6 +269,7 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("CurrentStage")
+                        .IsConcurrencyToken()
                         .HasColumnType("int");
 
                     b.Property<DateTimeOffset?>("DeadlineAt")
@@ -252,6 +291,7 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("EscrowStatus")
+                        .IsConcurrencyToken()
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
@@ -264,6 +304,7 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasColumnType("bit");
 
                     b.Property<string>("Status")
+                        .IsConcurrencyToken()
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
@@ -342,7 +383,8 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CommissionId");
+                    b.HasIndex("CommissionId")
+                        .IsUnique();
 
                     b.ToTable("Disputes", (string)null);
                 });
@@ -380,6 +422,7 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("Status")
+                        .IsConcurrencyToken()
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
@@ -447,9 +490,79 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CommissionId");
+                    b.HasIndex("CommissionId")
+                        .IsUnique();
 
                     b.ToTable("Reviews", (string)null);
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.CreatorApplication.CreatorApplication", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ApplicantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("IdProofUrl")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsNationalIdVerified")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("PortfolioLinks")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PrimaryStyle")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ReviewNote")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("ReviewedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("ReviewedByModId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SocialLinks")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SpeedpaintVideoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTimeOffset>("SubmittedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReviewedByModId");
+
+                    b.HasIndex("ApplicantId", "Status");
+
+                    b.ToTable("CreatorApplications", (string)null);
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.Identity.ApplicationUser", b =>
@@ -1443,6 +1556,24 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Commission");
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.CreatorApplication.CreatorApplication", b =>
+                {
+                    b.HasOne("ArtCommission.Domain.Entities.Identity.ApplicationUser", "Applicant")
+                        .WithMany()
+                        .HasForeignKey("ApplicantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ArtCommission.Domain.Entities.Identity.ApplicationUser", "ReviewedByMod")
+                        .WithMany()
+                        .HasForeignKey("ReviewedByModId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Applicant");
+
+                    b.Navigation("ReviewedByMod");
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.Identity.RefreshToken", b =>

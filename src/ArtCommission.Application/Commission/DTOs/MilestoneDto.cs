@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace ArtCommission.Application.Commission.DTOs;
 
 public class MilestoneDto
@@ -18,7 +20,10 @@ public class MilestoneDto
 
 public class MilestoneCreateDto
 {
+    [Range(1, int.MaxValue)]
     public int Sequence { get; set; }
+    [Required, MinLength(1), MaxLength(200)]
     public string Title { get; set; } = string.Empty;
+    [Range(typeof(decimal), "0.01", "9999999999999999")]
     public decimal Price { get; set; }
 }

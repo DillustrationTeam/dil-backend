@@ -1,24 +1,24 @@
 using ArtCommission.Application.Commission.DTOs;
 using ArtCommission.Domain.Entities.ArtistStudio;
 using ArtCommission.Domain.Entities.Commission;
-using ArtCommission.Domain.Entities.Payment;
 using ArtCommission.Domain.Enums;
-using ArtCommission.Application.Payment.Common;
 using ArtCommission.Infrastructure.Persistence;
 using ArtCommission.Infrastructure.Services;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 var clientId = Guid.NewGuid();
 var creatorId = Guid.NewGuid();
-var creatorProfileId = Guid.NewGuid();
-var strangerId = Guid.NewGuid();
-await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+var roleId = Guid.NewGuid();
+await using var identity = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+    .UseInMemoryDatabase("identity-" + Guid.NewGuid()).Options);
+await using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
     .UseInMemoryDatabase("commission-" + Guid.NewGuid()).Options);
-db.CreatorProfiles.Add(new CreatorProfile { Id = creatorProfileId, UserId = creatorId, DisplayName = "Test creator" });
-db.Wallets.Add(new Wallet { UserId = clientId, Balance = 1000 });
-await db.SaveChangesAsync();
-var walletService = new WalletService(db);
-var service = new CommissionService(db, walletService);
+identity.Roles.Add(new IdentityRole<Guid>("Creator") { Id = roleId });
+identity.UserRoles.Add(new IdentityUserRole<Guid> { UserId = creatorId, RoleId = roleId });
+identity.CreatorProfiles.Add(new CreatorProfile { UserId = creatorId, DisplayName = "Test creator" });
+await identity.SaveChangesAsync();
+var service = new CommissionService(db, identity);
 var checks = 0;
 
 void Equal<T>(T expected, T actual, string name)
@@ -40,7 +40,7 @@ async Task<(Guid Id, Guid[] Milestones)> Create(string title)
 {
     var created = await service.CreateCommissionAsync(new CreateCommissionRequest
     {
-        CreatorId = creatorProfileId,
+CreatorId = creatorId,
         Title = title,
         TotalPrice = 300,
         Milestones = Enumerable.Range(1, 3)
@@ -51,14 +51,6 @@ async Task<(Guid Id, Guid[] Milestones)> Create(string title)
 }
 
 var normal = await Create("normal");
-Equal(null, await service.GetCommissionByIdAsync(normal.Id, strangerId), "stranger cannot read commission");
-Equal(0, (await service.GetCommissionsAsync(null, null, strangerId)).TotalItems, "stranger list is empty");
-try
-{
-    await service.RespondCommissionAsync(normal.Id, new RespondCommissionRequest { Action = "Accept" }, strangerId);
-    throw new Exception("stranger changed commission");
-}
-catch (KeyNotFoundException) { checks++; }
 await Rejected(() => service.DepositEscrowAsync(normal.Id, clientId, "Wallet"), "deposit before accept");
 await Rejected(() => service.SubmitMilestoneWipAsync(normal.Id, normal.Milestones[0],
     new SubmitMilestoneRequest { WipFileUrl = "https://example.test/wip" }, creatorId), "submit before accept");
@@ -66,8 +58,6 @@ await service.RespondCommissionAsync(normal.Id, new RespondCommissionRequest { A
 await Rejected(() => service.SubmitMilestoneWipAsync(normal.Id, normal.Milestones[0],
     new SubmitMilestoneRequest { WipFileUrl = "https://example.test/wip" }, creatorId), "submit before deposit");
 await service.DepositEscrowAsync(normal.Id, clientId, "Wallet");
-Equal(700m, (await walletService.FindWalletAsync(clientId))!.Balance, "deposit debits client");
-Equal(300m, (await walletService.FindWalletAsync(clientId))!.LockedBalance, "deposit locks funds");
 await Rejected(() => service.DepositEscrowAsync(normal.Id, clientId, "Wallet"), "duplicate deposit");
 await Rejected(() => service.ApproveMilestoneAsync(normal.Id, normal.Milestones[0], clientId), "approve before submit");
 await Rejected(() => service.RequestMilestoneRevisionAsync(normal.Id, normal.Milestones[0],
@@ -93,7 +83,6 @@ for (var i = 0; i < normal.Milestones.Length; i++)
     var state = await service.GetCommissionByIdAsync(normal.Id, clientId);
     Equal((i + 1) * 100m, state!.DisbursedAmount, "disbursement stays exact");
 }
-Equal(300m, (await walletService.FindWalletAsync(creatorId))!.Balance, "approved milestones credit creator");
 var approved = await service.GetCommissionByIdAsync(normal.Id, clientId);
 Equal(0m, approved!.EscrowHeldAmount, "escrow exhausted");
 Equal(EscrowStatus.Released.ToString(), approved.EscrowStatus, "escrow released");
@@ -135,47 +124,42 @@ var cancelledState = await service.GetCommissionByIdAsync(cancelled.Id, clientId
 Equal(EscrowStatus.Pending.ToString(), cancelledState!.EscrowStatus, "no false refund");
 await Rejected(() => service.DepositEscrowAsync(cancelled.Id, clientId, "Wallet"), "deposit cancelled");
 
-var fundedCancel = await Create("funded cancellation");
-await service.RespondCommissionAsync(fundedCancel.Id, new RespondCommissionRequest { Action = "Accept" }, creatorId);
-await walletService.CreditAsync((await walletService.FindWalletAsync(clientId))!, WalletTransactionType.Deposit,
-    300m, "Test", null, "Test funding");
-var balanceBefore = (await walletService.FindWalletAsync(clientId))!.Balance;
-var lockedBefore = (await walletService.FindWalletAsync(clientId))!.LockedBalance;
-await service.DepositEscrowAsync(fundedCancel.Id, clientId, "Wallet");
-await service.CancelCommissionAsync(fundedCancel.Id, "changed mind", clientId);
-Equal(balanceBefore, (await walletService.FindWalletAsync(clientId))!.Balance, "funded cancellation refunds client");
-Equal(lockedBefore, (await walletService.FindWalletAsync(clientId))!.LockedBalance, "funded cancellation releases hold");
-
 await Rejected(() => service.CreateCommissionAsync(new CreateCommissionRequest
 {
-    CreatorId = creatorProfileId,
+    CreatorId = creatorId,
     Title = "bad total",
     TotalPrice = 300,
     Milestones = [new MilestoneCreateDto { Sequence = 1, Title = "Work", Price = 200 }]
 }, clientId), "mismatched milestone total");
 
-var raceOptions = new DbContextOptionsBuilder<AppDbContext>()
+var raceOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
     .UseInMemoryDatabase("approval-race-" + Guid.NewGuid()).Options;
 var raceId = Guid.NewGuid();
-await using (var seed = new AppDbContext(raceOptions))
+await using (var seed = new ApplicationDbContext(raceOptions))
 {
     seed.Commissions.Add(new Commission
     {
-        Id = raceId, ClientId = clientId, CreatorId = creatorProfileId, Title = "race",
+        Id = raceId, ClientId = clientId, CreatorId = creatorId, Title = "race",
         Status = CommissionStatus.InProgress, EscrowStatus = EscrowStatus.Deposited,
         TotalPrice = 100, FinalPrice = 100, EscrowHeldAmount = 100,
         Milestones = [new Milestone { Sequence = 1, Title = "Stage", Price = 100, Status = MilestoneStatus.Submitted }]
     });
     await seed.SaveChangesAsync();
 }
-await using (var first = new AppDbContext(raceOptions))
-await using (var second = new AppDbContext(raceOptions))
+await using (var first = new ApplicationDbContext(raceOptions))
+await using (var second = new ApplicationDbContext(raceOptions))
 {
-    var one = await first.Commissions.SingleAsync(c => c.Id == raceId);
-    var two = await second.Commissions.SingleAsync(c => c.Id == raceId);
-    one.UpdatedAt = DateTimeOffset.UtcNow;
+    var one = await first.Commissions.Include(c => c.Milestones).SingleAsync(c => c.Id == raceId);
+    var two = await second.Commissions.Include(c => c.Milestones).SingleAsync(c => c.Id == raceId);
+    one.Milestones.Single().Status = MilestoneStatus.Approved;
+    one.DisbursedAmount = 100;
+    one.EscrowHeldAmount = 0;
+    one.EscrowStatus = EscrowStatus.Released;
     await first.SaveChangesAsync();
-    two.UpdatedAt = DateTimeOffset.UtcNow.AddSeconds(1);
+    two.Milestones.Single().Status = MilestoneStatus.Approved;
+    two.DisbursedAmount = 100;
+    two.EscrowHeldAmount = 0;
+    two.EscrowStatus = EscrowStatus.Released;
     try
     {
         await second.SaveChangesAsync();

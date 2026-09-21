@@ -55,3 +55,7 @@
 | 32 | View System Overview & Financial KPIs | Administrator | This use case allows an administrator to monitor system-wide analytics, platform revenue, transaction KPIs, and activity logs. |
 | 33 | Configure Platform Fee Rates & Policies | Administrator | This use case allows an administrator to configure system settings, platform commission fees, and operational policies. |
 | 34 | Push & Receive Real-time Notifications | Guest, Client, Creator, Moderator, Administrator | This use case allows the system to send real-time notifications to users regarding order updates, messages, or admin actions. |
+
+**Thứ tự UC10 → UC22 → UC11:** Client gửi yêu cầu tạo commission ở `PendingAcceptance`; Creator chấp nhận thì chuyển sang `InProgress`; sau đó Client mới được đặt cọc. Lệnh đặt cọc trước khi chấp nhận hoặc đặt cọc lặp phải trả 400 và không thay đổi escrow. Creator không được chấp nhận lại đơn đã từ chối/hủy.
+
+Sau khi đã đặt cọc, Creator chỉ nộp milestone hiện tại; Client chỉ yêu cầu sửa hoặc duyệt milestone đã nộp. Duyệt giải ngân đúng một lần. Creator chỉ bàn giao khi mọi milestone đã duyệt và escrow đã giải ngân hết; Client chỉ hoàn tất sau bàn giao. Đơn hoàn tất mới được đánh giá một lần. Đơn đã tranh chấp, hủy hoặc hoàn tất không được chuyển tiếp trái luồng. Yêu cầu ghi đồng thời xung đột trả 409.
