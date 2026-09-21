@@ -11,6 +11,7 @@ using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Infrastructure.ExternalServices.PayOs;
 using ArtCommission.Infrastructure.Identity;
 using ArtCommission.Infrastructure.Persistence;
+using ArtCommission.Infrastructure.Persistence.Seed;
 using ArtCommission.Infrastructure.Services;
 using FluentValidation;
 using Microsoft.Data.SqlClient;
@@ -311,6 +312,22 @@ using (var scope = app.Services.CreateScope())
     catch (Exception ex)
     {
         logger.LogError(ex, "An error occurred while initializing the database.");
+    }
+}
+
+// Seed dữ liệu mẫu (5 user + wallet + creator profile + artwork) — CHỈ chạy ở Development, idempotent.
+if (app.Environment.IsDevelopment())
+{
+    using var seedScope = app.Services.CreateScope();
+    var seedServices = seedScope.ServiceProvider;
+    var seedLogger = seedServices.GetRequiredService<ILogger<Program>>();
+    try
+    {
+        await DevDataSeeder.SeedSampleDataAsync(seedServices, seedLogger);
+    }
+    catch (Exception ex)
+    {
+        seedLogger.LogError(ex, "An error occurred while seeding development sample data.");
     }
 }
 
