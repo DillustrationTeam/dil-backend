@@ -39,7 +39,9 @@ public class GetPlatformFeePolicyQueryHandler : IRequestHandler<GetPlatformFeePo
             .Where(c => targetKeys.Contains(c.Key))
             .ToListAsync(cancellationToken);
 
-        var configDict = configs.ToDictionary(c => c.Key, c => c.Value);
+        var configDict = configs
+            .GroupBy(c => c.Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Last().Value, StringComparer.OrdinalIgnoreCase);
 
         decimal platformFeePercent = 10.0m;
         if (configDict.TryGetValue(PlatformConfigKeys.PlatformFeePercent, out var feeStr) &&

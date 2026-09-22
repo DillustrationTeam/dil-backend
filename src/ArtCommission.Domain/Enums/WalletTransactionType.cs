@@ -8,8 +8,15 @@ namespace ArtCommission.Domain.Enums;
 ///   - <see cref="Refund"/>         : tiền vào ví từ BÊN NGOÀI (Admin từ chối payout)
 ///   - <see cref="RefundFromHold"/> : tiền chuyển từ ĐANG GIỮ về số dư khả dụng
 ///
+/// QUAN TRỌNG — CHIỀU THU VÀ CHIỀU CHI CỦA MỘT GIAO DỊCH PHẢI KHÁC LOẠI NHAU:
+///   - <see cref="EscrowRelease"/>  : tiền RỜI khỏi phần đang giữ của NGƯỜI TRẢ
+///   - <see cref="EscrowReceive"/>  : tiền VÀO số dư khả dụng của NGƯỜI NHẬN
+/// Dùng <see cref="EscrowRelease"/> cho cả hai phía sẽ làm công thức đối soát sai:
+/// nó bị tính là giảm LockedBalance, trong khi ví người nhận không hề có tiền đang giữ.
+///
 /// Nhờ tách riêng, công thức đối soát luôn đúng:
-///   Balance       = Deposit + CommissionEarning + Refund − Payout − EscrowHold + RefundFromHold + Adjustment
+///   Balance       = Deposit + CommissionEarning + Refund + RefundFromHold + EscrowReceive + Adjustment
+///                   − EscrowHold − Payout − PlatformFee
 ///   LockedBalance = EscrowHold − EscrowRelease − RefundFromHold
 /// </summary>
 public enum WalletTransactionType
@@ -23,7 +30,7 @@ public enum WalletTransactionType
     /// <summary>Khoá tiền vào escrow / khoá cọc khi đặt giá đấu giá.</summary>
     EscrowHold,
 
-    /// <summary>Giải ngân tiền escrow cho Creator (tiền RỜI ví).</summary>
+    /// <summary>Giải ngân tiền escrow cho Creator (tiền RỜI ví người trả).</summary>
     EscrowRelease,
 
     /// <summary>Hoàn tiền vào ví từ bên ngoài (Admin từ chối payout).</summary>
@@ -42,7 +49,17 @@ public enum WalletTransactionType
     PlatformFee,
 
     /// <summary>Điều chỉnh thủ công bởi Admin khi đối soát lệch số.</summary>
-    Adjustment
+    Adjustment,
+
+    /// <summary>
+    /// Tiền VÀO số dư khả dụng của người nhận từ một giao dịch escrow/ký gửi
+    /// (UC35 chốt phiên đấu giá, UC50 bán tranh). Đối ứng với <see cref="EscrowRelease"/>
+    /// ở phía người trả.
+    ///
+    /// Đặt ở CUỐI enum để không đổi giá trị số của các thành viên cũ — dữ liệu sổ cái
+    /// đã ghi trước đó không bị diễn giải sai.
+    /// </summary>
+    EscrowReceive
 }
 
 public static class WalletTransactionTypeNames
@@ -51,6 +68,7 @@ public static class WalletTransactionTypeNames
     public const string CommissionEarning = nameof(WalletTransactionType.CommissionEarning);
     public const string EscrowHold = nameof(WalletTransactionType.EscrowHold);
     public const string EscrowRelease = nameof(WalletTransactionType.EscrowRelease);
+    public const string EscrowReceive = nameof(WalletTransactionType.EscrowReceive);
     public const string Refund = nameof(WalletTransactionType.Refund);
     public const string RefundFromHold = nameof(WalletTransactionType.RefundFromHold);
     public const string Payout = nameof(WalletTransactionType.Payout);
@@ -58,5 +76,8 @@ public static class WalletTransactionTypeNames
     public const string Adjustment = nameof(WalletTransactionType.Adjustment);
 
     public static readonly string[] All =
-        [Deposit, CommissionEarning, EscrowHold, EscrowRelease, Refund, RefundFromHold, Payout, PlatformFee, Adjustment];
+    [
+        Deposit, CommissionEarning, EscrowHold, EscrowRelease, EscrowReceive, Refund,
+        RefundFromHold, Payout, PlatformFee, Adjustment
+    ];
 }

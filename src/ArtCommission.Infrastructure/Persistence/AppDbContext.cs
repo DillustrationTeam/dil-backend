@@ -1,11 +1,15 @@
 using System.Reflection;
 using ArtCommission.Application.Common.Interfaces;
-using ArtCommission.Domain.Entities.Commission;
+using ArtCommission.Domain.Entities.Ai;
 using ArtCommission.Domain.Entities.ArtistStudio;
+using ArtCommission.Domain.Entities.Commission;
+using ArtCommission.Domain.Entities.Auction;
+using ArtCommission.Domain.Entities.Chat;
 using ArtCommission.Domain.Entities.CreatorApplication;
 using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Domain.Entities.Notifications;
 using ArtCommission.Domain.Entities.Payment;
+using ArtCommission.Domain.Entities.Revenue;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -27,12 +31,13 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<ArtworkTag> ArtworkTags => Set<ArtworkTag>();
     public DbSet<Follow> Follows => Set<Follow>();
 
+    // Module Commission & Dispute
     public DbSet<Commission> Commissions => Set<Commission>();
     public DbSet<Milestone> Milestones => Set<Milestone>();
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<Dispute> Disputes => Set<Dispute>();
 
-    // Module Payment & Wallet (UC47/UC48/UC49)
+    // Module Payment & Wallet
     public DbSet<Wallet> Wallets => Set<Wallet>();
     public DbSet<WalletTransaction> WalletTransactions => Set<WalletTransaction>();
     public DbSet<PaymentOrder> PaymentOrders => Set<PaymentOrder>();
@@ -40,7 +45,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<PayoutRequest> PayoutRequests => Set<PayoutRequest>();
     public DbSet<PlatformConfig> PlatformConfigs => Set<PlatformConfig>();
 
-    // Module Voucher (UC50)
+    // Module Voucher
     public DbSet<Voucher> Vouchers => Set<Voucher>();
     public DbSet<VoucherRedemption> VoucherRedemptions => Set<VoucherRedemption>();
 
@@ -48,14 +53,40 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
 
     public DbSet<CreatorApplication> CreatorApplications => Set<CreatorApplication>();
 
-    // Module Commission & Dispute (UC10/UC14/UC27/UC30)
-    public DbSet<ArtCommission.Domain.Entities.Commission.Commission> Commissions => Set<ArtCommission.Domain.Entities.Commission.Commission>();
-    public DbSet<ArtCommission.Domain.Entities.Commission.Dispute> Disputes => Set<ArtCommission.Domain.Entities.Commission.Dispute>();
-    public DbSet<ArtCommission.Domain.Entities.Commission.Milestone> Milestones => Set<ArtCommission.Domain.Entities.Commission.Milestone>();
-    public DbSet<ArtCommission.Domain.Entities.Commission.Review> Reviews => Set<ArtCommission.Domain.Entities.Commission.Review>();
+
 
     // Module Chat (UC26)
     public DbSet<ArtCommission.Domain.Entities.Chat.Message> Messages => Set<ArtCommission.Domain.Entities.Chat.Message>();
+
+    // ---------------------------------------------------------------------
+    // Module Auction & Art Trade (UC32–UC35)
+    // ---------------------------------------------------------------------
+    public DbSet<Auction> Auctions => Set<Auction>();
+    public DbSet<Bid> Bids => Set<Bid>();
+    public DbSet<AuctionWatch> AuctionWatches => Set<AuctionWatch>();
+    public DbSet<ArtworkOwnership> ArtworkOwnerships => Set<ArtworkOwnership>();
+    public DbSet<EscrowTransaction> EscrowTransactions => Set<EscrowTransaction>();
+    public DbSet<Deliverable> Deliverables => Set<Deliverable>();
+
+    // ---------------------------------------------------------------------
+    // Module Workroom Chat (UC43)
+    // ---------------------------------------------------------------------
+    public DbSet<ChatRoom> ChatRooms => Set<ChatRoom>();
+    public DbSet<ChatRoomMember> ChatRoomMembers => Set<ChatRoomMember>();
+    public DbSet<MessageAttachment> MessageAttachments => Set<MessageAttachment>();
+
+    // ---------------------------------------------------------------------
+    // Module AI Assistant (UC44 chatbot, UC46 deadline risk)
+    // ---------------------------------------------------------------------
+    public DbSet<AiConversation> AiConversations => Set<AiConversation>();
+    public DbSet<AiMessage> AiMessages => Set<AiMessage>();
+    public DbSet<DeadlineReminder> DeadlineReminders => Set<DeadlineReminder>();
+    public DbSet<UserReminderSetting> UserReminderSettings => Set<UserReminderSetting>();
+
+    // ---------------------------------------------------------------------
+    // Module Creator Revenue Analytics (UC51)
+    // ---------------------------------------------------------------------
+    public DbSet<RevenueSnapshot> RevenueSnapshots => Set<RevenueSnapshot>();
 
     // Module Identity & User Sanctions (SCR-23 / UC31)
     public DbSet<UserSanction> UserSanctions => Set<UserSanction>();
@@ -64,7 +95,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     {
         base.OnModelCreating(builder);
 
-        // Database-First Table Name Mappings (Matching 01_auth_identity.sql)
+        // Database-First Table Name Mappings
         builder.Entity<ApplicationUser>().ToTable("Users");
         builder.Entity<IdentityRole<Guid>>().ToTable("Roles");
         builder.Entity<IdentityUserRole<Guid>>().ToTable("UserRoles");

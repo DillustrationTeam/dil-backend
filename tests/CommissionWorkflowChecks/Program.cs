@@ -10,15 +10,13 @@ using Microsoft.EntityFrameworkCore;
 var clientId = Guid.NewGuid();
 var creatorId = Guid.NewGuid();
 var roleId = Guid.NewGuid();
-await using var identity = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
-    .UseInMemoryDatabase("identity-" + Guid.NewGuid()).Options);
-await using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
     .UseInMemoryDatabase("commission-" + Guid.NewGuid()).Options);
-identity.Roles.Add(new IdentityRole<Guid>("Creator") { Id = roleId });
-identity.UserRoles.Add(new IdentityUserRole<Guid> { UserId = creatorId, RoleId = roleId });
-identity.CreatorProfiles.Add(new CreatorProfile { UserId = creatorId, DisplayName = "Test creator" });
-await identity.SaveChangesAsync();
-var service = new CommissionService(db, identity);
+db.Roles.Add(new IdentityRole<Guid>("Creator") { Id = roleId });
+db.UserRoles.Add(new IdentityUserRole<Guid> { UserId = creatorId, RoleId = roleId });
+db.CreatorProfiles.Add(new CreatorProfile { UserId = creatorId, DisplayName = "Test creator" });
+await db.SaveChangesAsync();
+var service = new CommissionService(db);
 var checks = 0;
 
 void Equal<T>(T expected, T actual, string name)
@@ -40,7 +38,7 @@ async Task<(Guid Id, Guid[] Milestones)> Create(string title)
 {
     var created = await service.CreateCommissionAsync(new CreateCommissionRequest
     {
-CreatorId = creatorId,
+        CreatorId = creatorId,
         Title = title,
         TotalPrice = 300,
         Milestones = Enumerable.Range(1, 3)
@@ -132,10 +130,10 @@ await Rejected(() => service.CreateCommissionAsync(new CreateCommissionRequest
     Milestones = [new MilestoneCreateDto { Sequence = 1, Title = "Work", Price = 200 }]
 }, clientId), "mismatched milestone total");
 
-var raceOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
+var raceOptions = new DbContextOptionsBuilder<AppDbContext>()
     .UseInMemoryDatabase("approval-race-" + Guid.NewGuid()).Options;
 var raceId = Guid.NewGuid();
-await using (var seed = new ApplicationDbContext(raceOptions))
+await using (var seed = new AppDbContext(raceOptions))
 {
     seed.Commissions.Add(new Commission
     {
@@ -146,8 +144,8 @@ await using (var seed = new ApplicationDbContext(raceOptions))
     });
     await seed.SaveChangesAsync();
 }
-await using (var first = new ApplicationDbContext(raceOptions))
-await using (var second = new ApplicationDbContext(raceOptions))
+await using (var first = new AppDbContext(raceOptions))
+await using (var second = new AppDbContext(raceOptions))
 {
     var one = await first.Commissions.Include(c => c.Milestones).SingleAsync(c => c.Id == raceId);
     var two = await second.Commissions.Include(c => c.Milestones).SingleAsync(c => c.Id == raceId);

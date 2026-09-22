@@ -84,10 +84,19 @@ public class VouchersController : ApiControllerBase
     /// Quyền: Administrator hoặc Creator.
     /// <c>scope</c> nhận mảng chuỗi: <c>["Commission","Auction","Deposit"]</c> — bỏ trống = áp dụng cho cả ba.
     /// </remarks>
+    /// <remarks>
+    /// LỖI ĐÃ SỬA: action này trước chỉ có <c>[Authorize]</c> của controller. Vì
+    /// <c>CreateVoucherCommand</c> gán <c>CreatedByUserId = UserId</c> khi người gọi
+    /// KHÔNG phải admin, một Client thường tạo được voucher và trở thành chủ sở hữu nó —
+    /// rồi dùng luôn quyền đó để sửa/xoá voucher ở hai endpoint PUT/DELETE.
+    /// Đặc tả API ghi rõ endpoint này dành cho Administrator hoặc Creator.
+    /// </remarks>
     [HttpPost]
+    [Authorize(Roles = "Administrator,Creator")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> Create(
         [FromBody] CreateVoucherRequest request,
         CancellationToken cancellationToken)

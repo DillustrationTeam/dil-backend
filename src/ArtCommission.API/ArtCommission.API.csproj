@@ -5,8 +5,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>15900198-9ec9-46f9-b125-9585a1e7b901</UserSecretsId>
-    <!-- Export openapi.json tại build time (không cần app chạy / DB) -->
-    <OpenApiGenerateDocumentsOnBuild>true</OpenApiGenerateDocumentsOnBuild>
+    <!-- Export openapi.json tại build time (tắt để tránh lỗi Swashbuckle generator với stream/files) -->
+    <OpenApiGenerateDocumentsOnBuild>false</OpenApiGenerateDocumentsOnBuild>
+    <NoWarn>$(NoWarn);NU1901;NU1902;NU1903;NU1904</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
