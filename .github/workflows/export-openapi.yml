@@ -7,7 +7,7 @@ on:
       - 'src/ArtCommission.API/**'
       - 'src/ArtCommission.Application/**'
       - 'src/ArtCommission.Domain/**'
-      - '.github/workflows/**'  # Thêm dòng này để workflow tự kích hoạt khi bạn sửa file YAML
+      - '.github/workflows/**'
   workflow_dispatch:
 
 jobs:
@@ -25,35 +25,32 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: 📦 Restore NuGet packages
-        run: dotnet restore
+        run: dotnet restore ArtCommission.sln
 
-      - name: 🏗️ Build solution (Release)
-        run: dotnet build --no-restore --configuration Release
-
-      - name: 🔧 Install dotnet-swagger CLI tool
+      - name: 🏗️ Build & export openapi.json (build-time, không cần DB)
+        # Microsoft.Extensions.ApiDescription.Server tự generate openapi.json
+        # vào $(OutputPath) = bin/Release/net8.0/ trong lúc build — không cần app chạy.
         run: |
-          dotnet tool install -g Swashbuckle.AspNetCore.Cli --version 6.6.2
-          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+          dotnet build ArtCommission.sln \
+            --no-restore \
+            --configuration Release \
+            -p:OpenApiGenerateDocumentsOnBuild=true
 
-      - name: 📤 Export openapi.json từ compiled DLL
+      - name: 📤 Copy openapi.json vào scalar-site
         run: |
           mkdir -p scalar-site
-          swagger tofile \
-            --output scalar-site/openapi.json \
-            src/ArtCommission.API/bin/Release/net8.0/ArtCommission.API.dll \
-            v1
+          cp src/ArtCommission.API/ArtCommission.API.json scalar-site/openapi.json
 
       - name: 🔧 Install Netlify CLI
         run: npm install -g netlify-cli
 
       - name: 🌐 Deploy to Netlify
         run: |
-          SITE_NAME="${NETLIFY_SITE_ID:-dillustration-api}"
-          echo "Deploying Scalar Docs to Netlify site: $SITE_NAME"
+          echo "Deploying Scalar Docs to Netlify..."
           netlify deploy \
             --dir=scalar-site \
             --prod \
-            --site="$SITE_NAME" \
+            --site="$NETLIFY_SITE_ID" \
             --auth="$NETLIFY_AUTH_TOKEN"
         env:
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}

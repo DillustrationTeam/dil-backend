@@ -23,6 +23,9 @@ public static class PlatformConfigKeys
     public const string PlatformFeePercent = "PlatformFeePercent";
     public const string PlatformFeeRateSqlKey = "platform_fee_rate";
     public const string AuctionHoldPercent = "AuctionHoldPercent";
+
+    public const string AuctionPaymentWindowHours = "AuctionPaymentWindowHours";
+
     public const string PayoutEnabled = "PayoutEnabled";
     public const string MilestoneAutoApprovalDays = "MilestoneAutoApprovalDays";
     public const string EscrowHoldDaysSqlKey = "escrow_hold_days";
