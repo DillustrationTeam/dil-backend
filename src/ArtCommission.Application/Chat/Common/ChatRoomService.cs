@@ -122,11 +122,17 @@ public class ChatRoomService : IChatRoomService
             return false;
         }
 
+        var creatorProfileId = await _db.CreatorProfiles
+            .AsNoTracking()
+            .Where(p => p.UserId == userId && !p.IsDeleted)
+            .Select(p => p.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
         return await _db.Commissions
             .AsNoTracking()
             .AnyAsync(
                 c => c.Id == room.CommissionId
-                     && (c.ClientId == userId || c.CreatorId == userId)
+                     && (c.ClientId == userId || c.CreatorId == userId || (creatorProfileId != Guid.Empty && c.CreatorId == creatorProfileId))
                      && !c.IsDeleted,
                 cancellationToken);
     }
@@ -163,7 +169,13 @@ public class ChatRoomService : IChatRoomService
             return "Client";
         }
 
-        if (commission.CreatorId == userId)
+        var creatorProfileId = await _db.CreatorProfiles
+            .AsNoTracking()
+            .Where(p => p.UserId == userId && !p.IsDeleted)
+            .Select(p => p.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (commission.CreatorId == userId || (creatorProfileId != Guid.Empty && commission.CreatorId == creatorProfileId))
         {
             return "Creator";
         }
@@ -200,6 +212,12 @@ public class ChatRoomService : IChatRoomService
             return null;
         }
 
+        var creatorUserId = await _db.CreatorProfiles
+            .AsNoTracking()
+            .Where(p => p.Id == commission.CreatorId && !p.IsDeleted)
+            .Select(p => p.UserId)
+            .FirstOrDefaultAsync(cancellationToken);
+
         var room = new ChatRoom
         {
             RoomType = ChatRoomType.Commission,
@@ -213,7 +231,7 @@ public class ChatRoomService : IChatRoomService
         var members = new List<ChatRoomMember>
         {
             new() { RoomId = room.Id, UserId = commission.ClientId, MemberRole = "Client" },
-            new() { RoomId = room.Id, UserId = commission.CreatorId, MemberRole = "Creator" }
+            new() { RoomId = room.Id, UserId = creatorUserId != Guid.Empty ? creatorUserId : commission.CreatorId, MemberRole = "Creator" }
         };
 
         _db.ChatRoomMembers.AddRange(members);

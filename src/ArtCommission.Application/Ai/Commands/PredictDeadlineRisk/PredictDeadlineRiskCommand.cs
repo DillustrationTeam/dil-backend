@@ -69,7 +69,13 @@ public class PredictDeadlineRiskCommandHandler
             return (false, null, ["Không tìm thấy đơn đặt vẽ."]);
         }
 
-        if (commission.ClientId != request.UserId && commission.CreatorId != request.UserId)
+        var creatorProfileId = await _db.CreatorProfiles
+            .AsNoTracking()
+            .Where(p => p.UserId == request.UserId && !p.IsDeleted)
+            .Select(p => p.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (commission.ClientId != request.UserId && commission.CreatorId != request.UserId && (creatorProfileId == Guid.Empty || commission.CreatorId != creatorProfileId))
         {
             return (false, null, ["Bạn không có quyền cập nhật tiến độ của đơn này."]);
         }
