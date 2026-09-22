@@ -1314,6 +1314,7 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
+                        .IsConcurrencyToken()
                         .HasColumnType("datetimeoffset");
 
                     b.Property<Guid?>("VoucherId")
@@ -1399,6 +1400,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("CreatorNote")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("FinalDeliverableUrl")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -1406,12 +1410,21 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
+                    b.Property<int>("MaxRevisions")
+                        .HasColumnType("int");
+
+                    b.Property<string>("OriginalWipUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<decimal>("Price")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("RevisionCount")
                         .HasColumnType("int");
+
+                    b.Property<string>("RevisionFeedback")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("Sequence")
                         .HasColumnType("int");
@@ -1454,6 +1467,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("AttachedImagesJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Comment")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
@@ -1472,6 +1488,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("Rating")
                         .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("RespondedAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<Guid>("ReviewerId")
                         .HasColumnType("uniqueidentifier");

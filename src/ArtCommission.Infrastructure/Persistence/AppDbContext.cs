@@ -2,6 +2,7 @@ using System.Reflection;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Entities.Ai;
 using ArtCommission.Domain.Entities.ArtistStudio;
+using ArtCommission.Domain.Entities.Commission;
 using ArtCommission.Domain.Entities.Auction;
 using ArtCommission.Domain.Entities.Chat;
 using ArtCommission.Domain.Entities.CreatorApplication;
@@ -30,7 +31,13 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<ArtworkTag> ArtworkTags => Set<ArtworkTag>();
     public DbSet<Follow> Follows => Set<Follow>();
 
-    // Module Payment & Wallet (UC47/UC48/UC49)
+    // Module Commission & Dispute
+    public DbSet<Commission> Commissions => Set<Commission>();
+    public DbSet<Milestone> Milestones => Set<Milestone>();
+    public DbSet<Review> Reviews => Set<Review>();
+    public DbSet<Dispute> Disputes => Set<Dispute>();
+
+    // Module Payment & Wallet
     public DbSet<Wallet> Wallets => Set<Wallet>();
     public DbSet<WalletTransaction> WalletTransactions => Set<WalletTransaction>();
     public DbSet<PaymentOrder> PaymentOrders => Set<PaymentOrder>();
@@ -38,7 +45,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<PayoutRequest> PayoutRequests => Set<PayoutRequest>();
     public DbSet<PlatformConfig> PlatformConfigs => Set<PlatformConfig>();
 
-    // Module Voucher (UC50)
+    // Module Voucher
     public DbSet<Voucher> Vouchers => Set<Voucher>();
     public DbSet<VoucherRedemption> VoucherRedemptions => Set<VoucherRedemption>();
 
@@ -46,11 +53,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
 
     public DbSet<CreatorApplication> CreatorApplications => Set<CreatorApplication>();
 
-    // Module Commission & Dispute (UC10/UC14/UC27/UC30)
-    public DbSet<ArtCommission.Domain.Entities.Commission.Commission> Commissions => Set<ArtCommission.Domain.Entities.Commission.Commission>();
-    public DbSet<ArtCommission.Domain.Entities.Commission.Dispute> Disputes => Set<ArtCommission.Domain.Entities.Commission.Dispute>();
-    public DbSet<ArtCommission.Domain.Entities.Commission.Milestone> Milestones => Set<ArtCommission.Domain.Entities.Commission.Milestone>();
-    public DbSet<ArtCommission.Domain.Entities.Commission.Review> Reviews => Set<ArtCommission.Domain.Entities.Commission.Review>();
+
 
     // Module Chat (UC26)
     public DbSet<ArtCommission.Domain.Entities.Chat.Message> Messages => Set<ArtCommission.Domain.Entities.Chat.Message>();
@@ -92,7 +95,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     {
         base.OnModelCreating(builder);
 
-        // Database-First Table Name Mappings (Matching 01_auth_identity.sql)
+        // Database-First Table Name Mappings
         builder.Entity<ApplicationUser>().ToTable("Users");
         builder.Entity<IdentityRole<Guid>>().ToTable("Roles");
         builder.Entity<IdentityUserRole<Guid>>().ToTable("UserRoles");

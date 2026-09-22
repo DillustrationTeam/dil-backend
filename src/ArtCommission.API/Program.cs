@@ -1,4 +1,5 @@
 using System.Text;
+using System.Net.Mail;
 using ArtCommission.API.BackgroundWorkers;
 using ArtCommission.API.Common;
 using ArtCommission.API.Hubs;
@@ -16,6 +17,8 @@ using ArtCommission.Infrastructure.ExternalServices.Common;
 using ArtCommission.Infrastructure.ExternalServices.Gemini;
 using ArtCommission.Infrastructure.ExternalServices.Google;
 using ArtCommission.Infrastructure.ExternalServices.PayOs;
+using ArtCommission.Infrastructure.ExternalServices.R2;
+using ArtCommission.Infrastructure.ExternalServices.Watermark;
 using ArtCommission.Infrastructure.Identity;
 using ArtCommission.Infrastructure.Persistence;
 using ArtCommission.Infrastructure.Services;
@@ -35,6 +38,7 @@ using PayOS;
 using PayOsOptions = ArtCommission.Infrastructure.ExternalServices.PayOs.PayOsOptions;
 
 var builder = WebApplication.CreateBuilder(args);
+var isGeneratingOpenApi = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name == "GetDocument.Insider";
 
 // ---------------------------------------------------------------------------
 // Nạp khoá Gemini từ .env ở thư mục cha của repo Code.
@@ -342,12 +346,21 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-
 // Register Application Services
 builder.Services.AddScoped<ICommissionService, CommissionService>();
+builder.Services.AddScoped<IWatermarkService, WatermarkService>();
+if (builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(builder.Configuration["CloudflareR2:AccountId"]))
+{
+    builder.Services.AddScoped<IStorageService, LocalFileStorageService>();
+}
+else
+{
+    builder.Services.AddScoped<IStorageService, CloudflareR2StorageService>();
+}
 
 var app = builder.Build();
 
+// Configure HTTP request pipeline
 app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
 {
     var exception = context.Features.Get<IExceptionHandlerPathFeature>()?.Error;
@@ -376,13 +389,32 @@ if (!isDocumentGeneration)
     using (var scope = app.Services.CreateScope())
     {
         var services = scope.ServiceProvider;
-        var dbContext = services.GetRequiredService<AppDbContext>();
-        await dbContext.Database.MigrateAsync();
-        await DatabaseSeeder.SeedAsync(services);
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        try
+        {
+            var dbContext = services.GetRequiredService<AppDbContext>();
+            await dbContext.Database.MigrateAsync();
+
+            await DatabaseSeeder.SeedAsync(services);
+
+            if (app.Environment.IsDevelopment())
+            {
+                var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
+                var roleManager = services.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
+                await DevelopmentDemoSeeder.SeedAsync(dbContext, userManager, roleManager);
+            }
+
+            logger.LogInformation("Database initialized successfully.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "An error occurred while initializing the database.");
+        }
     }
 }
 
-// Configure HTTP request pipeline
+
+
 // openapi/v1.json luôn public (cả Production) để GitHub Actions export & Scalar Netlify fetch được
 app.UseSwagger(options =>
 {
@@ -410,6 +442,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseStaticFiles();
 
 // File đính kèm chat và file bàn giao được phục vụ từ thư mục Storage:LocalRootPath,
 // KHÔNG phụ thuộc wwwroot (thư mục này có thể không tồn tại trong repo).

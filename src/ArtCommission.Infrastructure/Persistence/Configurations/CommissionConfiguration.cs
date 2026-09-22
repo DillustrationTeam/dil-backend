@@ -12,6 +12,8 @@ public class CommissionConfiguration : IEntityTypeConfiguration<Commission>
 
         builder.HasKey(c => c.Id);
 
+        builder.Property(c => c.UpdatedAt).IsConcurrencyToken();
+
         builder.Property(c => c.Title)
             .IsRequired()
             .HasMaxLength(200);
