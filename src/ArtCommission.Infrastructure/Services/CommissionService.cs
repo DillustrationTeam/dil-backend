@@ -9,13 +9,11 @@ namespace ArtCommission.Infrastructure.Services;
 
 public class CommissionService : ICommissionService
 {
-    private readonly ApplicationDbContext _dbContext;
-    private readonly AppDbContext _identityDb;
+    private readonly AppDbContext _dbContext;
 
-    public CommissionService(ApplicationDbContext dbContext, AppDbContext identityDb)
+    public CommissionService(AppDbContext dbContext)
     {
         _dbContext = dbContext;
-        _identityDb = identityDb;
     }
 
     private static void RequireClient(Commission commission, Guid userId)
@@ -54,24 +52,30 @@ public class CommissionService : ICommissionService
     {
         if (clientId == Guid.Empty || request.CreatorId == Guid.Empty || clientId == request.CreatorId)
             throw new ArgumentException("A valid, distinct client and creator are required.");
+        
         if (request.TotalPrice <= 0 || decimal.Round(request.TotalPrice, 2) != request.TotalPrice)
             throw new ArgumentException("TotalPrice must be a positive amount in cents.");
+        
         var milestones = request.Milestones?.OrderBy(m => m.Sequence).ToList();
+        
         if (milestones is null || milestones.Count == 0 ||
             !milestones.Select(m => m.Sequence).SequenceEqual(Enumerable.Range(1, milestones.Count)) ||
             milestones.Any(m => m.Price <= 0) ||
             Math.Abs(milestones.Sum(m => m.Price) - request.TotalPrice) > 0.01m)
             throw new ArgumentException("Milestones must be ordered from 1, have positive prices, and total the commission price.");
+        
         var roundedPrices = milestones.Take(milestones.Count - 1)
             .Select(m => decimal.Round(m.Price, 2, MidpointRounding.AwayFromZero)).ToList();
         roundedPrices.Add(request.TotalPrice - roundedPrices.Sum());
+        
         if (roundedPrices.Any(price => price <= 0))
             throw new ArgumentException("Each milestone must cost at least 0.01.");
-        var creatorHasRole = await _identityDb.UserRoles
-            .Join(_identityDb.Roles, userRole => userRole.RoleId, role => role.Id,
+        
+        var creatorHasRole = await _dbContext.UserRoles
+            .Join(_dbContext.Roles, userRole => userRole.RoleId, role => role.Id,
                 (userRole, role) => new { userRole.UserId, role.Name })
             .AnyAsync(x => x.UserId == request.CreatorId && x.Name == "Creator", cancellationToken);
-        if (!creatorHasRole || !await _identityDb.CreatorProfiles
+        if (!creatorHasRole || !await _dbContext.CreatorProfiles
                 .AnyAsync(p => p.UserId == request.CreatorId && !p.IsDeleted, cancellationToken))
             throw new ArgumentException("CreatorId must identify an active creator profile.");
 

@@ -342,19 +342,6 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// Register DbContext (SQL Server or InMemory fallback)
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-{
-    var connStr = builder.Configuration.GetConnectionString("DefaultConnection");
-    if (!string.IsNullOrEmpty(connStr))
-    {
-        options.UseSqlServer(connStr);
-    }
-    else
-    {
-        options.UseInMemoryDatabase("ArtCommissionDb");
-    }
-});
 
 // Register Application Services
 builder.Services.AddScoped<ICommissionService, CommissionService>();
@@ -379,34 +366,19 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
     await context.Response.WriteAsJsonAsync(ApiErrors.Create(status, title, detail, context.TraceIdentifier));
 }));
 
-// Auto-initialize Database & Seed Roles on Startup
-using (var scope = app.Services.CreateScope())
+var entryAssemblyName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+var isDocumentGeneration = string.Equals(entryAssemblyName, "GetDocument.Insider", StringComparison.OrdinalIgnoreCase)
+    || entryAssemblyName?.StartsWith("GetDocument", StringComparison.OrdinalIgnoreCase) == true
+    || string.Equals(entryAssemblyName, "ef", StringComparison.OrdinalIgnoreCase);
+
+if (!isDocumentGeneration)
 {
-    var services = scope.ServiceProvider;
-    var logger = services.GetRequiredService<ILogger<Program>>();
-    try
+    using (var scope = app.Services.CreateScope())
     {
+        var services = scope.ServiceProvider;
         var dbContext = services.GetRequiredService<AppDbContext>();
-
-        // Áp dụng migration EF Core đang chờ (thay cho EnsureCreatedAsync).
-        // LƯU Ý: DB dev tạo bằng EnsureCreatedAsync KHÔNG có bảng __EFMigrationsHistory
-        // => phải xoá DB một lần rồi chạy lại để migration áp dụng được từ đầu.
         await dbContext.Database.MigrateAsync();
-
-        var roleManager = services.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
-        var roles = new[] { "Administrator", "Moderator", "Creator", "Client" };
-        foreach (var role in roles)
-        {
-            if (!await roleManager.RoleExistsAsync(role))
-            {
-                await roleManager.CreateAsync(new IdentityRole<Guid>(role));
-            }
-        }
-        logger.LogInformation("Database initialized and default roles seeded successfully.");
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "An error occurred while initializing the database.");
+        await DatabaseSeeder.SeedAsync(services);
     }
 }
 
