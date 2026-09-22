@@ -262,7 +262,7 @@ public class CommissionService : ICommissionService
         var creatorWallet = await _walletService.GetOrCreateWalletAsync(creatorUserId, cancellationToken);
         await _walletService.ReleaseFundsAsync(clientWallet, WalletTransactionType.EscrowRelease, milestone.Price,
             nameof(Milestone), milestone.Id, "Commission milestone release", cancellationToken);
-        await _walletService.CreditAsync(creatorWallet, WalletTransactionType.CommissionEarning, milestone.Price,
+        await _walletService.CreditAsync(creatorWallet, WalletTransactionType.EscrowReceive, milestone.Price,
             nameof(Milestone), milestone.Id, "Commission milestone earning", cancellationToken);
 
         milestone.Status = MilestoneStatus.Approved;

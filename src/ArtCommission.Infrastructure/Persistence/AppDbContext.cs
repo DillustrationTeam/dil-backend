@@ -1,10 +1,15 @@
 using System.Reflection;
 using ArtCommission.Application.Common.Interfaces;
+using ArtCommission.Domain.Entities.Ai;
 using ArtCommission.Domain.Entities.ArtistStudio;
 using ArtCommission.Domain.Entities.Commission;
+using ArtCommission.Domain.Entities.Auction;
+using ArtCommission.Domain.Entities.Chat;
+using ArtCommission.Domain.Entities.CreatorApplication;
 using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Domain.Entities.Notifications;
 using ArtCommission.Domain.Entities.Payment;
+using ArtCommission.Domain.Entities.Revenue;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -44,8 +49,47 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<Voucher> Vouchers => Set<Voucher>();
     public DbSet<VoucherRedemption> VoucherRedemptions => Set<VoucherRedemption>();
 
-    // Module Notification (UC45)
     public DbSet<Notification> Notifications => Set<Notification>();
+
+    public DbSet<CreatorApplication> CreatorApplications => Set<CreatorApplication>();
+
+
+
+    // Module Chat (UC26)
+    public DbSet<ArtCommission.Domain.Entities.Chat.Message> Messages => Set<ArtCommission.Domain.Entities.Chat.Message>();
+
+    // ---------------------------------------------------------------------
+    // Module Auction & Art Trade (UC32–UC35)
+    // ---------------------------------------------------------------------
+    public DbSet<Auction> Auctions => Set<Auction>();
+    public DbSet<Bid> Bids => Set<Bid>();
+    public DbSet<AuctionWatch> AuctionWatches => Set<AuctionWatch>();
+    public DbSet<ArtworkOwnership> ArtworkOwnerships => Set<ArtworkOwnership>();
+    public DbSet<EscrowTransaction> EscrowTransactions => Set<EscrowTransaction>();
+    public DbSet<Deliverable> Deliverables => Set<Deliverable>();
+
+    // ---------------------------------------------------------------------
+    // Module Workroom Chat (UC43)
+    // ---------------------------------------------------------------------
+    public DbSet<ChatRoom> ChatRooms => Set<ChatRoom>();
+    public DbSet<ChatRoomMember> ChatRoomMembers => Set<ChatRoomMember>();
+    public DbSet<MessageAttachment> MessageAttachments => Set<MessageAttachment>();
+
+    // ---------------------------------------------------------------------
+    // Module AI Assistant (UC44 chatbot, UC46 deadline risk)
+    // ---------------------------------------------------------------------
+    public DbSet<AiConversation> AiConversations => Set<AiConversation>();
+    public DbSet<AiMessage> AiMessages => Set<AiMessage>();
+    public DbSet<DeadlineReminder> DeadlineReminders => Set<DeadlineReminder>();
+    public DbSet<UserReminderSetting> UserReminderSettings => Set<UserReminderSetting>();
+
+    // ---------------------------------------------------------------------
+    // Module Creator Revenue Analytics (UC51)
+    // ---------------------------------------------------------------------
+    public DbSet<RevenueSnapshot> RevenueSnapshots => Set<RevenueSnapshot>();
+
+    // Module Identity & User Sanctions (SCR-23 / UC31)
+    public DbSet<UserSanction> UserSanctions => Set<UserSanction>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

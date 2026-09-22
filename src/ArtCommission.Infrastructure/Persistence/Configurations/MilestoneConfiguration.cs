@@ -21,7 +21,8 @@ public class MilestoneConfiguration : IEntityTypeConfiguration<Milestone>
 
         builder.Property(m => m.Status)
             .HasConversion<string>()
-            .HasMaxLength(50);
+            .HasMaxLength(50)
+            .IsConcurrencyToken();
 
         builder.Property(m => m.WipPreviewUrl)
             .HasMaxLength(500);

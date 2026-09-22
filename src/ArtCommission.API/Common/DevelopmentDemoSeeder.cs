@@ -51,7 +51,7 @@ internal static class DevelopmentDemoSeeder
             dbContext.CreatorProfiles.Add(creatorProfile);
         }
 
-        creatorProfile.RateCardJson ??= """
+        creatorProfile.RateCard ??= """
             [
               {"id":"portrait","name":"Chân dung bán thân","description":"1 nhân vật, nền đơn giản, PNG độ phân giải cao.","price":350000,"milestones":[{"sequence":1,"title":"Phác thảo","price":105000},{"sequence":2,"title":"Lineart & màu cơ bản","price":140000},{"sequence":3,"title":"Hoàn thiện","price":105000}]},
               {"id":"full-body","name":"Minh hoạ toàn thân","description":"1 nhân vật toàn thân, nền gradient hoặc đạo cụ đơn giản.","price":650000,"milestones":[{"sequence":1,"title":"Phác thảo bố cục","price":195000},{"sequence":2,"title":"Lineart & màu","price":260000},{"sequence":3,"title":"Hoàn thiện & bàn giao","price":195000}]},

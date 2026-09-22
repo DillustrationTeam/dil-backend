@@ -35,11 +35,15 @@ public class CommissionConfiguration : IEntityTypeConfiguration<Commission>
 
         builder.Property(c => c.EscrowStatus)
             .HasConversion<string>()
-            .HasMaxLength(50);
+            .HasMaxLength(50)
+            .IsConcurrencyToken();
+
+        builder.Property(c => c.CurrentStage).IsConcurrencyToken();
 
         builder.Property(c => c.Status)
             .HasConversion<string>()
-            .HasMaxLength(50);
+            .HasMaxLength(50)
+            .IsConcurrencyToken();
 
         builder.HasMany(c => c.Milestones)
             .WithOne(m => m.Commission)

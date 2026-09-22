@@ -23,6 +23,8 @@ public class PlatformConfigConfiguration : IEntityTypeConfiguration<PlatformConf
         builder.Property(c => c.Description)
             .HasMaxLength(500);
 
+        builder.Property(c => c.UpdatedByAdminId);
+
         builder.Property(c => c.CreatedAt)
             .IsRequired();
 

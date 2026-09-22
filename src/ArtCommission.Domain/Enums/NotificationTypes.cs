@@ -24,7 +24,16 @@ public enum NotificationType
     PaymentSucceeded,
 
     /// <summary>Yêu cầu rút tiền đổi trạng thái — duyệt hoặc từ chối (UC49).</summary>
-    PayoutStatusChanged
+    PayoutStatusChanged,
+
+    /// <summary>Thông báo chế tài xử phạt tài khoản (SCR-23 / UC31).</summary>
+    UserSanctionAlert,
+
+    /// <summary>
+    /// Khuyến mãi / ưu đãi của sàn (SCR-45 — tab "Khuyến mãi").
+    /// Chưa có worker tự phát; Admin phát khi mở chiến dịch ưu đãi.
+    /// </summary>
+    PromotionAnnouncement
 }
 
 public static class NotificationTypeNames
@@ -35,9 +44,68 @@ public static class NotificationTypeNames
     public const string DeadlineRiskWarning = nameof(NotificationType.DeadlineRiskWarning);
     public const string PaymentSucceeded = nameof(NotificationType.PaymentSucceeded);
     public const string PayoutStatusChanged = nameof(NotificationType.PayoutStatusChanged);
+    public const string UserSanctionAlert = nameof(NotificationType.UserSanctionAlert);
+    public const string PromotionAnnouncement = nameof(NotificationType.PromotionAnnouncement);
 
     public static readonly string[] All =
-        [OutbidAlert, AuctionEndingSoon, AuctionWon, DeadlineRiskWarning, PaymentSucceeded, PayoutStatusChanged];
+        [OutbidAlert, AuctionEndingSoon, AuctionWon, DeadlineRiskWarning, PaymentSucceeded, PayoutStatusChanged, UserSanctionAlert, PromotionAnnouncement];
+}
+
+/// <summary>
+/// Nhóm thông báo — dùng cho 4 tab của Notification Center (SCR-45):
+/// Tài chính / Đơn hàng / Hệ thống / Khuyến mãi.
+///
+/// VÌ SAO không lọc thẳng theo <see cref="NotificationType"/> ở FE: một tab gồm nhiều loại,
+/// nếu FE tự gộp thì phân trang cursor sẽ sai (mỗi tab phải phân trang trên đúng tập của nó).
+/// Bộ lọc nhóm được đẩy xuống DB qua <c>?category=</c>.
+/// </summary>
+public enum NotificationCategory
+{
+    /// <summary>Tiền nong: nạp tiền, trạng thái rút tiền.</summary>
+    Finance,
+
+    /// <summary>Đơn hàng: đấu giá, nguy cơ trễ hạn của đơn đặt vẽ.</summary>
+    Order,
+
+    /// <summary>Hệ thống: chế tài, thay đổi quy định.</summary>
+    System,
+
+    /// <summary>Khuyến mãi, ưu đãi.</summary>
+    Promotion
+}
+
+public static class NotificationCategoryNames
+{
+    public const string Finance = nameof(NotificationCategory.Finance);
+    public const string Order = nameof(NotificationCategory.Order);
+    public const string System = nameof(NotificationCategory.System);
+    public const string Promotion = nameof(NotificationCategory.Promotion);
+
+    public static readonly string[] All = [Finance, Order, System, Promotion];
+}
+
+/// <summary>Ánh xạ nhóm → các loại thông báo thuộc nhóm đó. Một loại chỉ thuộc ĐÚNG một nhóm.</summary>
+public static class NotificationCategoryMap
+{
+    public static NotificationType[] TypesOf(NotificationCategory category) => category switch
+    {
+        NotificationCategory.Finance =>
+            [NotificationType.PaymentSucceeded, NotificationType.PayoutStatusChanged],
+
+        NotificationCategory.Order =>
+        [
+            NotificationType.OutbidAlert,
+            NotificationType.AuctionEndingSoon,
+            NotificationType.AuctionWon,
+            NotificationType.DeadlineRiskWarning
+        ],
+
+        NotificationCategory.System => [NotificationType.UserSanctionAlert],
+
+        NotificationCategory.Promotion => [NotificationType.PromotionAnnouncement],
+
+        _ => []
+    };
 }
 
 /// <summary>
