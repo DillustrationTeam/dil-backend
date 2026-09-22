@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using ArtCommission.Application.Common.Interfaces;
+using ArtCommission.Domain.Enums;
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -29,7 +30,8 @@ public class ConfirmVerificationCodeCommandHandler : IRequestHandler<ConfirmVeri
         var email = request.Email.Trim().ToLowerInvariant();
 
         var verificationCode = await _db.EmailVerificationCodes
-            .Where(c => c.Email == email && c.ConsumedAt == null && c.ExpiresAt > DateTimeOffset.UtcNow)
+            .Where(c => c.Email == email && c.Purpose == VerificationCodePurpose.EmailVerification
+                && c.ConsumedAt == null && c.ExpiresAt > DateTimeOffset.UtcNow)
             .OrderByDescending(c => c.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
 

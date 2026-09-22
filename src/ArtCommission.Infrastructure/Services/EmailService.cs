@@ -23,16 +23,16 @@ public class EmailService : IEmailService
         return SendAsync(toEmail, "Xác minh email - Dillustration", body, cancellationToken);
     }
 
-    public Task SendPasswordResetEmailAsync(string toEmail, string fullName, string resetToken, CancellationToken cancellationToken = default)
-    {
-        var body = $"<p>Xin chào {fullName},</p><p>Mã đặt lại mật khẩu của bạn: <b>{resetToken}</b></p>";
-        return SendAsync(toEmail, "Đặt lại mật khẩu - Dillustration", body, cancellationToken);
-    }
-
     public Task SendVerificationCodeEmailAsync(string toEmail, string code, CancellationToken cancellationToken = default)
     {
         var body = $"<p>Mã xác minh email của bạn là:</p><p style=\"font-size:28px;font-weight:bold;letter-spacing:4px;\">{code}</p><p>Mã có hiệu lực trong 10 phút. Nếu bạn không yêu cầu mã này, hãy bỏ qua email.</p>";
         return SendAsync(toEmail, "Mã xác minh đăng ký - Dillustration", body, cancellationToken);
+    }
+
+    public Task SendPasswordResetCodeEmailAsync(string toEmail, string code, CancellationToken cancellationToken = default)
+    {
+        var body = $"<p>Mã đặt lại mật khẩu của bạn là:</p><p style=\"font-size:28px;font-weight:bold;letter-spacing:4px;\">{code}</p><p>Mã có hiệu lực trong 10 phút. Nếu bạn không yêu cầu đổi mật khẩu, hãy bỏ qua email này.</p>";
+        return SendAsync(toEmail, "Mã đặt lại mật khẩu - Dillustration", body, cancellationToken);
     }
 
     private async Task SendAsync(string toEmail, string subject, string htmlBody, CancellationToken cancellationToken)

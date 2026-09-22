@@ -22,5 +22,10 @@ public class EmailVerificationCodeConfiguration : IEntityTypeConfiguration<Email
         builder.Property(e => e.CodeHash)
             .HasMaxLength(64)
             .IsRequired();
+
+        builder.Property(e => e.Purpose)
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .IsRequired();
     }
 }

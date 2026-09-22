@@ -29,6 +29,12 @@ public class CreatorApplicationConfiguration : IEntityTypeConfiguration<CreatorA
                     v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<string>()
                 );
 
+       builder.Property(x => x.SpeedpaintVideoUrls)
+               .HasConversion(
+                    v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                    v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<string>()
+                );
+
         builder.HasOne(c => c.ReviewedByMod)
                .WithMany()
                .HasForeignKey(c => c.ReviewedByModId)
@@ -49,9 +55,6 @@ public class CreatorApplicationConfiguration : IEntityTypeConfiguration<CreatorA
 
         builder.Property(c => c.PrimaryStyle)
                .HasMaxLength(100);
-
-        builder.Property(c => c.SpeedpaintVideoUrl)
-               .HasMaxLength(500);
 
         builder.Property(c => c.IsNationalIdVerified)
                .HasDefaultValue(false);

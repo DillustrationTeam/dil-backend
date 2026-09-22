@@ -1,4 +1,4 @@
-using ArtCommission.Application.CreatorApplication.Commands;
+﻿using ArtCommission.Application.CreatorApplication.Commands;
 using ArtCommission.Application.CreatorApplication.DTOs;
 using ArtCommission.Application.CreatorApplication.Queries;
 using ArtCommission.Domain.Enums;
@@ -39,7 +39,7 @@ public class CreatorApplicationsController : ApiControllerBase
             IdProofUrl: request.IdProofUrl,
             IdProofBackUrl: request.IdProofBackUrl,
             PrimaryStyle: request.PrimaryStyle,
-            SpeedpaintVideoUrl: request.SpeedpaintVideoUrl
+            SpeedpaintVideoUrls: request.SpeedpaintVideoUrls
         );
 
         var (success, applicationId, errors) = await Mediator.Send(command, cancellationToken);
@@ -93,7 +93,7 @@ public class CreatorApplicationsController : ApiControllerBase
             IdProofUrl: request.IdProofUrl,
             IdProofBackUrl: request.IdProofBackUrl,
             PrimaryStyle: request.PrimaryStyle,
-            SpeedpaintVideoUrl: request.SpeedpaintVideoUrl
+            SpeedpaintVideoUrls: request.SpeedpaintVideoUrls
         );
 
         var (success, errors) = await Mediator.Send(command, cancellationToken);

@@ -36,7 +36,7 @@ public class GetCreatorApplicationByIdQueryHandler
                 ApplicantEmail = c.Applicant != null ? (c.Applicant.Email ?? string.Empty) : string.Empty,
                 PrimaryStyle = c.PrimaryStyle,
                 PortfolioLinks = c.PortfolioLinks,
-                SpeedpaintVideoUrl = c.SpeedpaintVideoUrl,
+                SpeedpaintVideoUrls = c.SpeedpaintVideoUrls,
                 SocialLinks = c.SocialLinks,
                 IdProofUrl = c.IdProofUrl,
                 IdProofBackUrl = c.IdProofBackUrl,

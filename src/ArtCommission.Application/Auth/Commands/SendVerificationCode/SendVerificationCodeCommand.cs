@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Entities.Identity;
+using ArtCommission.Domain.Enums;
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -39,7 +40,8 @@ public class SendVerificationCodeCommandHandler : IRequestHandler<SendVerificati
 
         var recentCutoff = DateTimeOffset.UtcNow.Subtract(MinResendInterval);
         var hasRecentCode = await _db.EmailVerificationCodes
-            .AnyAsync(c => c.Email == email && c.ConsumedAt == null && c.CreatedAt > recentCutoff, cancellationToken);
+            .AnyAsync(c => c.Email == email && c.Purpose == VerificationCodePurpose.EmailVerification
+                && c.ConsumedAt == null && c.CreatedAt > recentCutoff, cancellationToken);
 
         if (hasRecentCode)
         {
@@ -53,6 +55,7 @@ public class SendVerificationCodeCommandHandler : IRequestHandler<SendVerificati
         {
             Email = email,
             CodeHash = codeHash,
+            Purpose = VerificationCodePurpose.EmailVerification,
             ExpiresAt = DateTimeOffset.UtcNow.Add(CodeLifetime)
         };
 

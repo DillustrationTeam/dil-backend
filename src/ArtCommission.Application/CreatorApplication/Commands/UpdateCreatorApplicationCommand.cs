@@ -13,7 +13,7 @@ public record UpdateCreatorApplicationCommand(
     string IdProofUrl,
     string IdProofBackUrl,
     string? PrimaryStyle = null,
-    string? SpeedpaintVideoUrl = null
+    List<string>? SpeedpaintVideoUrls = null
 ) : IRequest<(bool Success, string[] Errors)>;
 
 public class UpdateCreatorApplicationCommandValidator : AbstractValidator<UpdateCreatorApplicationCommand>
@@ -42,6 +42,12 @@ public class UpdateCreatorApplicationCommandValidator : AbstractValidator<Update
         {
             RuleForEach(c => c.SocialLinks)
                 .Must(IsValidUrl).WithMessage("Social link must be a valid URL.");
+        });
+
+        When(c => c.SpeedpaintVideoUrls != null && c.SpeedpaintVideoUrls.Count > 0, () =>
+        {
+            RuleForEach(c => c.SpeedpaintVideoUrls)
+                .Must(IsValidUrl).WithMessage("Speedpaint video link must be a valid URL.");
         });
     }
 
@@ -92,7 +98,7 @@ public class UpdateCreatorApplicationCommandHandler
         application.IdProofUrl = request.IdProofUrl;
         application.IdProofBackUrl = request.IdProofBackUrl;
         application.PrimaryStyle = request.PrimaryStyle;
-        application.SpeedpaintVideoUrl = request.SpeedpaintVideoUrl;
+        application.SpeedpaintVideoUrls = request.SpeedpaintVideoUrls ?? new List<string>();
         application.Status = ApplicationStatus.Pending;
         application.ReviewNote = null;
         application.ReviewedAt = null;
