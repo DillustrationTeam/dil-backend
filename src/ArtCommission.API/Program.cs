@@ -9,6 +9,7 @@ using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
 using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Infrastructure.ExternalServices.Cloudinary;
+using ArtCommission.Infrastructure.ExternalServices.Google;
 using ArtCommission.Infrastructure.ExternalServices.PayOs;
 using ArtCommission.Infrastructure.Identity;
 using ArtCommission.Infrastructure.Persistence;
@@ -53,6 +54,7 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
 builder.Services.AddScoped<IIdentityService, IdentityService>();
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IEmailVerificationService, EmailVerificationService>();
 
 // 3b. Payment module — DbContext exposed qua interface cho tầng Application
 builder.Services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<AppDbContext>());
@@ -99,6 +101,11 @@ builder.Services.AddScoped<IPaymentGateway, PayOsPaymentGateway>();
 // Secret lấy từ User Secrets (dev) hoặc biến môi trường Cloudinary__ApiSecret.
 builder.Services.Configure<CloudinaryOptions>(builder.Configuration.GetSection(CloudinaryOptions.SectionName));
 builder.Services.AddScoped<ICloudinarySignatureService, CloudinarySignatureService>();
+
+// 3d-3. Google OAuth (custom button, access-token flow) — server verifies token via Google's
+// tokeninfo (aud check) + userinfo endpoints. No Client Secret required for this flow.
+builder.Services.Configure<GoogleAuthOptions>(builder.Configuration.GetSection(GoogleAuthOptions.SectionName));
+builder.Services.AddHttpClient<IGoogleUserInfoService, GoogleUserInfoService>();
 
 // 3e. UC45 — Notification: ghi DB + đẩy SignalR real-time
 builder.Services.AddScoped<INotificationPublisher, SignalRNotificationPublisher>();

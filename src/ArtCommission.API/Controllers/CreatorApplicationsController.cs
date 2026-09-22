@@ -70,6 +70,65 @@ public class CreatorApplicationsController : ApiControllerBase
     }
 
     /// <summary>
+    /// Sửa đơn đăng ký Creator hiện tại (chỉ khi đơn đang Pending hoặc AdditionalProofRequested).
+    /// Sửa xong đơn quay lại trạng thái Pending để chờ duyệt lại.
+    /// </summary>
+    [HttpPut("me")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> UpdateMyApplication(
+        [FromBody] SubmitCreatorApplicationDto request,
+        CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var command = new UpdateCreatorApplicationCommand(
+            ApplicantId: CurrentUserId,
+            PortfolioLinks: request.PortfolioLinks,
+            SocialLinks: request.SocialLinks,
+            IdProofUrl: request.IdProofUrl,
+            IdProofBackUrl: request.IdProofBackUrl,
+            PrimaryStyle: request.PrimaryStyle,
+            SpeedpaintVideoUrl: request.SpeedpaintVideoUrl
+        );
+
+        var (success, errors) = await Mediator.Send(command, cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(new { message = "Application updated successfully." });
+    }
+
+    /// <summary>
+    /// Thu hồi đơn đăng ký Creator hiện tại (chỉ khi đơn đang Pending hoặc AdditionalProofRequested).
+    /// </summary>
+    [HttpDelete("me")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> WithdrawMyApplication(CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var (success, errors) = await Mediator.Send(new WithdrawCreatorApplicationCommand(CurrentUserId), cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(new { message = "Application withdrawn successfully." });
+    }
+
+    /// <summary>
     /// Lấy danh sách các đơn đăng ký (Dành cho Moderator và Administrator).
     /// Hỗ trợ lọc theo trạng thái (Pending, Approved, Rejected, AdditionalProofRequested) và phân trang.
     /// </summary>

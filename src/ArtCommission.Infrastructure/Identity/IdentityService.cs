@@ -18,7 +18,7 @@ public class IdentityService : IIdentityService
         _roleManager = roleManager;
     }
 
-    public async Task<(bool Success, Guid UserId, string[] Errors)> RegisterUserAsync(string email, string password, string fullName, string? role = null, CancellationToken cancellationToken = default)
+    public async Task<(bool Success, Guid UserId, string[] Errors)> RegisterUserAsync(string email, string password, string fullName, string? role = null, bool isVerified = false, CancellationToken cancellationToken = default)
     {
         var existingUser = await _userManager.FindByEmailAsync(email);
         if (existingUser != null)
@@ -32,7 +32,7 @@ public class IdentityService : IIdentityService
             Email = email,
             UserName = email,
             FullName = fullName,
-            IsVerified = false,
+            IsVerified = isVerified,
             CreatedAt = DateTimeOffset.UtcNow
         };
 
@@ -186,5 +186,68 @@ public class IdentityService : IIdentityService
         }
 
         return (true, Array.Empty<string>());
+    }
+
+    public async Task<(bool Success, UserDto? User, string[] Roles, string[] Errors)> AuthenticateOrRegisterExternalAsync(
+        string provider, string providerKey, string email, bool emailVerified, string? fullName,
+        CancellationToken cancellationToken = default)
+    {
+        // 1. Đã từng link provider này trước đó -> user quay lại, đăng nhập luôn.
+        var linkedUser = await _userManager.FindByLoginAsync(provider, providerKey);
+        if (linkedUser != null && !linkedUser.IsDeleted)
+        {
+            var linkedRoles = await _userManager.GetRolesAsync(linkedUser);
+            var linkedUserDto = new UserDto(linkedUser.Id, linkedUser.Email!, linkedUser.FullName, linkedUser.IsVerified, linkedUser.CreatedAt);
+            return (true, linkedUserDto, linkedRoles.ToArray(), Array.Empty<string>());
+        }
+
+        var existingUser = await _userManager.FindByEmailAsync(email);
+        if (existingUser != null)
+        {
+            if (existingUser.IsDeleted)
+            {
+                return (false, null, Array.Empty<string>(), new[] { "This account is no longer active." });
+            }
+
+            if (!emailVerified)
+            {
+                return (false, null, Array.Empty<string>(), new[] { "This email is already registered. Please sign in with your password." });
+            }
+
+            // 2. Email đã xác thực từ provider khớp một tài khoản có sẵn -> merge (link thêm login).
+            await _userManager.AddLoginAsync(existingUser, new UserLoginInfo(provider, providerKey, provider));
+
+            var existingRoles = await _userManager.GetRolesAsync(existingUser);
+            var existingUserDto = new UserDto(existingUser.Id, existingUser.Email!, existingUser.FullName, existingUser.IsVerified, existingUser.CreatedAt);
+            return (true, existingUserDto, existingRoles.ToArray(), Array.Empty<string>());
+        }
+
+        // 3. Chưa từng có tài khoản nào -> tạo mới, không mật khẩu (PasswordHash để null).
+        var newUser = new ApplicationUser
+        {
+            Id = Guid.NewGuid(),
+            Email = email,
+            UserName = email,
+            FullName = fullName ?? email,
+            IsVerified = emailVerified,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        var createResult = await _userManager.CreateAsync(newUser);
+        if (!createResult.Succeeded)
+        {
+            return (false, null, Array.Empty<string>(), createResult.Errors.Select(e => e.Description).ToArray());
+        }
+
+        if (!await _roleManager.RoleExistsAsync(UserRoleNames.Client))
+        {
+            await _roleManager.CreateAsync(new IdentityRole<Guid>(UserRoleNames.Client));
+        }
+        await _userManager.AddToRoleAsync(newUser, UserRoleNames.Client);
+
+        await _userManager.AddLoginAsync(newUser, new UserLoginInfo(provider, providerKey, provider));
+
+        var newUserDto = new UserDto(newUser.Id, newUser.Email!, newUser.FullName, newUser.IsVerified, newUser.CreatedAt);
+        return (true, newUserDto, new[] { UserRoleNames.Client }, Array.Empty<string>());
     }
 }

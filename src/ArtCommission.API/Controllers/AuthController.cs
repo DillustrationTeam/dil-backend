@@ -1,9 +1,12 @@
+using ArtCommission.Application.Auth.Commands.ConfirmVerificationCode;
 using ArtCommission.Application.Auth.Commands.ForgotPassword;
+using ArtCommission.Application.Auth.Commands.GoogleAuth;
 using ArtCommission.Application.Auth.Commands.Login;
 using ArtCommission.Application.Auth.Commands.RefreshToken;
 using ArtCommission.Application.Auth.Commands.Register;
 using ArtCommission.Application.Auth.Commands.ResetPassword;
 using ArtCommission.Application.Auth.Commands.RevokeToken;
+using ArtCommission.Application.Auth.Commands.SendVerificationCode;
 using ArtCommission.Application.Auth.Queries.GetCurrentUser;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -31,6 +34,42 @@ public class AuthController : ApiControllerBase
     }
 
     /// <summary>
+    /// Gửi mã OTP xác minh email trước khi đăng ký (đăng ký bằng email/password)
+    /// </summary>
+    [HttpPost("send-verification-code")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SendVerificationCode([FromBody] SendVerificationCodeCommand command, CancellationToken cancellationToken)
+    {
+        var (success, errors) = await Mediator.Send(command, cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(new { message = "Verification code sent." });
+    }
+
+    /// <summary>
+    /// Xác nhận mã OTP đã gửi, trả về vé xác minh (verificationTicket) để dùng khi Register
+    /// </summary>
+    [HttpPost("confirm-verification-code")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ConfirmVerificationCode([FromBody] ConfirmVerificationCodeCommand command, CancellationToken cancellationToken)
+    {
+        var (success, verificationTicket, errors) = await Mediator.Send(command, cancellationToken);
+        if (!success || verificationTicket == null)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(new { verificationTicket });
+    }
+
+    /// <summary>
     /// Authenticate user and issue JWT Access + Refresh Tokens (UC-02)
     /// </summary>
     [HttpPost("login")]
@@ -38,6 +77,27 @@ public class AuthController : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Login([FromBody] LoginCommand command, CancellationToken cancellationToken)
+    {
+        var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var commandWithIp = command with { ClientIp = clientIp };
+
+        var (success, authResponse, errors) = await Mediator.Send(commandWithIp, cancellationToken);
+        if (!success || authResponse == null)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(authResponse);
+    }
+
+    /// <summary>
+    /// Authenticate or auto-register via Google OAuth access token (custom button + implicit flow)
+    /// </summary>
+    [HttpPost("google")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GoogleAuth([FromBody] GoogleAuthCommand command, CancellationToken cancellationToken)
     {
         var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
         var commandWithIp = command with { ClientIp = clientIp };

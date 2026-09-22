@@ -53,6 +53,7 @@ public interface IApplicationDbContext
     DbSet<ApplicationUser> Users { get; }
     DbSet<UserSanction> UserSanctions { get; }
     DbSet<RefreshToken> RefreshTokens { get; }
+    DbSet<EmailVerificationCode> EmailVerificationCodes { get; }
 
     DbSet<T> Set<T>() where T : class;
 
