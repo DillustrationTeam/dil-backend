@@ -1,6 +1,7 @@
 using ArtCommission.Application.Admin.DTOs;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Entities.Identity;
+using ArtCommission.Domain.Enums;
 using MediatR;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -69,18 +70,57 @@ public class GetUsersAdminQueryHandler
 
         if (!string.IsNullOrWhiteSpace(request.Role) && !request.Role.Equals("All", StringComparison.OrdinalIgnoreCase))
         {
-            var roleId = await _db.Set<IdentityRole<Guid>>()
-                .Where(r => r.Name == request.Role)
+            var clientRoleId = await _db.Set<IdentityRole<Guid>>()
+                .Where(r => r.Name == UserRoleNames.Client)
                 .Select(r => r.Id)
                 .FirstOrDefaultAsync(cancellationToken);
 
-            if (roleId != Guid.Empty)
-            {
-                var userIdsInRole = _db.Set<IdentityUserRole<Guid>>()
-                    .Where(ur => ur.RoleId == roleId)
-                    .Select(ur => ur.UserId);
+            var creatorRoleId = await _db.Set<IdentityRole<Guid>>()
+                .Where(r => r.Name == UserRoleNames.Creator)
+                .Select(r => r.Id)
+                .FirstOrDefaultAsync(cancellationToken);
 
-                query = query.Where(u => userIdsInRole.Contains(u.Id));
+            var clientUserIds = _db.Set<IdentityUserRole<Guid>>()
+                .Where(ur => ur.RoleId == clientRoleId)
+                .Select(ur => ur.UserId);
+
+            var creatorUserIds = _db.Set<IdentityUserRole<Guid>>()
+                .Where(ur => ur.RoleId == creatorRoleId)
+                .Select(ur => ur.UserId);
+
+            if (request.Role.Equals("Dual-Role", StringComparison.OrdinalIgnoreCase) ||
+                request.Role.Equals("DualRole", StringComparison.OrdinalIgnoreCase))
+            {
+                // Chỉ lấy Dual-Role (Có cả Client và Creator)
+                query = query.Where(u => clientUserIds.Contains(u.Id) && creatorUserIds.Contains(u.Id));
+            }
+            else if (request.Role.Equals("Client", StringComparison.OrdinalIgnoreCase) ||
+                     request.Role.Equals("ClientOnly", StringComparison.OrdinalIgnoreCase))
+            {
+                // Client only: Chỉ lấy Client, không lấy Dual-Role
+                query = query.Where(u => clientUserIds.Contains(u.Id) && !creatorUserIds.Contains(u.Id));
+            }
+            else if (request.Role.Equals("Creator", StringComparison.OrdinalIgnoreCase) ||
+                     request.Role.Equals("CreatorOnly", StringComparison.OrdinalIgnoreCase))
+            {
+                // Creator only: Chỉ lấy Creator, không lấy Dual-Role
+                query = query.Where(u => creatorUserIds.Contains(u.Id) && !clientUserIds.Contains(u.Id));
+            }
+            else
+            {
+                var roleId = await _db.Set<IdentityRole<Guid>>()
+                    .Where(r => r.Name == request.Role)
+                    .Select(r => r.Id)
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (roleId != Guid.Empty)
+                {
+                    var userIdsInRole = _db.Set<IdentityUserRole<Guid>>()
+                        .Where(ur => ur.RoleId == roleId)
+                        .Select(ur => ur.UserId);
+
+                    query = query.Where(u => userIdsInRole.Contains(u.Id));
+                }
             }
         }
 
