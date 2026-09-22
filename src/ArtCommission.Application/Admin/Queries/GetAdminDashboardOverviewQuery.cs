@@ -198,12 +198,12 @@ public class GetAdminDashboardOverviewQueryHandler : IRequestHandler<GetAdminDas
             });
         }
 
-        // 6. GIAO DỊCH GẦN NHẤT (Recent Transactions)
+        // 6. GIAO DỊCH GẦN NHẤT (Recent Transactions - up to 50 for max 10 per page pagination)
         var rawTransactions = await _db.WalletTransactions
             .AsNoTracking()
             .Where(t => !t.IsDeleted)
             .OrderByDescending(t => t.CreatedAt)
-            .Take(10)
+            .Take(50)
             .ToListAsync(cancellationToken);
 
         var recentTxList = new List<AdminRecentTransactionDto>();

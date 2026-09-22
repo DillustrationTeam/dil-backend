@@ -161,5 +161,115 @@ public static class DatabaseSeeder
         {
             await dbContext.SaveChangesAsync();
         }
+
+        // Seed 3 artworks for Content & AI Moderation Queue (SCR-20 / UC28)
+        if (!await dbContext.Artworks.AnyAsync())
+        {
+            var creatorProfile = await dbContext.CreatorProfiles.FirstOrDefaultAsync();
+            if (creatorProfile != null)
+            {
+                var tagCyberpunk = await dbContext.Tags.FirstOrDefaultAsync(t => t.Name == "Cyberpunk")
+                    ?? new Tag { Id = Guid.NewGuid(), Name = "Cyberpunk", IsAiGenerated = false };
+                var tagAnime = await dbContext.Tags.FirstOrDefaultAsync(t => t.Name == "Anime")
+                    ?? new Tag { Id = Guid.NewGuid(), Name = "Anime", IsAiGenerated = false };
+                var tagDigital = await dbContext.Tags.FirstOrDefaultAsync(t => t.Name == "DigitalPainting")
+                    ?? new Tag { Id = Guid.NewGuid(), Name = "DigitalPainting", IsAiGenerated = false };
+                var tagAndroid = await dbContext.Tags.FirstOrDefaultAsync(t => t.Name == "Android")
+                    ?? new Tag { Id = Guid.NewGuid(), Name = "Android", IsAiGenerated = true };
+                var tagSciFi = await dbContext.Tags.FirstOrDefaultAsync(t => t.Name == "SciFi")
+                    ?? new Tag { Id = Guid.NewGuid(), Name = "SciFi", IsAiGenerated = false };
+                var tagDarkFantasy = await dbContext.Tags.FirstOrDefaultAsync(t => t.Name == "DarkFantasy")
+                    ?? new Tag { Id = Guid.NewGuid(), Name = "DarkFantasy", IsAiGenerated = false };
+
+                var tagsToSeed = new[] { tagCyberpunk, tagAnime, tagDigital, tagAndroid, tagSciFi, tagDarkFantasy };
+                foreach (var tag in tagsToSeed)
+                {
+                    if (!await dbContext.Tags.AnyAsync(t => t.Id == tag.Id || t.Name == tag.Name))
+                    {
+                        dbContext.Tags.Add(tag);
+                    }
+                }
+                await dbContext.SaveChangesAsync();
+
+                var artwork1 = new Artwork
+                {
+                    Id = Guid.NewGuid(),
+                    CreatorProfileId = creatorProfile.Id,
+                    Title = "Lumina Cyber Sequence",
+                    Description = "Cybernetic neon illustration rendered in high resolution anime aesthetic. Inspected for community guidelines compliance and AI generation check.",
+                    ImageUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1280&auto=format&fit=crop",
+                    ThumbnailUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=400&auto=format&fit=crop",
+                    Style = "Cyberpunk Anime",
+                    LikeCount = 342,
+                    ViewCount = 1280,
+                    SafeScore = 0.984m,
+                    AdultScore = 0.012m,
+                    ViolenceScore = 0.002m,
+                    IsAiGenerated = false,
+                    AiDetectionScore = 0.04m,
+                    FlagReason = "AI NSFW Threshold Borderline",
+                    ModerationStatus = "Pending",
+                    Resolution = "3840x2160",
+                    FileSizeBytes = 19293798,
+                    CreatedAt = DateTimeOffset.UtcNow
+                };
+                artwork1.ArtworkTags.Add(new ArtworkTag { ArtworkId = artwork1.Id, TagId = tagCyberpunk.Id });
+                artwork1.ArtworkTags.Add(new ArtworkTag { ArtworkId = artwork1.Id, TagId = tagAnime.Id });
+                artwork1.ArtworkTags.Add(new ArtworkTag { ArtworkId = artwork1.Id, TagId = tagDigital.Id });
+
+                var artwork2 = new Artwork
+                {
+                    Id = Guid.NewGuid(),
+                    CreatorProfileId = creatorProfile.Id,
+                    Title = "Solaris Android Genesis",
+                    Description = "Futuristic synthetic humanoid awakening in neon chamber.",
+                    ImageUrl = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1280&auto=format&fit=crop",
+                    ThumbnailUrl = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=400&auto=format&fit=crop",
+                    Style = "Surrealist Concept",
+                    LikeCount = 195,
+                    ViewCount = 890,
+                    SafeScore = 0.912m,
+                    AdultScore = 0.045m,
+                    ViolenceScore = 0.018m,
+                    IsAiGenerated = true,
+                    AiDetectionScore = 0.96m,
+                    FlagReason = "AI Generated Elements Detected",
+                    ModerationStatus = "Pending",
+                    Resolution = "2560x1440",
+                    FileSizeBytes = 12450000,
+                    CreatedAt = DateTimeOffset.UtcNow.AddHours(-2)
+                };
+                artwork2.ArtworkTags.Add(new ArtworkTag { ArtworkId = artwork2.Id, TagId = tagAndroid.Id });
+                artwork2.ArtworkTags.Add(new ArtworkTag { ArtworkId = artwork2.Id, TagId = tagSciFi.Id });
+
+                var artwork3 = new Artwork
+                {
+                    Id = Guid.NewGuid(),
+                    CreatorProfileId = creatorProfile.Id,
+                    Title = "Abyssal Crimson Knight",
+                    Description = "Armored warrior standing before a blood moon eclipse.",
+                    ImageUrl = "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?q=80&w=1280&auto=format&fit=crop",
+                    ThumbnailUrl = "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?q=80&w=400&auto=format&fit=crop",
+                    Style = "Dark Fantasy",
+                    LikeCount = 512,
+                    ViewCount = 2140,
+                    SafeScore = 0.765m,
+                    AdultScore = 0.082m,
+                    ViolenceScore = 0.185m,
+                    IsAiGenerated = false,
+                    AiDetectionScore = 0.08m,
+                    FlagReason = "User Reported: Violence / Gore Warning",
+                    ModerationStatus = "Pending",
+                    Resolution = "1920x1080",
+                    FileSizeBytes = 8540000,
+                    CreatedAt = DateTimeOffset.UtcNow.AddHours(-5)
+                };
+                artwork3.ArtworkTags.Add(new ArtworkTag { ArtworkId = artwork3.Id, TagId = tagDarkFantasy.Id });
+
+                dbContext.Artworks.AddRange(artwork1, artwork2, artwork3);
+                await dbContext.SaveChangesAsync();
+            }
+        }
     }
 }
+
