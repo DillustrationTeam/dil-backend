@@ -379,42 +379,37 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
     await context.Response.WriteAsJsonAsync(ApiErrors.Create(status, title, detail, context.TraceIdentifier));
 }));
 
-// The build-time OpenAPI tool starts Program to inspect endpoints; it does not need the database.
-if (!isGeneratingOpenApi)
+var entryAssemblyName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+var isDocumentGeneration = string.Equals(entryAssemblyName, "GetDocument.Insider", StringComparison.OrdinalIgnoreCase)
+    || entryAssemblyName?.StartsWith("GetDocument", StringComparison.OrdinalIgnoreCase) == true
+    || string.Equals(entryAssemblyName, "ef", StringComparison.OrdinalIgnoreCase);
+
+if (!isDocumentGeneration)
 {
-    using var scope = app.Services.CreateScope();
-    var services = scope.ServiceProvider;
-    var logger = services.GetRequiredService<ILogger<Program>>();
-    try
+    using (var scope = app.Services.CreateScope())
     {
-        var dbContext = services.GetRequiredService<AppDbContext>();
-
-        // Áp dụng migration EF Core đang chờ (thay cho EnsureCreatedAsync).
-        // LƯU Ý: DB dev tạo bằng EnsureCreatedAsync KHÔNG có bảng __EFMigrationsHistory
-        // => phải xoá DB một lần rồi chạy lại để migration áp dụng được từ đầu.
-        await dbContext.Database.MigrateAsync();
-
-        var roleManager = services.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
-        var roles = new[] { "Administrator", "Moderator", "Creator", "Client" };
-        foreach (var role in roles)
+        var services = scope.ServiceProvider;
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        try
         {
-            if (!await roleManager.RoleExistsAsync(role))
+            var dbContext = services.GetRequiredService<AppDbContext>();
+            await dbContext.Database.MigrateAsync();
+
+            await DatabaseSeeder.SeedAsync(services);
+
+            if (app.Environment.IsDevelopment())
             {
-                await roleManager.CreateAsync(new IdentityRole<Guid>(role));
+                var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
+                var roleManager = services.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
+                await DevelopmentDemoSeeder.SeedAsync(dbContext, userManager, roleManager);
             }
-        }
 
-        if (app.Environment.IsDevelopment())
+            logger.LogInformation("Database initialized successfully.");
+        }
+        catch (Exception ex)
         {
-            var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
-            await DevelopmentDemoSeeder.SeedAsync(dbContext, userManager, roleManager);
+            logger.LogError(ex, "An error occurred while initializing the database.");
         }
-
-        logger.LogInformation("Database initialized and default roles seeded successfully.");
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "An error occurred while initializing the database.");
     }
 }
 

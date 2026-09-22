@@ -26,6 +26,38 @@ public class CommissionService : ICommissionService
         _storageService = storageService;
     }
 
+    private static void RequireClient(Commission commission, Guid userId)
+    {
+        if (userId == Guid.Empty || commission.ClientId != userId)
+            throw new UnauthorizedAccessException("You are not the client for this commission.");
+    }
+
+    private static void RequireCreator(Commission commission, Guid userId)
+    {
+        if (userId == Guid.Empty || commission.CreatorId != userId)
+            throw new UnauthorizedAccessException("You are not the creator for this commission.");
+    }
+
+    private static void RequireParticipant(Commission commission, Guid userId)
+    {
+        if (userId == Guid.Empty || (commission.ClientId != userId && commission.CreatorId != userId))
+            throw new UnauthorizedAccessException("You are not a participant in this commission.");
+    }
+
+    private static void RequireFundedWork(Commission commission)
+    {
+        if (commission.Status != CommissionStatus.InProgress ||
+            commission.EscrowStatus is not (EscrowStatus.Deposited or EscrowStatus.PartialReleased) ||
+            commission.EscrowHeldAmount <= 0)
+            throw new InvalidOperationException("The commission must be accepted and funded before milestone work.");
+    }
+
+    private static void RequireCurrentMilestone(Commission commission, Milestone milestone)
+    {
+        if (milestone.Sequence != commission.CurrentStage)
+            throw new InvalidOperationException("Only the current milestone can be changed.");
+    }
+
     public async Task<CommissionDto> CreateCommissionAsync(CreateCommissionRequest request, Guid clientId, CancellationToken cancellationToken = default)
     {
         RequireUser(clientId);

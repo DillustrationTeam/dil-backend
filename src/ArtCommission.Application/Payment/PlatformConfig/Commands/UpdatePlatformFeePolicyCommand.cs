@@ -100,7 +100,9 @@ public class UpdatePlatformFeePolicyCommandHandler
             .Where(c => targetKeys.Contains(c.Key))
             .ToListAsync(cancellationToken);
 
-        var existingDict = existingConfigs.ToDictionary(c => c.Key, c => c);
+        var existingDict = existingConfigs
+            .GroupBy(c => c.Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Last(), StringComparer.OrdinalIgnoreCase);
         var now = DateTimeOffset.UtcNow;
 
         foreach (var (key, (val, desc)) in keyValues)
