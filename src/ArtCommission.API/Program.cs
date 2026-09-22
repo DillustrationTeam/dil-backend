@@ -366,12 +366,20 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
     await context.Response.WriteAsJsonAsync(ApiErrors.Create(status, title, detail, context.TraceIdentifier));
 }));
 
-using (var scope = app.Services.CreateScope())
+var entryAssemblyName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+var isDocumentGeneration = string.Equals(entryAssemblyName, "GetDocument.Insider", StringComparison.OrdinalIgnoreCase)
+    || entryAssemblyName?.StartsWith("GetDocument", StringComparison.OrdinalIgnoreCase) == true
+    || string.Equals(entryAssemblyName, "ef", StringComparison.OrdinalIgnoreCase);
+
+if (!isDocumentGeneration)
 {
-    var services = scope.ServiceProvider;
-    var dbContext = services.GetRequiredService<AppDbContext>();
-    await dbContext.Database.MigrateAsync();
-    await DatabaseSeeder.SeedAsync(services);
+    using (var scope = app.Services.CreateScope())
+    {
+        var services = scope.ServiceProvider;
+        var dbContext = services.GetRequiredService<AppDbContext>();
+        await dbContext.Database.MigrateAsync();
+        await DatabaseSeeder.SeedAsync(services);
+    }
 }
 
 // Configure HTTP request pipeline
