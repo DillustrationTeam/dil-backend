@@ -3,6 +3,7 @@ using ArtCommission.API.Common;
 using ArtCommission.Application.Commission.DTOs;
 using ArtCommission.Application.Commission.Interfaces;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ArtCommission.API.Controllers.v1;
@@ -104,11 +105,31 @@ public class CommissionsController : ControllerBase
     /// Creator nộp sản phẩm bản phác thảo/lineart (WIP)
     /// </summary>
     [HttpPost("{commissionId:guid}/milestones/{milestoneId:guid}/submit")]
-    public async Task<IActionResult> SubmitMilestoneWip(Guid commissionId, Guid milestoneId, [FromBody] SubmitMilestoneRequest request, CancellationToken ct)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> SubmitMilestoneWip(
+        Guid commissionId,
+        Guid milestoneId,
+        IFormFile file,
+        [FromForm] string? creatorNote,
+        CancellationToken ct)
     {
         var creatorId = GetCurrentUserId();
-        var result = await _commissionService.SubmitMilestoneWipAsync(commissionId, milestoneId, request, creatorId, ct);
+        var stream = file?.OpenReadStream();
+        var contentType = file?.ContentType;
+        var result = await _commissionService.SubmitMilestoneWipAsync(commissionId, milestoneId, creatorNote, stream, contentType, creatorId, ct);
         return Ok(new ApiResponse<MilestoneDto>(result));
+    }
+
+    /// <summary>
+    /// GET /api/v1/commissions/{commissionId}/milestones/{milestoneId}/preview
+    /// Xem trước bản thảo (Watermarked) của cột mốc
+    /// </summary>
+    [HttpGet("{commissionId:guid}/milestones/{milestoneId:guid}/preview")]
+    public async Task<IActionResult> GetMilestoneWipPreview(Guid commissionId, Guid milestoneId, CancellationToken ct)
+    {
+        var userId = GetCurrentUserId();
+        var result = await _commissionService.GetMilestoneWipPreviewUrlAsync(commissionId, milestoneId, userId, ct);
+        return Ok(new ApiResponse<object>(new { previewUrl = result }));
     }
 
     /// <summary>
@@ -140,10 +161,12 @@ public class CommissionsController : ControllerBase
     /// Creator bàn giao sản phẩm gốc hoàn chỉnh file HD lên Cloud Storage
     /// </summary>
     [HttpPost("{id:guid}/deliver")]
-    public async Task<IActionResult> DeliverFinalWork(Guid id, [FromQuery] string finalDeliverableUrl, CancellationToken ct)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> DeliverFinalWork(Guid id, IFormFile file, CancellationToken ct)
     {
         var creatorId = GetCurrentUserId();
-        var result = await _commissionService.DeliverFinalWorkAsync(id, finalDeliverableUrl, creatorId, ct);
+        var stream = file.OpenReadStream();
+        var result = await _commissionService.DeliverFinalWorkAsync(id, stream, file.ContentType, file.FileName, creatorId, ct);
         return Ok(new ApiResponse<CommissionDto>(result));
     }
 
@@ -155,9 +178,20 @@ public class CommissionsController : ControllerBase
     public async Task<IActionResult> CompleteCommission(Guid id, CancellationToken ct)
     {
         var clientId = GetCurrentUserId();
-        var (commission, presignedUrl) = await _commissionService.CompleteCommissionAsync(id, clientId, ct);
-        var meta = new { downloadPresignedUrl = presignedUrl };
-        return Ok(new ApiResponse<CommissionDto>(commission, meta));
+        var commission = await _commissionService.CompleteCommissionAsync(id, clientId, ct);
+        return Ok(new ApiResponse<CommissionDto>(commission));
+    }
+
+    /// <summary>
+    /// GET /api/v1/commissions/{id}/final/download
+    /// Client lấy link tải file gốc an toàn (Presigned URL)
+    /// </summary>
+    [HttpGet("{id:guid}/final/download")]
+    public async Task<IActionResult> GetFinalDownloadUrl(Guid id, CancellationToken ct)
+    {
+        var userId = GetCurrentUserId();
+        var url = await _commissionService.GetFinalDownloadUrlAsync(id, userId, ct);
+        return Ok(new ApiResponse<object>(new { downloadUrl = url }));
     }
 
     /// <summary>
@@ -165,10 +199,10 @@ public class CommissionsController : ControllerBase
     /// Hủy đơn hàng Commission
     /// </summary>
     [HttpPost("{id:guid}/cancel")]
-    public async Task<IActionResult> CancelCommission(Guid id, [FromQuery] string reason, CancellationToken ct)
+    public async Task<IActionResult> CancelCommission(Guid id, [FromBody] CancelWithPolicyRequest request, CancellationToken ct)
     {
         var userId = GetCurrentUserId();
-        var result = await _commissionService.CancelCommissionAsync(id, reason, userId, ct);
+        var result = await _commissionService.CancelCommissionAsync(id, request, userId, ct);
         return Ok(new ApiResponse<CommissionDto>(result));
     }
 

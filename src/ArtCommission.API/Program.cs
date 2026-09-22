@@ -10,6 +10,8 @@ using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
 using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Infrastructure.ExternalServices.PayOs;
+using ArtCommission.Infrastructure.ExternalServices.R2;
+using ArtCommission.Infrastructure.ExternalServices.Watermark;
 using ArtCommission.Infrastructure.Identity;
 using ArtCommission.Infrastructure.Persistence;
 using ArtCommission.Infrastructure.Services;
@@ -26,6 +28,7 @@ using PayOS;
 using PayOsOptions = ArtCommission.Infrastructure.ExternalServices.PayOs.PayOsOptions;
 
 var builder = WebApplication.CreateBuilder(args);
+var isGeneratingOpenApi = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name == "GetDocument.Insider";
 
 // 1. Add Infrastructure Persistence & DbContext
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
@@ -223,12 +226,22 @@ builder.Services.AddSwaggerGen(c =>
 
 // Register Application Services
 builder.Services.AddScoped<ICommissionService, CommissionService>();
+builder.Services.AddScoped<IWatermarkService, WatermarkService>();
+if (builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(builder.Configuration["CloudflareR2:AccountId"]))
+{
+    builder.Services.AddScoped<IStorageService, LocalFileStorageService>();
+}
+else
+{
+    builder.Services.AddScoped<IStorageService, CloudflareR2StorageService>();
+}
 
 var app = builder.Build();
 
-// Auto-initialize Database & Seed Roles on Startup
-using (var scope = app.Services.CreateScope())
+// The build-time OpenAPI tool starts Program to inspect endpoints; it does not need the database.
+if (!isGeneratingOpenApi)
 {
+    using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
     var logger = services.GetRequiredService<ILogger<Program>>();
     try
@@ -249,6 +262,13 @@ using (var scope = app.Services.CreateScope())
                 await roleManager.CreateAsync(new IdentityRole<Guid>(role));
             }
         }
+
+        if (app.Environment.IsDevelopment())
+        {
+            var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
+            await DevelopmentDemoSeeder.SeedAsync(dbContext, userManager, roleManager);
+        }
+
         logger.LogInformation("Database initialized and default roles seeded successfully.");
     }
     catch (Exception ex)
@@ -314,6 +334,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseStaticFiles();
 
 app.UseCors("AllowFrontend");
 

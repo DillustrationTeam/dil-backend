@@ -12,6 +12,10 @@ public class MilestoneDto
     public string? WatermarkedUrl { get; set; }
     public string? FinalDeliverableUrl { get; set; }
     public int RevisionCount { get; set; }
+    public int MaxRevisions { get; set; }
+    public bool RevisionLimitReached => RevisionCount >= MaxRevisions;
+    public string? CreatorNote { get; set; }
+    public string? RevisionFeedback { get; set; }
     public DateTimeOffset? SubmittedAt { get; set; }
     public DateTimeOffset? ApprovedAt { get; set; }
 }

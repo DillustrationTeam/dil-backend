@@ -39,7 +39,7 @@ jobs:
       - name: 📤 Copy openapi.json vào scalar-site
         run: |
           mkdir -p scalar-site
-          cp src/ArtCommission.API/ArtCommission.API.json scalar-site/openapi.json
+          cp src/ArtCommission.API/obj/ArtCommission.API.json scalar-site/openapi.json
 
       - name: 🔧 Install Netlify CLI
         run: npm install -g netlify-cli

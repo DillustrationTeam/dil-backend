@@ -25,6 +25,13 @@ public class RespondToCounterofferRequest
 public class SubmitMilestoneRequest
 {
     public string WipFileUrl { get; set; } = string.Empty;
+    public string? CreatorNote { get; set; }
+}
+
+/// <summary>DTO model for SCR-25 SubmitMilestoneWip endpoint.</summary>
+public class SubmitMilestoneFormRequest
+{
+    public string? CreatorNote { get; set; }
 }
 
 public class RequestRevisionRequest
@@ -43,9 +50,16 @@ public class CreateReviewRequest
 {
     public int Rating { get; set; }
     public string? Comment { get; set; }
+    public List<string>? AttachedImageUrls { get; set; }
 }
 
 public class ReplyReviewRequest
 {
     public string ReplyComment { get; set; } = string.Empty;
+}
+
+public class CancelWithPolicyRequest
+{
+    public string CancellationReason { get; set; } = string.Empty;
+    public string? Details { get; set; }
 }
