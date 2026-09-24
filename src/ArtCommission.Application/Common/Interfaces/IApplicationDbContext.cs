@@ -20,6 +20,17 @@ public interface IApplicationDbContext
     DbSet<Tag> Tags { get; }
     DbSet<ArtworkTag> ArtworkTags { get; }
     DbSet<Follow> Follows { get; }
+    DbSet<ArtworkFavorite> ArtworkFavorites { get; }
+    DbSet<ArtworkComment> ArtworkComments { get; }
+    DbSet<PersonalCollection> PersonalCollections { get; }
+    DbSet<CollectionArtwork> CollectionArtworks { get; }
+    DbSet<CommissionService> CommissionServices { get; }
+    DbSet<CreatorReview> CreatorReviews { get; }
+    DbSet<CreatorTerms> CreatorTerms { get; }
+    DbSet<CreatorAutoReplySetting> CreatorAutoReplySettings { get; }
+    DbSet<CreatorFaq> CreatorFaqs { get; }
+    DbSet<CreatorWorkItem> CreatorWorkItems { get; }
+    DbSet<CreatorAsset> CreatorAssets { get; }
 
     // Module Payment & Wallet
     DbSet<Wallet> Wallets { get; }

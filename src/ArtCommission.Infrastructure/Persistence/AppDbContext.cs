@@ -23,6 +23,17 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<ArtworkTag> ArtworkTags => Set<ArtworkTag>();
     public DbSet<Follow> Follows => Set<Follow>();
+    public DbSet<ArtworkFavorite> ArtworkFavorites => Set<ArtworkFavorite>();
+    public DbSet<ArtworkComment> ArtworkComments => Set<ArtworkComment>();
+    public DbSet<PersonalCollection> PersonalCollections => Set<PersonalCollection>();
+    public DbSet<CollectionArtwork> CollectionArtworks => Set<CollectionArtwork>();
+    public DbSet<CommissionService> CommissionServices => Set<CommissionService>();
+    public DbSet<CreatorReview> CreatorReviews => Set<CreatorReview>();
+    public DbSet<CreatorTerms> CreatorTerms => Set<CreatorTerms>();
+    public DbSet<CreatorAutoReplySetting> CreatorAutoReplySettings => Set<CreatorAutoReplySetting>();
+    public DbSet<CreatorFaq> CreatorFaqs => Set<CreatorFaq>();
+    public DbSet<CreatorWorkItem> CreatorWorkItems => Set<CreatorWorkItem>();
+    public DbSet<CreatorAsset> CreatorAssets => Set<CreatorAsset>();
 
     // Module Payment & Wallet (UC47/UC48/UC49)
     public DbSet<Wallet> Wallets => Set<Wallet>();

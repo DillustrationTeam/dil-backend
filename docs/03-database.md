@@ -67,6 +67,7 @@ Quản lý chuỗi Token làm mới phiên làm việc (JWT Auth & Refresh Token
 - **`Tag`**: `Id` (PK), `Name` (`nvarchar(100)`, Unique Index), `IsAiGenerated` (`bool`).
 - **`ArtworkTag`**: Composite PK (`ArtworkId`, `TagId`), `CreatedAt`.
 - **`Follow`**: Composite PK (`FollowerId` -> `AspNetUsers`, `FollowingId` -> `CreatorProfile`), `CreatedAt`.
+- **Marketplace interaction**: `ArtworkFavorites`, `ArtworkComments`, `PersonalCollections`, and `CollectionArtworks` persist a user's engagement and saved folders. `CommissionServices` stores creator rate cards; `CreatorReviews` stores public ratings. `Artwork` additionally stores style, license type, and starting price; `CreatorProfile` stores available commission slots.
 
 ### 3.2 Module Commission (Đặt vẽ & Cột mốc Workroom)
 - **`Commission`**: `Id` (PK), `Title` (`nvarchar(200)`), `Description` (`nvarchar(max)`), `ClientId` (FK -> `AspNetUsers`), `CreatorId` (FK -> `CreatorProfile`), `TotalPrice` (`decimal(18,2)`), `EscrowStatus` (`enum`: Pending, Deposited, Released, Refunded, Disputed), `CurrentStage` (`int`), `Status` (`enum`: PendingAcceptance, InProgress, Completed, Cancelled, Disputed), `CreatedAt`.

@@ -1,4 +1,5 @@
 using ArtCommission.Application.ArtistStudio.Commands.CreateCreatorProfile;
+using ArtCommission.Application.ArtistStudio.Commands.UpdateCreatorProfile;
 using ArtCommission.Application.ArtistStudio.Commands.UploadArtwork;
 using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.ArtistStudio.Queries.GetArtworkById;
@@ -28,7 +29,8 @@ public class CreatorProfilesController : ApiControllerBase
             request.Location,
             request.WebsiteUrl,
             request.BannerUrl,
-            request.IsAcceptingOrders);
+            request.IsAcceptingOrders,
+            request.AvailableSlots);
 
         var (success, data, errors) = await Mediator.Send(command, cancellationToken);
         if (!success || data == null)
@@ -43,6 +45,30 @@ public class CreatorProfilesController : ApiControllerBase
     public async Task<IActionResult> GetMyProfile(CancellationToken cancellationToken)
     {
         var (success, data, errors) = await Mediator.Send(new GetCreatorProfileQuery(CurrentUserId), cancellationToken);
+        if (!success || data == null)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(data);
+    }
+
+    [HttpPut("creator/me")]
+    public async Task<IActionResult> UpdateMyProfile([FromBody] UpdateCreatorProfileRequest request, CancellationToken cancellationToken)
+    {
+        var command = new UpdateCreatorProfileCommand(
+            CurrentUserId,
+            request.DisplayName,
+            request.Headline,
+            request.Bio,
+            request.Specialties,
+            request.Location,
+            request.WebsiteUrl,
+            request.BannerUrl,
+            request.IsAcceptingOrders,
+            request.AvailableSlots);
+
+        var (success, data, errors) = await Mediator.Send(command, cancellationToken);
         if (!success || data == null)
         {
             return BadRequestEnvelope(errors);
