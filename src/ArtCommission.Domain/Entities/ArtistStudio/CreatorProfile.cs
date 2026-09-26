@@ -22,6 +22,7 @@ public class CreatorProfile : BaseEntity
     public decimal RatingAverage { get; set; }
     public int RatingCount { get; set; }
     public int FollowerCount { get; set; }
+    public int AvailableSlots { get; set; }
 
     public ApplicationUser? User { get; set; }
     public ICollection<Artwork> Artworks { get; set; } = new List<Artwork>();

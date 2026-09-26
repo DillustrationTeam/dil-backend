@@ -15,7 +15,8 @@ public record CreateCreatorProfileCommand(
     string? Location,
     string? WebsiteUrl,
     string? BannerUrl,
-    bool IsAcceptingOrders = true
+    bool IsAcceptingOrders = true,
+    int AvailableSlots = 0
 ) : IRequest<(bool Success, CreatorProfileDto? Data, string[] Errors)>;
 
 public class CreateCreatorProfileCommandValidator : AbstractValidator<CreateCreatorProfileCommand>
@@ -34,6 +35,7 @@ public class CreateCreatorProfileCommandValidator : AbstractValidator<CreateCrea
 
         RuleFor(x => x.Specialties)
             .MaximumLength(500).WithMessage("Specialties must be 500 characters or fewer.");
+        RuleFor(x => x.AvailableSlots).InclusiveBetween(0, 100);
     }
 }
 
@@ -75,7 +77,8 @@ public class CreateCreatorProfileCommandHandler : IRequestHandler<CreateCreatorP
             IsApproved = false,
             RatingAverage = 0m,
             RatingCount = 0,
-            FollowerCount = 0
+            FollowerCount = 0,
+            AvailableSlots = request.AvailableSlots
         };
 
         _db.Set<ArtCommission.Domain.Entities.ArtistStudio.CreatorProfile>().Add(profile);
@@ -100,6 +103,7 @@ public class CreateCreatorProfileCommandHandler : IRequestHandler<CreateCreatorP
             profile.RatingAverage,
             profile.RatingCount,
             profile.FollowerCount,
-            profile.CreatedAt
+            profile.CreatedAt,
+            profile.AvailableSlots
         );
 }
