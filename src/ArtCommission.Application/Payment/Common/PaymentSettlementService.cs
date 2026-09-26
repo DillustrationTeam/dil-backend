@@ -98,21 +98,16 @@ public class PaymentSettlementService : IPaymentSettlementService
 
         var wallet = await _walletService.GetOrCreateWalletAsync(order.UserId, cancellationToken);
 
-        // (4) Cộng số dư
-        wallet.Balance += order.Amount;
-        wallet.UpdatedAt = DateTimeOffset.UtcNow;
-
-        // (5) Đánh dấu đơn đã trả
+        // (4) Đánh dấu đơn đã trả
         order.Status = PaymentOrderStatus.Paid;
         order.TransactionRef = transactionRef ?? order.TransactionRef;
         order.PaidAt = paidAt ?? DateTimeOffset.UtcNow;
         order.UpdatedAt = DateTimeOffset.UtcNow;
 
-        // (6) Ghi sổ cái + lưu tất cả trong CÙNG transaction
-        var ledgerEntry = await _walletService.RecordTransactionAsync(
+        // (5) Cộng số dư + ghi sổ cái — CreditAsync làm cả hai, không tách rời được
+        var ledgerEntry = await _walletService.CreditAsync(
             wallet,
             WalletTransactionType.Deposit,
-            WalletTransactionDirection.In,
             order.Amount,
             nameof(Domain.Entities.Payment.PaymentOrder),
             order.Id,

@@ -1,5 +1,4 @@
 using ArtCommission.Application.ArtistStudio.Commands.CreateCreatorProfile;
-using ArtCommission.Application.ArtistStudio.Commands.UpdateCreatorProfile;
 using ArtCommission.Application.ArtistStudio.Commands.UploadArtwork;
 using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.ArtistStudio.Queries.GetArtworkById;
@@ -29,8 +28,7 @@ public class CreatorProfilesController : ApiControllerBase
             request.Location,
             request.WebsiteUrl,
             request.BannerUrl,
-            request.IsAcceptingOrders,
-            request.AvailableSlots);
+            request.IsAcceptingOrders);
 
         var (success, data, errors) = await Mediator.Send(command, cancellationToken);
         if (!success || data == null)
@@ -45,30 +43,6 @@ public class CreatorProfilesController : ApiControllerBase
     public async Task<IActionResult> GetMyProfile(CancellationToken cancellationToken)
     {
         var (success, data, errors) = await Mediator.Send(new GetCreatorProfileQuery(CurrentUserId), cancellationToken);
-        if (!success || data == null)
-        {
-            return BadRequestEnvelope(errors);
-        }
-
-        return OkEnvelope(data);
-    }
-
-    [HttpPut("creator/me")]
-    public async Task<IActionResult> UpdateMyProfile([FromBody] UpdateCreatorProfileRequest request, CancellationToken cancellationToken)
-    {
-        var command = new UpdateCreatorProfileCommand(
-            CurrentUserId,
-            request.DisplayName,
-            request.Headline,
-            request.Bio,
-            request.Specialties,
-            request.Location,
-            request.WebsiteUrl,
-            request.BannerUrl,
-            request.IsAcceptingOrders,
-            request.AvailableSlots);
-
-        var (success, data, errors) = await Mediator.Send(command, cancellationToken);
         if (!success || data == null)
         {
             return BadRequestEnvelope(errors);
@@ -111,8 +85,15 @@ public class CreatorProfilesController : ApiControllerBase
         return OkEnvelope(data);
     }
 
-    [AllowAnonymous]
+    /// <summary>
+    /// Thư viện tranh công khai — KHÔNG cần đăng nhập.
+    /// Controller có [Authorize] ở cấp class, nhưng trang chủ Marketplace gọi
+    /// endpoint này ngay khi tải trang nên khách vãng lai luôn bị 401.
+    /// Thư viện tranh là nội dung công khai nên hai endpoint chỉ đọc dưới đây
+    /// được mở bằng [AllowAnonymous].
+    /// </summary>
     [HttpGet("artworks")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetArtworks(CancellationToken cancellationToken)
     {
         var (success, data, errors) = await Mediator.Send(new GetArtworksQuery(), cancellationToken);
@@ -124,8 +105,8 @@ public class CreatorProfilesController : ApiControllerBase
         return OkEnvelope(data);
     }
 
-    [AllowAnonymous]
     [HttpGet("artworks/{id:guid}")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetArtworkById(Guid id, CancellationToken cancellationToken)
     {
         var (success, data, errors) = await Mediator.Send(new GetArtworkByIdQuery(id), cancellationToken);

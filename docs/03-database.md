@@ -106,6 +106,7 @@ Quản lý chuỗi Token làm mới phiên làm việc (JWT Auth & Refresh Token
 
 - `Wallet`, `Payment` và `Transaction`: Thiết lập **Append-only ledger** cho nhật ký giao dịch, có `RowVersion` (concurrency token) để guard race-condition khi nạp/rút tiền.
 - Cổng thanh toán VNPAY/MoMo IPN Webhook: Bắt buộc dùng `TransactionRef` / idempotency key để chống xử lý 2 lần (double-credit / double-release).
+- Commission escrow dùng cùng `AppDbContext` với Wallet. Đặt cọc chuyển `Balance` sang `LockedBalance` (`EscrowHold`); duyệt milestone trừ tiền đang giữ (`EscrowRelease`) và cộng ví Creator (`CommissionEarning`); huỷ trước giải ngân trả tiền đang giữ về ví Client (`RefundFromHold`). Mọi bước đụng tiền nằm trong một database transaction. `Commission.UpdatedAt` là concurrency token.
 
 ---
 

@@ -8,13 +8,10 @@ namespace ArtCommission.Domain.Entities.Payment;
 /// </summary>
 public class PlatformConfig : BaseEntity
 {
-    /// <summary>Khoá cấu hình — unique.</summary>
     public string Key { get; set; } = string.Empty;
-
-    /// <summary>Giá trị lưu dạng chuỗi, parse theo ngữ cảnh sử dụng.</summary>
     public string Value { get; set; } = string.Empty;
-
     public string? Description { get; set; }
+    public Guid? UpdatedByAdminId { get; set; }
 }
 
 /// <summary>
@@ -22,15 +19,20 @@ public class PlatformConfig : BaseEntity
 /// </summary>
 public static class PlatformConfigKeys
 {
-    /// <summary>Số tiền rút tối thiểu (VND) — dùng ở POST /payout-requests.</summary>
     public const string MinPayoutAmount = "MinPayoutAmount";
-
-    /// <summary>Phần trăm phí nền tảng trên mỗi giao dịch.</summary>
     public const string PlatformFeePercent = "PlatformFeePercent";
-
-    /// <summary>Phần trăm tiền cọc phải khoá khi đặt giá đấu giá.</summary>
+    public const string PlatformFeeRateSqlKey = "platform_fee_rate";
     public const string AuctionHoldPercent = "AuctionHoldPercent";
 
-    /// <summary>Bật/tắt chức năng rút tiền ("true"/"false").</summary>
+    public const string AuctionPaymentWindowHours = "AuctionPaymentWindowHours";
+
     public const string PayoutEnabled = "PayoutEnabled";
+    public const string MilestoneAutoApprovalDays = "MilestoneAutoApprovalDays";
+    public const string EscrowHoldDaysSqlKey = "escrow_hold_days";
+
+    public const string DefaultFreeRevisionLimit = "DefaultFreeRevisionLimit";
+
+    public const string MaxRevisionCountSqlKey = "max_revision_count";
+
+    public const string PresignedUrlExpirationMinutes = "PresignedUrlExpirationMinutes";
 }

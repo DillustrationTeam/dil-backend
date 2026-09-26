@@ -1,17 +1,35 @@
 using System.Text;
+using System.Net.Mail;
 using ArtCommission.API.BackgroundWorkers;
+using ArtCommission.API.Common;
+using ArtCommission.API.Hubs;
+using ArtCommission.Application.Ai.Common;
 using ArtCommission.Application.Auth.Commands.Register;
+using ArtCommission.Application.Auction.Common;
+using ArtCommission.Application.Chat.Common;
 using ArtCommission.Application.Common.Interfaces;
+using ArtCommission.Application.Commission.Interfaces;
+using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
+using ArtCommission.Application.Revenue.Common;
 using ArtCommission.Domain.Entities.Identity;
+using ArtCommission.Infrastructure.ExternalServices.Common;
+using ArtCommission.Infrastructure.ExternalServices.Gemini;
+using ArtCommission.Infrastructure.ExternalServices.Google;
 using ArtCommission.Infrastructure.ExternalServices.PayOs;
+using ArtCommission.Infrastructure.ExternalServices.R2;
+using ArtCommission.Infrastructure.ExternalServices.Watermark;
 using ArtCommission.Infrastructure.Identity;
 using ArtCommission.Infrastructure.Persistence;
 using ArtCommission.Infrastructure.Services;
 using FluentValidation;
+using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -20,6 +38,32 @@ using PayOS;
 using PayOsOptions = ArtCommission.Infrastructure.ExternalServices.PayOs.PayOsOptions;
 
 var builder = WebApplication.CreateBuilder(args);
+var isGeneratingOpenApi = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name == "GetDocument.Insider";
+
+// ---------------------------------------------------------------------------
+// Nạp khoá Gemini từ .env ở thư mục cha của repo Code.
+//
+// VÌ SAO phải tự nạp: ASP.NET Core KHÔNG đọc file .env. Cả nhóm để khoá dịch vụ
+// ngoài (payOS, Gemini) trong một .env chung ở D:\SEP490_Dillustration\.env, nên
+// app phải tự tìm và đọc file đó thì khoá mới có hiệu lực.
+//
+// PHẠM VI CỐ Ý HẸP: chỉ lấy khoá Gemini. Các khoá payOS vẫn đọc từ User Secrets /
+// biến môi trường như trước — nạp thêm .env cho payOS sẽ âm thầm đổi hành vi module
+// thanh toán của người khác, không nằm trong phạm vi task này.
+//
+// Ưu tiên: nếu Gemini:ApiKey đã có từ User Secrets / biến môi trường thì GIỮ NGUYÊN,
+// không ghi đè bằng .env.
+// ---------------------------------------------------------------------------
+var geminiApiKeyFromEnv = ReadGeminiApiKeyFromEnvFile(builder.Environment.ContentRootPath);
+
+if (!string.IsNullOrWhiteSpace(geminiApiKeyFromEnv)
+    && string.IsNullOrWhiteSpace(builder.Configuration[$"{GeminiOptions.SectionName}:ApiKey"]))
+{
+    builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+    {
+        [$"{GeminiOptions.SectionName}:ApiKey"] = geminiApiKeyFromEnv
+    });
+}
 
 // 1. Add Infrastructure Persistence & DbContext
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
@@ -86,6 +130,75 @@ builder.Services.AddSingleton<PayOSClient>(sp =>
 
 builder.Services.AddScoped<IPaymentGateway, PayOsPaymentGateway>();
 
+// 3e. UC45 — Notification: ghi DB + đẩy SignalR real-time
+builder.Services.AddScoped<INotificationPublisher, SignalRNotificationPublisher>();
+
+// 3f. UC50 — Voucher: kiểm tra mã dùng chung (checkout, redeem)
+builder.Services.AddScoped<IVoucherCheckService, VoucherCheckService>();
+
+// 3g. UC32–UC35 — Auction: cọc đấu giá + chốt phiên (dùng chung IWalletService)
+builder.Services.AddScoped<IAuctionMoneyService, AuctionMoneyService>();
+builder.Services.AddScoped<IAuctionSettlementService, AuctionSettlementService>();
+
+// 3h. UC43 — Workroom Chat: phân giải phòng, kiểm quyền thành viên
+builder.Services.AddScoped<IChatRoomService, ChatRoomService>();
+
+// 3i. Lưu file: chat attachment + link tải file gốc có hạn
+builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection(StorageOptions.SectionName));
+
+// Chuẩn hoá đường dẫn lưu file thành ABSOLUTE ngay lúc cấu hình.
+// VÌ SAO: middleware static files và FileStorageService phải trỏ vào CÙNG một thư mục.
+// Nếu mỗi bên tự ghép đường dẫn tương đối theo một gốc khác nhau (ContentRootPath so với
+// CurrentDirectory) thì file ghi vào chỗ này nhưng được phục vụ ở chỗ khác ⇒ link 404.
+builder.Services.PostConfigure<StorageOptions>(options =>
+{
+    if (!Path.IsPathRooted(options.LocalRootPath))
+    {
+        options.LocalRootPath = Path.Combine(
+            builder.Environment.ContentRootPath, options.LocalRootPath);
+    }
+});
+
+builder.Services.AddScoped<IFileStorageService, FileStorageService>();
+
+// 3j. UC44/UC46 — AI Assistant dùng Google AI Studio (Gemini)
+// Key lấy từ biến môi trường Gemini__ApiKey hoặc User Secrets; KHÔNG để trong appsettings.json.
+builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection(GeminiOptions.SectionName));
+
+// Một instance GeminiAiClient phục vụ CẢ chatbot và dịch tin nhắn: cùng một endpoint,
+// cùng một key. Đăng ký typed client để HttpClient được quản lý vòng đời đúng cách.
+builder.Services.AddHttpClient<GeminiAiClient>(client =>
+{
+    var timeoutSeconds = builder.Configuration.GetValue<int?>($"{GeminiOptions.SectionName}:TimeoutSeconds") ?? 45;
+    client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+});
+
+builder.Services.AddScoped<IAiChatClient>(sp => sp.GetRequiredService<GeminiAiClient>());
+
+// 3j-bis. UC43 — DỊCH TIN NHẮN dùng Google Translate, KHÔNG dùng mô hình sinh văn bản:
+// nhanh hơn, rẻ hơn và không tự đổi ngôn ngữ đích. Có GoogleTranslate:ApiKey thì gọi
+// Cloud Translation v2 chính thức; không có key thì dùng endpoint công khai.
+// Gemini giữ làm DỰ PHÒNG khi Google lỗi/bị chặn mạng.
+builder.Services.Configure<GoogleTranslateOptions>(
+    builder.Configuration.GetSection(GoogleTranslateOptions.SectionName));
+
+builder.Services.AddHttpClient<GoogleTranslateClient>(client =>
+{
+    var timeoutSeconds = builder.Configuration.GetValue<int?>($"{GoogleTranslateOptions.SectionName}:TimeoutSeconds") ?? 20;
+    client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+});
+
+builder.Services.AddScoped<ITranslationClient>(sp => new FallbackTranslationClient(
+    sp.GetRequiredService<GoogleTranslateClient>(),
+    sp.GetRequiredService<GeminiAiClient>(),
+    sp.GetRequiredService<ILogger<FallbackTranslationClient>>()));
+
+builder.Services.AddScoped<IAiContextBuilder, AiContextBuilder>();
+builder.Services.AddScoped<IDeadlineRiskPredictor, DeadlineRiskPredictor>();
+
+// 3k. UC51 — Creator Revenue Analytics: đọc sổ cái ví
+builder.Services.AddScoped<IRevenueQueryService, RevenueQueryService>();
+
 // 4. Add MediatR & FluentValidation
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(RegisterCommand).Assembly));
 builder.Services.AddValidatorsFromAssembly(typeof(RegisterCommand).Assembly);
@@ -113,6 +226,38 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey)),
         ClockSkew = TimeSpan.Zero
     };
+
+    // SignalR handshake qua WebSocket KHÔNG gửi được header Authorization,
+    // nên client phải truyền token qua query-string: /hubs/notifications?access_token=...
+    // Chỉ đọc từ query-string cho đúng route hub, không nới lỏng cho REST.
+    options.Events = new JwtBearerEvents
+    {
+        OnChallenge = async context =>
+        {
+            context.HandleResponse();
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            await context.Response.WriteAsJsonAsync(ApiErrors.Create(401, "Unauthorized",
+                "A valid access token is required.", context.HttpContext.TraceIdentifier));
+        },
+        OnForbidden = async context =>
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await context.Response.WriteAsJsonAsync(ApiErrors.Create(403, "Forbidden",
+                "You do not have permission to access this resource.", context.HttpContext.TraceIdentifier));
+        },
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+
+            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+            {
+                context.Token = accessToken;
+            }
+
+            return Task.CompletedTask;
+        }
+    };
 });
 
 // 6. Add CORS Policy
@@ -123,8 +268,7 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(
                 "http://localhost:3000",
                 "https://localhost:3000",
-                // ↓ Thay bằng Netlify URL thực tế của dự án
-                "https://dillustration-api-docs.netlify.app"
+                "https://dillustration-api.netlify.app"
             )
               .AllowAnyHeader()
               .AllowAnyMethod()
@@ -135,7 +279,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowScalarDocs", policy =>
     {
         policy.WithOrigins(
-                "https://dillustration-api-docs.netlify.app"
+                "https://dillustration-api.netlify.app"
             )
               .AllowAnyHeader()
               .WithMethods("GET")
@@ -144,8 +288,22 @@ builder.Services.AddCors(options =>
 });
 
 // 7. Add Controllers & OpenAPI (Swashbuckle + Scalar)
-builder.Services.AddControllers();
+builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var errors = context.ModelState
+            .Where(entry => entry.Value?.Errors.Count > 0)
+            .ToDictionary(entry => entry.Key,
+                entry => entry.Value!.Errors.Select(error => error.ErrorMessage).ToArray());
+        return new BadRequestObjectResult(ApiErrors.Create(400, "Bad Request",
+            "One or more validation errors occurred.", context.HttpContext.TraceIdentifier, errors));
+    };
+});
 builder.Services.AddEndpointsApiExplorer();
+
+// 7b. UC45 — SignalR cho Notification Center (hub ở API/Hubs/NotificationHub.cs)
+builder.Services.AddSignalR();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo
@@ -188,40 +346,75 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+// Register Application Services
+builder.Services.AddScoped<ICommissionService, CommissionService>();
+builder.Services.AddScoped<IWatermarkService, WatermarkService>();
+if (builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(builder.Configuration["CloudflareR2:AccountId"]))
+{
+    builder.Services.AddScoped<IStorageService, LocalFileStorageService>();
+}
+else
+{
+    builder.Services.AddScoped<IStorageService, CloudflareR2StorageService>();
+}
+
 var app = builder.Build();
 
-// Auto-initialize Database & Seed Roles on Startup
-using (var scope = app.Services.CreateScope())
+// Configure HTTP request pipeline
+app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
 {
-    var services = scope.ServiceProvider;
-    var logger = services.GetRequiredService<ILogger<Program>>();
-    try
+    var exception = context.Features.Get<IExceptionHandlerPathFeature>()?.Error;
+    var (status, title, detail) = exception switch
     {
-        var dbContext = services.GetRequiredService<AppDbContext>();
+        DbUpdateConcurrencyException => (409, "Conflict", "This commission changed while your request was being processed. Please retry."),
+        DbUpdateException { InnerException: SqlException { Number: 2601 or 2627 } } => (409, "Conflict", "A record with the same key already exists."),
+        KeyNotFoundException => (404, "Not Found", exception.Message),
+        UnauthorizedAccessException => (403, "Forbidden", exception.Message),
+        ArgumentException => (400, "Bad Request", exception.Message),
+        InvalidOperationException => (400, "Bad Request", exception.Message),
+        _ => (500, "Internal Server Error", "An unexpected error occurred.")
+    };
+    app.Logger.LogError(exception, "API request failed with status {StatusCode}", status);
+    context.Response.StatusCode = status;
+    await context.Response.WriteAsJsonAsync(ApiErrors.Create(status, title, detail, context.TraceIdentifier));
+}));
 
-        // Áp dụng migration EF Core đang chờ (thay cho EnsureCreatedAsync).
-        // LƯU Ý: DB dev tạo bằng EnsureCreatedAsync KHÔNG có bảng __EFMigrationsHistory
-        // => phải xoá DB một lần rồi chạy lại để migration áp dụng được từ đầu.
-        await dbContext.Database.MigrateAsync();
+var entryAssemblyName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+var isDocumentGeneration = string.Equals(entryAssemblyName, "GetDocument.Insider", StringComparison.OrdinalIgnoreCase)
+    || entryAssemblyName?.StartsWith("GetDocument", StringComparison.OrdinalIgnoreCase) == true
+    || string.Equals(entryAssemblyName, "ef", StringComparison.OrdinalIgnoreCase);
 
-        var roleManager = services.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
-        var roles = new[] { "Administrator", "Moderator", "Creator", "Client" };
-        foreach (var role in roles)
+if (!isDocumentGeneration)
+{
+    using (var scope = app.Services.CreateScope())
+    {
+        var services = scope.ServiceProvider;
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        try
         {
-            if (!await roleManager.RoleExistsAsync(role))
+            var dbContext = services.GetRequiredService<AppDbContext>();
+            await dbContext.Database.MigrateAsync();
+
+            await DatabaseSeeder.SeedAsync(services);
+
+            if (app.Environment.IsDevelopment())
             {
-                await roleManager.CreateAsync(new IdentityRole<Guid>(role));
+                var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
+                var roleManager = services.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
+                await DevelopmentDemoSeeder.SeedAsync(dbContext, userManager, roleManager);
             }
+
+            logger.LogInformation("Database initialized successfully.");
         }
-        logger.LogInformation("Database initialized and default roles seeded successfully.");
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "An error occurred while initializing the database.");
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "An error occurred while initializing the database.");
+        }
     }
 }
 
-// Configure HTTP request pipeline
+
+
 // openapi/v1.json luôn public (cả Production) để GitHub Actions export & Scalar Netlify fetch được
 app.UseSwagger(options =>
 {
@@ -250,6 +443,26 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseStaticFiles();
+
+// File đính kèm chat và file bàn giao được phục vụ từ thư mục Storage:LocalRootPath,
+// KHÔNG phụ thuộc wwwroot (thư mục này có thể không tồn tại trong repo).
+// Dùng PhysicalFileProvider trỏ thẳng vào thư mục upload đã chuẩn hoá absolute:
+//  - tạo thư mục nếu chưa có, tránh lỗi khởi động ở máy mới clone;
+//  - không bật directory browsing nên chỉ truy cập được file có đường dẫn chính xác.
+var storageOptions = app.Services.GetRequiredService<IOptions<StorageOptions>>().Value;
+
+if (!string.IsNullOrWhiteSpace(storageOptions.LocalRootPath))
+{
+    Directory.CreateDirectory(storageOptions.LocalRootPath);
+
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(storageOptions.LocalRootPath),
+        RequestPath = storageOptions.PublicBasePath
+    });
+}
+
 app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
@@ -257,4 +470,66 @@ app.UseAuthorization();
 
 app.MapControllers();
 
+// UC45 — SignalR hub. Client kết nối: /hubs/notifications?access_token={jwt}
+app.MapHub<NotificationHub>("/hubs/notifications");
+
+// UC43 — SignalR hub chat. Client kết nối: /hubs/chat?access_token={jwt}
+app.MapHub<ChatHub>("/hubs/chat");
+
 app.Run();
+
+/// <summary>
+/// Tìm file .env ở thư mục cha và đọc giá trị khoá <c>Gemini-Ai-Key</c>.
+///
+/// Tìm ngược lên tối đa 6 cấp từ thư mục chạy. Con số này không tuỳ tiện:
+/// .env nằm ở gốc workspace, cách ContentRootPath (src/ArtCommission.API) ĐÚNG 5 cấp
+///   ArtCommission.API → src → dil-backend → Code → SEP490_Dillustration.
+/// Để 6 để còn dư một cấp khi repo được đặt sâu hơn, mà vẫn không quét ngược ra
+/// ngoài workspace.
+///
+/// Trả về null nếu không có file / không có khoá. KHÔNG log giá trị khoá.
+/// </summary>
+static string? ReadGeminiApiKeyFromEnvFile(string startDirectory)
+{
+    const string keyName = "Gemini-Ai-Key";
+    const int maxDepth = 6;
+
+    var directory = new DirectoryInfo(startDirectory);
+
+    for (var depth = 0; depth < maxDepth && directory is not null; depth++)
+    {
+        var candidate = Path.Combine(directory.FullName, ".env");
+
+        if (File.Exists(candidate))
+        {
+            foreach (var rawLine in File.ReadAllLines(candidate))
+            {
+                var line = rawLine.Trim();
+
+                if (line.Length == 0 || line.StartsWith('#'))
+                {
+                    continue;
+                }
+
+                var separator = line.IndexOf('=');
+                if (separator <= 0)
+                {
+                    continue;
+                }
+
+                var name = line[..separator].Trim();
+                if (!string.Equals(name, keyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var value = line[(separator + 1)..].Trim().Trim('"', '\'');
+                return string.IsNullOrWhiteSpace(value) ? null : value;
+            }
+        }
+
+        directory = directory.Parent;
+    }
+
+    return null;
+}

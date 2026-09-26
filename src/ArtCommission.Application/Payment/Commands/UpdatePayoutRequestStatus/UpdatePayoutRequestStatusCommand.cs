@@ -96,14 +96,10 @@ public class UpdatePayoutRequestStatusCommandHandler
         {
             var wallet = await _walletService.GetOrCreateWalletAsync(payout.UserId, cancellationToken);
 
-            // HOÀN TIỀN về ví Creator
-            wallet.Balance += payout.Amount;
-            wallet.UpdatedAt = DateTimeOffset.UtcNow;
-
-            await _walletService.RecordTransactionAsync(
+            // HOÀN TIỀN về ví Creator — CreditAsync cộng Balance + ghi sổ cái
+            await _walletService.CreditAsync(
                 wallet,
                 WalletTransactionType.Refund,
-                WalletTransactionDirection.In,
                 payout.Amount,
                 nameof(Domain.Entities.Payment.PayoutRequest),
                 payout.Id,

@@ -23,6 +23,13 @@ public class WalletTransaction : BaseEntity
     /// <summary>Số dư khả dụng sau khi áp dụng giao dịch này — phục vụ đối soát.</summary>
     public decimal BalanceAfter { get; set; }
 
+    /// <summary>
+    /// Tiền ĐANG GIỮ sau khi áp dụng giao dịch này — phục vụ đối soát.
+    /// Cần thiết vì giao dịch giữ tiền (EscrowHold) chỉ đổi tiền đang giữ,
+    /// không đổi số dư khả dụng — nhìn mỗi <see cref="BalanceAfter"/> sẽ không kiểm được.
+    /// </summary>
+    public decimal LockedBalanceAfter { get; set; }
+
     /// <summary>Loại chứng từ gốc: "PaymentOrder", "PayoutRequest", "Auction", "Commission"...</summary>
     public string? RefType { get; set; }
 
