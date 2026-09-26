@@ -16,7 +16,6 @@ public class Artwork : BaseEntity
     public decimal? AiDetectionScore { get; set; }
     public string ModerationStatus { get; set; } = "Pending";
     public int ViewCount { get; set; }
-    public string? Style { get; set; }
     public string LicenseType { get; set; } = "Personal";
     public decimal? StartingPrice { get; set; }
     public bool AutoWatermarkEnabled { get; set; } = true;
