@@ -196,16 +196,18 @@ public class ChatHub : Hub
             return;
         }
 
-        // Chỉ phát khi người gọi thực sự là thành viên phòng.
-        var isMember = await _chatRoomService.IsMemberAsync(roomId, userId, Context.ConnectionAborted);
-        if (!isMember)
+        // Phân giải roomId (có thể là commissionId) thành phòng chat thật và kiểm tra thành viên
+        var (room, _) = await _chatRoomService.ResolveRoomAsync(
+            roomId, userId, Context.ConnectionAborted);
+
+        if (room is null)
         {
             return;
         }
 
-        await Clients.OthersInGroup(RoomGroup(roomId)).SendAsync(
+        await Clients.OthersInGroup(RoomGroup(room.Id)).SendAsync(
             "UserTyping",
-            userId,
+            userId.ToString(),
             Context.ConnectionAborted);
     }
 
