@@ -8,9 +8,8 @@ public class CreateCommissionRequestValidator : AbstractValidator<CreateCommissi
     public CreateCommissionRequestValidator()
     {
         RuleFor(x => x.CreatorId).NotEmpty().WithMessage("CreatorId không được để trống.");
+        RuleFor(x => x.PackageId).NotEmpty().WithMessage("Vui lòng chọn gói giá của Creator.");
         RuleFor(x => x.Title).NotEmpty().MaximumLength(200).WithMessage("Tiêu đề không được vượt quá 200 ký tự.");
-        RuleFor(x => x.TotalPrice).GreaterThan(0).WithMessage("Tổng giá trị đơn vẽ phải lớn hơn 0.");
-        RuleFor(x => x.Milestones).NotEmpty().WithMessage("Cần có ít nhất 1 cột mốc tiến độ (Milestone).");
     }
 }
 

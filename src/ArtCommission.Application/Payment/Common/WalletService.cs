@@ -328,10 +328,16 @@ public class WalletService : IWalletService
             {
                 Deposit = g.Where(t => t.Type == WalletTransactionType.Deposit)
                            .Sum(t => (decimal?)t.Amount) ?? 0m,
+                CommissionEarning = g.Where(t => t.Type == WalletTransactionType.CommissionEarning)
+                                     .Sum(t => (decimal?)t.Amount) ?? 0m,
                 Refund = g.Where(t => t.Type == WalletTransactionType.Refund)
                           .Sum(t => (decimal?)t.Amount) ?? 0m,
                 RefundFromHold = g.Where(t => t.Type == WalletTransactionType.RefundFromHold)
                                   .Sum(t => (decimal?)t.Amount) ?? 0m,
+                // Tiền VÀO số dư khả dụng của người nhận (bán tranh/đấu giá).
+                // Không đụng LockedBalance nên chỉ cộng vào công thức Balance.
+                EscrowReceive = g.Where(t => t.Type == WalletTransactionType.EscrowReceive)
+                                 .Sum(t => (decimal?)t.Amount) ?? 0m,
                 Hold = g.Where(t => t.Type == WalletTransactionType.EscrowHold)
                         .Sum(t => (decimal?)t.Amount) ?? 0m,
                 Release = g.Where(t => t.Type == WalletTransactionType.EscrowRelease)
@@ -364,9 +370,12 @@ public class WalletService : IWalletService
 
         // Số dư khả dụng: cộng tiền vào, trừ tiền ra.
         // Payout ở đây là tiền đã trừ lúc tạo yêu cầu; nếu Admin từ chối thì có thêm dòng Refund.
+        // EscrowReceive là tiền nhận được từ bán tranh/đấu giá — chỉ vào Balance, không đụng Locked.
         var expectedBalance = sums.Deposit
+                              + sums.CommissionEarning
                               + sums.Refund
                               + sums.RefundFromHold
+                              + sums.EscrowReceive
                               + sums.Adjustment
                               - sums.Hold
                               - sums.Payout

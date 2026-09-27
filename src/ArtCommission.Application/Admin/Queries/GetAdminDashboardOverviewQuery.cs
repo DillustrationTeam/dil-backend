@@ -10,7 +10,7 @@ namespace ArtCommission.Application.Admin.Queries;
 /// <summary>
 /// Query lấy báo cáo tổng quan hệ thống, KPIs tài chính, vận hành và dữ liệu biểu đồ (SCR-24 / UC32).
 /// </summary>
-public record GetAdminDashboardOverviewQuery(int Days = 30) : IRequest<AdminDashboardOverviewDto>;
+public record GetAdminDashboardOverviewQuery(int Days = 120) : IRequest<AdminDashboardOverviewDto>;
 
 public class GetAdminDashboardOverviewQueryHandler : IRequestHandler<GetAdminDashboardOverviewQuery, AdminDashboardOverviewDto>
 {
@@ -23,7 +23,7 @@ public class GetAdminDashboardOverviewQueryHandler : IRequestHandler<GetAdminDas
 
     public async Task<AdminDashboardOverviewDto> Handle(GetAdminDashboardOverviewQuery request, CancellationToken cancellationToken)
     {
-        var days = request.Days is > 0 and <= 90 ? request.Days : 30;
+        var days = request.Days is > 0 and <= 120 ? request.Days : 120;
         var now = DateTimeOffset.UtcNow;
         var todayStart = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
         var sevenDaysAgo = now.AddDays(-7);
@@ -198,12 +198,12 @@ public class GetAdminDashboardOverviewQueryHandler : IRequestHandler<GetAdminDas
             });
         }
 
-        // 6. GIAO DỊCH GẦN NHẤT (Recent Transactions)
+        // 6. GIAO DỊCH GẦN NHẤT (Recent Transactions - up to 50 for max 10 per page pagination)
         var rawTransactions = await _db.WalletTransactions
             .AsNoTracking()
             .Where(t => !t.IsDeleted)
             .OrderByDescending(t => t.CreatedAt)
-            .Take(10)
+            .Take(50)
             .ToListAsync(cancellationToken);
 
         var recentTxList = new List<AdminRecentTransactionDto>();

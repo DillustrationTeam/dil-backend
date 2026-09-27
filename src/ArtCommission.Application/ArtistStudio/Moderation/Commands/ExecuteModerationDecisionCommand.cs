@@ -82,23 +82,28 @@ public class ExecuteModerationDecisionCommandHandler
             case "approve":
                 artwork.ModerationStatus = "Approved";
                 artwork.IsDeleted = false;
+                artwork.FlagReason = null;
                 resultMessage = "Tác phẩm đã được phê duyệt và hiển thị công khai trên Feed.";
                 break;
 
             case "reject":
                 artwork.ModerationStatus = "Rejected";
                 artwork.IsDeleted = true;
+                artwork.FlagReason = null;
                 resultMessage = "Tác phẩm đã bị từ chối và xóa khỏi hệ thống do vi phạm.";
                 break;
 
             case "hide":
                 artwork.ModerationStatus = "Hidden";
+                artwork.FlagReason = null;
                 resultMessage = "Tác phẩm đã được ẩn khỏi danh sách gợi ý và khám phá.";
                 break;
 
             case "flag_ai":
                 artwork.IsAiGenerated = true;
                 artwork.AiDetectionScore = artwork.AiDetectionScore ?? 1.0m;
+                artwork.ModerationStatus = "Approved";
+                artwork.FlagReason = null;
                 foreach (var at in artwork.ArtworkTags.Where(at => at.Tag != null))
                 {
                     at.Tag!.IsAiGenerated = true;

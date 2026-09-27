@@ -10,12 +10,14 @@ namespace ArtCommission.Application.Notifications.Queries.GetMyNotifications;
 /// <summary>
 /// UC45 — GET /api/v1/notifications
 /// Người dùng mở Notification Center: danh sách thông báo của mình, mới nhất trước.
-/// Input: query isRead, notificationType, cursor, limit.
+/// Input: query isRead, notificationType, category, cursor, limit.
 /// </summary>
 public record GetMyNotificationsQuery(
     Guid UserId,
     bool? IsRead = null,
     string? NotificationType = null,
+    /// <summary>Nhóm tab của Notification Center (SCR-45): Finance / Order / System / Promotion.</summary>
+    string? Category = null,
     string? Cursor = null,
     int Limit = 20
 ) : IRequest<(bool Success, CursorPage<NotificationDto>? Data, int UnreadCount, string[] Errors)>;
@@ -63,6 +65,19 @@ public class GetMyNotificationsQueryHandler
             }
 
             query = query.Where(n => n.NotificationType == type);
+        }
+
+        // Tab nhóm của Notification Center (SCR-45): lọc theo tập loại thuộc nhóm.
+        if (!string.IsNullOrWhiteSpace(request.Category))
+        {
+            if (!Enum.TryParse<NotificationCategory>(request.Category, ignoreCase: true, out var category))
+            {
+                return (false, null, unreadCount,
+                    [$"Nhóm thông báo không hợp lệ. Hợp lệ: {string.Join(", ", NotificationCategoryNames.All)}."]);
+            }
+
+            var typesInCategory = NotificationCategoryMap.TypesOf(category);
+            query = query.Where(n => typesInCategory.Contains(n.NotificationType));
         }
 
         if (!string.IsNullOrWhiteSpace(request.Cursor))

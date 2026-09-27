@@ -22,7 +22,8 @@ public class NotificationsController : ApiControllerBase
     /// Danh sách thông báo của tôi (UC45).
     /// </summary>
     /// <remarks>
-    /// Lọc theo <c>isRead</c> và <c>notificationType</c>; phân trang bằng <c>cursor</c>.
+    /// Lọc theo <c>isRead</c>, <c>notificationType</c> và <c>category</c>
+    /// (nhóm tab SCR-45: Finance / Order / System / Promotion); phân trang bằng <c>cursor</c>.
     /// <c>meta.unreadCount</c> luôn là tổng số chưa đọc (không tính theo bộ lọc) để badge topbar luôn đúng.
     /// </remarks>
     [HttpGet]
@@ -32,6 +33,7 @@ public class NotificationsController : ApiControllerBase
     public async Task<IActionResult> GetAll(
         [FromQuery] bool? isRead,
         [FromQuery] string? notificationType,
+        [FromQuery] string? category,
         [FromQuery] string? cursor,
         [FromQuery] int limit = 20,
         CancellationToken cancellationToken = default)
@@ -42,7 +44,13 @@ public class NotificationsController : ApiControllerBase
         }
 
         var (success, data, unreadCount, errors) = await Mediator.Send(
-            new GetMyNotificationsQuery(CurrentUserId, isRead, notificationType, cursor, limit),
+            new GetMyNotificationsQuery(
+                UserId: CurrentUserId,
+                IsRead: isRead,
+                NotificationType: notificationType,
+                Category: category,
+                Cursor: cursor,
+                Limit: limit),
             cancellationToken);
 
         return success

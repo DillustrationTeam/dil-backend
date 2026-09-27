@@ -17,14 +17,14 @@ public class AdminDashboardController : ApiControllerBase
     /// <summary>
     /// Lấy toàn bộ chỉ số tổng quan hệ thống, KPIs tài chính, vận hành, biểu đồ doanh thu và giao dịch gần nhất (SCR-24 / UC32).
     /// </summary>
-    /// <param name="days">Số ngày tính toán xu hướng biểu đồ (mặc định 30 ngày, tối đa 90 ngày).</param>
+    /// <param name="days">Số ngày tính toán xu hướng biểu đồ (mặc định 120 ngày - 4 tháng, tối đa 120 ngày).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     [HttpGet("overview")]
     [ProducesResponseType(typeof(AdminDashboardOverviewDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> GetOverview(
-        [FromQuery] int days = 30,
+        [FromQuery] int days = 120,
         CancellationToken cancellationToken = default)
     {
         var query = new GetAdminDashboardOverviewQuery(days);

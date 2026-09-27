@@ -8,5 +8,6 @@ public enum CommissionStatus
     SubmittedFinal = 4,
     Completed = 5,
     Cancelled = 6,
-    Disputed = 7
+    Disputed = 7,
+    Delivered = 8
 }

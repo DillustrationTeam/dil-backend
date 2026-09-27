@@ -1,0 +1,42 @@
+headersOrigin = "config"
+plugins = []
+redirects = []
+
+[functions]
+
+[functions."*"]
+
+[build]
+publish = "D:\\SEP490_Final\\Web\\dil-backend\\scalar-site"
+publishOrigin = "config"
+base = "D:\\SEP490_Final\\Web\\dil-backend\\scalar-site"
+
+[build.environment]
+
+[build.processing]
+
+[build.processing.css]
+
+[build.processing.html]
+
+[build.processing.images]
+
+[build.processing.js]
+
+[build.services]
+
+[[headers]]
+for = "/openapi.json"
+
+[headers.values]
+Access-Control-Allow-Origin = "*"
+Cache-Control = "public, max-age=300, stale-while-revalidate=60"
+Content-Type = "application/json"
+
+[[headers]]
+for = "/*"
+
+[headers.values]
+X-Frame-Options = "SAMEORIGIN"
+X-Content-Type-Options = "nosniff"
+Referrer-Policy = "strict-origin-when-cross-origin"

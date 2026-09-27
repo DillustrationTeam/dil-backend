@@ -53,6 +53,16 @@ public class RedeemVoucherCommandHandler
 
         // Cửa sớm: đã có lượt dùng cho giao dịch này ⇒ trả luôn bản ghi cũ (idempotent),
         // KHÔNG tiêu thêm lượt và KHÔNG trả lỗi — gọi lại không được phá gì.
+        //
+        // LỖI ĐÃ SỬA: truy vấn cũ chỉ lọc (RefType, RefId) mà KHÔNG lọc UserId.
+        // Hệ quả: user B gọi redeem cho một refId mà user A đã dùng sẽ nhận được
+        // thông tin lượt dùng của A (VoucherId, DiscountAmount, OrderAmount, FinalAmount,
+        // RedeemedAt) kèm success = true — vừa rò dữ liệu người khác, vừa báo thành công sai
+        // cho một giao dịch chưa hề được áp mã.
+        //
+        // Luật đúng: mỗi giao dịch chỉ được áp ĐÚNG 1 voucher (unique index toàn cục
+        // UX_VoucherRedemption_Ref). Nên nếu bản ghi đã tồn tại nhưng thuộc người khác,
+        // đây là XUNG ĐỘT phải báo lỗi, không phải idempotent.
         var existing = await _db.VoucherRedemptions
             .AsNoTracking()
             .FirstOrDefaultAsync(
@@ -61,6 +71,17 @@ public class RedeemVoucherCommandHandler
 
         if (existing is not null)
         {
+            if (existing.UserId != request.UserId)
+            {
+                _logger.LogWarning(
+                    "Từ chối redeem: giao dịch đã được áp voucher bởi người khác. " +
+                    "RefType={RefType} RefId={RefId} CallerId={CallerId} OwnerId={OwnerId}",
+                    request.RefType, request.RefId, request.UserId, existing.UserId);
+
+                return (false, true, null,
+                    ["Giao dịch này đã được áp một mã giảm giá rồi."]);
+            }
+
             var existingCode = await _db.Vouchers
                 .AsNoTracking()
                 .Where(v => v.Id == existing.VoucherId)

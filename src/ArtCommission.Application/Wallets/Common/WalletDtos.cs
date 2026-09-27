@@ -9,10 +9,18 @@ public record WalletDto(
     string WalletStatus
 );
 
-/// <summary>Ba chỉ số tổng quan hiển thị trên trang /wallet (UC47).</summary>
+/// <summary>Bốn chỉ số tổng quan hiển thị trên trang /wallet (UC47).</summary>
 /// <param name="EscrowHeldAmount">Tiền đang bị giữ (escrow đơn vẽ + cọc đấu giá) — lấy từ Wallet.LockedBalance.</param>
 /// <param name="TotalWithdrawn">Tổng tiền đã rút thành công — tính từ sổ cái, chỉ gồm payout đã duyệt.</param>
-public record WalletSummaryDto(decimal EscrowHeldAmount, decimal TotalWithdrawn);
+/// <param name="PendingPayoutAmount">
+/// Tiền đang CHỜ RÚT: đã trừ khỏi ví nhưng Admin chưa chuyển khoản (PayoutRequest.Status = Pending).
+/// Tách khỏi <paramref name="TotalWithdrawn"/> vì tiền chờ rút vẫn có thể bị từ chối và hoàn lại ví.
+/// </param>
+public record WalletSummaryDto(
+    decimal EscrowHeldAmount,
+    decimal TotalWithdrawn,
+    decimal PendingPayoutAmount
+);
 
 /// <summary>Kết quả GET /api/v1/wallets/me (UC47).</summary>
 public record WalletOverviewDto(WalletDto Wallet, WalletSummaryDto Summary);

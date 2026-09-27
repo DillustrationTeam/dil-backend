@@ -85,7 +85,15 @@ public class CreatorProfilesController : ApiControllerBase
         return OkEnvelope(data);
     }
 
+    /// <summary>
+    /// Thư viện tranh công khai — KHÔNG cần đăng nhập.
+    /// Controller có [Authorize] ở cấp class, nhưng trang chủ Marketplace gọi
+    /// endpoint này ngay khi tải trang nên khách vãng lai luôn bị 401.
+    /// Thư viện tranh là nội dung công khai nên hai endpoint chỉ đọc dưới đây
+    /// được mở bằng [AllowAnonymous].
+    /// </summary>
     [HttpGet("artworks")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetArtworks(CancellationToken cancellationToken)
     {
         var (success, data, errors) = await Mediator.Send(new GetArtworksQuery(), cancellationToken);
@@ -98,6 +106,7 @@ public class CreatorProfilesController : ApiControllerBase
     }
 
     [HttpGet("artworks/{id:guid}")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetArtworkById(Guid id, CancellationToken cancellationToken)
     {
         var (success, data, errors) = await Mediator.Send(new GetArtworkByIdQuery(id), cancellationToken);

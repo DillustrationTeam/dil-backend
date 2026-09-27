@@ -444,3 +444,8 @@ scalar-site/openapi.json
 .env.*
 !.env.example
 
+# File người dùng upload (đính kèm chat, file gốc bàn giao) — StorageOptions.LocalRootPath.
+# KHÔNG commit: đây là dữ liệu người dùng, không phải mã nguồn. Commit sẽ làm repo phình
+# theo từng lần test và có thể đẩy dữ liệu riêng tư của người dùng lên GitHub.
+uploads/
+

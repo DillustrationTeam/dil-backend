@@ -11,6 +11,13 @@ public class Review : BaseEntity
     public string? ReviewerReply { get; set; }
     public bool IsVisible { get; set; } = true;
 
+    /// <summary>JSON array của tối đa 3 URLs ảnh đính kèm review (public bucket).</summary>
+    public string? AttachedImagesJson { get; set; }
+
+    /// <summary>Timestamp khi Creator phản hồi đánh giá.</summary>
+    public DateTimeOffset? RespondedAt { get; set; }
+
     // Navigation property
     public Commission Commission { get; set; } = null!;
 }
+

@@ -157,7 +157,25 @@ public class VoucherCheckService : IVoucherCheckService
                 $"Đơn hàng tối thiểu {voucher.MinOrderAmount:N0}đ mới dùng được mã này.", voucher);
         }
 
-        // Cùng một người không được dùng lại CÙNG một voucher cho CÙNG một giao dịch.
+        // LUẬT 1 — mỗi NGƯỜI chỉ được dùng một mã MỘT lần, bất kể giao dịch nào.
+        //
+        // Đây là yêu cầu đã ghi trong đặc tả API mục kiểm tra voucher:
+        // "hạn dùng, min_order_amount, còn lượt, CHƯA DÙNG BỞI USER NÀY".
+        // Trước đây chỉ có luật 2 (bên dưới) nên một người vẫn dùng lại cùng mã cho
+        // nhiều giao dịch khác nhau cho tới khi hết UsageLimit — biến mã "dùng 1 lần
+        // cho mỗi khách" thành mã dùng nhiều lần cho cùng một khách.
+        var usedByThisUser = await _db.VoucherRedemptions.AnyAsync(
+            r => r.VoucherId == voucher.Id
+                 && r.UserId == userId,
+            cancellationToken);
+
+        if (usedByThisUser)
+        {
+            return Fail("Bạn đã sử dụng mã giảm giá này rồi.", voucher);
+        }
+
+        // LUẬT 2 — cùng một người không được dùng lại CÙNG một voucher cho CÙNG một giao dịch.
+        // Giữ lại để thông báo lỗi cụ thể hơn khi gọi lặp trên đúng giao dịch đó.
         if (refId.HasValue)
         {
             var alreadyRedeemed = await _db.VoucherRedemptions.AnyAsync(

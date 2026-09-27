@@ -42,7 +42,7 @@ public class GetModerationQueueQueryHandler
         {
             if (request.Status.Equals("Flagged", StringComparison.OrdinalIgnoreCase))
             {
-                query = query.Where(x => x.ModerationStatus == "Pending" || !string.IsNullOrEmpty(x.FlagReason));
+                query = query.Where(x => x.ModerationStatus == "Pending" && !string.IsNullOrEmpty(x.FlagReason));
             }
             else
             {
