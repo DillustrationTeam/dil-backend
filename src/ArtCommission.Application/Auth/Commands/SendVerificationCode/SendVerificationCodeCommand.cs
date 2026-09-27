@@ -6,13 +6,13 @@ using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
-namespace ArtCommission.Application.Auth.Commands.ForgotPassword;
+namespace ArtCommission.Application.Auth.Commands.SendVerificationCode;
 
-public record ForgotPasswordCommand(
+public record SendVerificationCodeCommand(
     string Email
-) : IRequest<bool>;
+) : IRequest<(bool Success, string[] Errors)>;
 
-public class ForgotPasswordCommandHandler : IRequestHandler<ForgotPasswordCommand, bool>
+public class SendVerificationCodeCommandHandler : IRequestHandler<SendVerificationCodeCommand, (bool Success, string[] Errors)>
 {
     private static readonly TimeSpan MinResendInterval = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(10);
@@ -21,37 +21,31 @@ public class ForgotPasswordCommandHandler : IRequestHandler<ForgotPasswordComman
     private readonly IIdentityService _identityService;
     private readonly IEmailService _emailService;
 
-    public ForgotPasswordCommandHandler(IApplicationDbContext db, IIdentityService identityService, IEmailService emailService)
+    public SendVerificationCodeCommandHandler(IApplicationDbContext db, IIdentityService identityService, IEmailService emailService)
     {
         _db = db;
         _identityService = identityService;
         _emailService = emailService;
     }
 
-    public async Task<bool> Handle(ForgotPasswordCommand request, CancellationToken cancellationToken)
+    public async Task<(bool Success, string[] Errors)> Handle(SendVerificationCodeCommand request, CancellationToken cancellationToken)
     {
         var email = request.Email.Trim().ToLowerInvariant();
 
-        // Dùng chính API đã có sẵn để kiểm tra tồn tại thay vì thêm method mới — token sinh ra
-        // ở đây không dùng tới, chỉ mượn nó để biết email có gắn với tài khoản còn hoạt động không.
-        var probe = await _identityService.GeneratePasswordResetTokenAsync(email, cancellationToken);
-        var userExists = !string.IsNullOrEmpty(probe);
-
-        // Luôn trả về true dù email có tồn tại hay không, và không báo lỗi khi đang trong thời
-        // gian chờ gửi lại — tránh lộ thông tin email nào đã đăng ký (chống dò email).
-        if (!userExists)
+        var isUnique = await _identityService.IsEmailUniqueAsync(email, cancellationToken);
+        if (!isUnique)
         {
-            return true;
+            return (false, new[] { "Email already registered. Please sign in instead." });
         }
 
         var recentCutoff = DateTimeOffset.UtcNow.Subtract(MinResendInterval);
         var hasRecentCode = await _db.EmailVerificationCodes
-            .AnyAsync(c => c.Email == email && c.Purpose == VerificationCodePurpose.PasswordReset
+            .AnyAsync(c => c.Email == email && c.Purpose == VerificationCodePurpose.EmailVerification
                 && c.ConsumedAt == null && c.CreatedAt > recentCutoff, cancellationToken);
 
         if (hasRecentCode)
         {
-            return true;
+            return (false, new[] { "Please wait before requesting another code." });
         }
 
         var code = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
@@ -61,16 +55,16 @@ public class ForgotPasswordCommandHandler : IRequestHandler<ForgotPasswordComman
         {
             Email = email,
             CodeHash = codeHash,
-            Purpose = VerificationCodePurpose.PasswordReset,
+            Purpose = VerificationCodePurpose.EmailVerification,
             ExpiresAt = DateTimeOffset.UtcNow.Add(CodeLifetime)
         };
 
         _db.EmailVerificationCodes.Add(verificationCode);
         await _db.SaveChangesAsync(cancellationToken);
 
-        await _emailService.SendPasswordResetCodeEmailAsync(email, code, cancellationToken);
+        await _emailService.SendVerificationCodeEmailAsync(email, code, cancellationToken);
 
-        return true;
+        return (true, Array.Empty<string>());
     }
 
     private static string HashCode(string code)
@@ -81,9 +75,9 @@ public class ForgotPasswordCommandHandler : IRequestHandler<ForgotPasswordComman
     }
 }
 
-public class ForgotPasswordCommandValidator : AbstractValidator<ForgotPasswordCommand>
+public class SendVerificationCodeCommandValidator : AbstractValidator<SendVerificationCodeCommand>
 {
-    public ForgotPasswordCommandValidator()
+    public SendVerificationCodeCommandValidator()
     {
         RuleFor(x => x.Email)
             .NotEmpty().WithMessage("Email is required.")

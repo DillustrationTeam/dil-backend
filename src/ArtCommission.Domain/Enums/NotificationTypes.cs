@@ -29,6 +29,9 @@ public enum NotificationType
     /// <summary>Thông báo chế tài xử phạt tài khoản (SCR-23 / UC31).</summary>
     UserSanctionAlert,
 
+    /// <summary>Kết quả duyệt đơn đăng ký Creator thay đổi — Approved/Rejected/AdditionalProofRequested (UC29).</summary>
+    CreatorApplicationStatusChanged,
+
     /// <summary>
     /// Khuyến mãi / ưu đãi của sàn (SCR-45 — tab "Khuyến mãi").
     /// Chưa có worker tự phát; Admin phát khi mở chiến dịch ưu đãi.
@@ -45,10 +48,11 @@ public static class NotificationTypeNames
     public const string PaymentSucceeded = nameof(NotificationType.PaymentSucceeded);
     public const string PayoutStatusChanged = nameof(NotificationType.PayoutStatusChanged);
     public const string UserSanctionAlert = nameof(NotificationType.UserSanctionAlert);
+    public const string CreatorApplicationStatusChanged = nameof(NotificationType.CreatorApplicationStatusChanged);
     public const string PromotionAnnouncement = nameof(NotificationType.PromotionAnnouncement);
 
     public static readonly string[] All =
-        [OutbidAlert, AuctionEndingSoon, AuctionWon, DeadlineRiskWarning, PaymentSucceeded, PayoutStatusChanged, UserSanctionAlert, PromotionAnnouncement];
+        [OutbidAlert, AuctionEndingSoon, AuctionWon, DeadlineRiskWarning, PaymentSucceeded, PayoutStatusChanged, UserSanctionAlert, CreatorApplicationStatusChanged, PromotionAnnouncement];
 }
 
 /// <summary>
@@ -100,7 +104,7 @@ public static class NotificationCategoryMap
             NotificationType.DeadlineRiskWarning
         ],
 
-        NotificationCategory.System => [NotificationType.UserSanctionAlert],
+        NotificationCategory.System => [NotificationType.UserSanctionAlert, NotificationType.CreatorApplicationStatusChanged],
 
         NotificationCategory.Promotion => [NotificationType.PromotionAnnouncement],
 

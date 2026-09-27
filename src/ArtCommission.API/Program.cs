@@ -13,6 +13,7 @@ using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
 using ArtCommission.Application.Revenue.Common;
 using ArtCommission.Domain.Entities.Identity;
+using ArtCommission.Infrastructure.ExternalServices.Cloudinary;
 using ArtCommission.Infrastructure.ExternalServices.Common;
 using ArtCommission.Infrastructure.ExternalServices.Gemini;
 using ArtCommission.Infrastructure.ExternalServices.Google;
@@ -21,6 +22,7 @@ using ArtCommission.Infrastructure.ExternalServices.R2;
 using ArtCommission.Infrastructure.ExternalServices.Watermark;
 using ArtCommission.Infrastructure.Identity;
 using ArtCommission.Infrastructure.Persistence;
+using ArtCommission.Infrastructure.Persistence.Seed;
 using ArtCommission.Infrastructure.Services;
 using FluentValidation;
 using Microsoft.Data.SqlClient;
@@ -88,6 +90,7 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
 builder.Services.AddScoped<IIdentityService, IdentityService>();
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IEmailVerificationService, EmailVerificationService>();
 
 // 3b. Payment module — DbContext exposed qua interface cho tầng Application
 builder.Services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<AppDbContext>());
@@ -129,6 +132,16 @@ builder.Services.AddSingleton<PayOSClient>(sp =>
 });
 
 builder.Services.AddScoped<IPaymentGateway, PayOsPaymentGateway>();
+
+// 3d-2. Cloudinary Signed Upload — client tự upload file thẳng lên Cloudinary, server chỉ ký.
+// Secret lấy từ User Secrets (dev) hoặc biến môi trường Cloudinary__ApiSecret.
+builder.Services.Configure<CloudinaryOptions>(builder.Configuration.GetSection(CloudinaryOptions.SectionName));
+builder.Services.AddScoped<ICloudinarySignatureService, CloudinarySignatureService>();
+
+// 3d-3. Google OAuth (custom button, access-token flow) — server verifies token via Google's
+// tokeninfo (aud check) + userinfo endpoints. No Client Secret required for this flow.
+builder.Services.Configure<GoogleAuthOptions>(builder.Configuration.GetSection(GoogleAuthOptions.SectionName));
+builder.Services.AddHttpClient<IGoogleUserInfoService, GoogleUserInfoService>();
 
 // 3e. UC45 — Notification: ghi DB + đẩy SignalR real-time
 builder.Services.AddScoped<INotificationPublisher, SignalRNotificationPublisher>();
@@ -402,6 +415,17 @@ if (!isDocumentGeneration)
                 var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
                 var roleManager = services.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
                 await DevelopmentDemoSeeder.SeedAsync(dbContext, userManager, roleManager);
+
+                // Seed dữ liệu mẫu riêng cho Creator Application (5 user + wallet + creator profile + artwork),
+                // idempotent. Nằm trong cùng guard isDocumentGeneration để không chạy lúc build export OpenAPI.
+                try
+                {
+                    await DevDataSeeder.SeedSampleDataAsync(services, logger);
+                }
+                catch (Exception seedEx)
+                {
+                    logger.LogError(seedEx, "An error occurred while seeding development sample data.");
+                }
             }
 
             logger.LogInformation("Database initialized successfully.");
@@ -413,8 +437,7 @@ if (!isDocumentGeneration)
     }
 }
 
-
-
+// Configure HTTP request pipeline
 // openapi/v1.json luôn public (cả Production) để GitHub Actions export & Scalar Netlify fetch được
 app.UseSwagger(options =>
 {

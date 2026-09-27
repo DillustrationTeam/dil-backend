@@ -8,9 +8,10 @@ public class CreatorApplicationResponseDto
     public string ApplicantEmail { get; set; } = string.Empty;
     public string? PrimaryStyle { get; set; }
     public List<string> PortfolioLinks { get; set; } = new List<string>();
-    public string? SpeedpaintVideoUrl { get; set; }
+    public List<string> SpeedpaintVideoUrls { get; set; } = new List<string>();
     public List<string>? SocialLinks { get; set; }
     public string IdProofUrl { get; set; } = string.Empty;
+    public string IdProofBackUrl { get; set; } = string.Empty;
     public bool IsNationalIdVerified { get; set; }
     public string Status { get; set; } = string.Empty;
     public Guid? ReviewedByModId { get; set; }

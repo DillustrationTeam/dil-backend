@@ -1,4 +1,4 @@
-using ArtCommission.Application.CreatorApplication.Commands;
+﻿using ArtCommission.Application.CreatorApplication.Commands;
 using ArtCommission.Application.CreatorApplication.DTOs;
 using ArtCommission.Application.CreatorApplication.Queries;
 using ArtCommission.Domain.Enums;
@@ -37,8 +37,9 @@ public class CreatorApplicationsController : ApiControllerBase
             PortfolioLinks: request.PortfolioLinks,
             SocialLinks: request.SocialLinks,
             IdProofUrl: request.IdProofUrl,
+            IdProofBackUrl: request.IdProofBackUrl,
             PrimaryStyle: request.PrimaryStyle,
-            SpeedpaintVideoUrl: request.SpeedpaintVideoUrl
+            SpeedpaintVideoUrls: request.SpeedpaintVideoUrls
         );
 
         var (success, applicationId, errors) = await Mediator.Send(command, cancellationToken);
@@ -48,6 +49,83 @@ public class CreatorApplicationsController : ApiControllerBase
         }
 
         return OkEnvelope(new { applicationId });
+    }
+
+    /// <summary>
+    /// Xem đơn đăng ký Creator MỚI NHẤT của chính mình (Dành cho User/Client tự kiểm tra trạng thái).
+    /// Trả <c>data: null</c> nếu chưa từng nộp đơn nào — không phải lỗi.
+    /// </summary>
+    [HttpGet("me")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetMyApplication(CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var application = await Mediator.Send(new GetMyCreatorApplicationQuery(CurrentUserId), cancellationToken);
+        return OkEnvelope(application);
+    }
+
+    /// <summary>
+    /// Sửa đơn đăng ký Creator hiện tại (chỉ khi đơn đang Pending hoặc AdditionalProofRequested).
+    /// Sửa xong đơn quay lại trạng thái Pending để chờ duyệt lại.
+    /// </summary>
+    [HttpPut("me")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> UpdateMyApplication(
+        [FromBody] SubmitCreatorApplicationDto request,
+        CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var command = new UpdateCreatorApplicationCommand(
+            ApplicantId: CurrentUserId,
+            PortfolioLinks: request.PortfolioLinks,
+            SocialLinks: request.SocialLinks,
+            IdProofUrl: request.IdProofUrl,
+            IdProofBackUrl: request.IdProofBackUrl,
+            PrimaryStyle: request.PrimaryStyle,
+            SpeedpaintVideoUrls: request.SpeedpaintVideoUrls
+        );
+
+        var (success, errors) = await Mediator.Send(command, cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(new { message = "Application updated successfully." });
+    }
+
+    /// <summary>
+    /// Thu hồi đơn đăng ký Creator hiện tại (chỉ khi đơn đang Pending hoặc AdditionalProofRequested).
+    /// </summary>
+    [HttpDelete("me")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> WithdrawMyApplication(CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var (success, errors) = await Mediator.Send(new WithdrawCreatorApplicationCommand(CurrentUserId), cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(new { message = "Application withdrawn successfully." });
     }
 
     /// <summary>
