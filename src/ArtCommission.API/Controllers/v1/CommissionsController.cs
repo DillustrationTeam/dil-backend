@@ -38,7 +38,7 @@ public class CommissionsController : ControllerBase
     /// Client tạo và gửi Yêu cầu Đặt vẽ (Brief) mới
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = "Client")]
+    [Authorize]
     public async Task<IActionResult> CreateCommission([FromBody] CreateCommissionRequest request, CancellationToken ct)
     {
         var clientId = GetCurrentUserId();

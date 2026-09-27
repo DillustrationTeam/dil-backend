@@ -63,19 +63,53 @@ public class CommissionService : ICommissionService
         RequireUser(clientId);
         var validation = new CreateCommissionRequestValidator().Validate(request);
         if (!validation.IsValid) throw new ArgumentException(string.Join(" ", validation.Errors.Select(e => e.ErrorMessage)));
+
         var creator = await _dbContext.CreatorProfiles.AsNoTracking()
-            .FirstOrDefaultAsync(p => p.Id == request.CreatorId && !p.IsDeleted, cancellationToken);
+            .FirstOrDefaultAsync(p => (p.Id == request.CreatorId || p.UserId == request.CreatorId) && !p.IsDeleted, cancellationToken);
         if (creator is null || !creator.IsAcceptingOrders)
             throw new ArgumentException("Creator hiện không nhận đơn.");
 
-        // Mock package selection since CreatorRateCard is missing in this branch
-        // var packages = CreatorRateCard.Read(creator.RateCardJson);
-        // CreatorRateCard.Write(packages);
-        // var selectedPackage = packages.FirstOrDefault(package => package.Id == request.PackageId);
-        // if (selectedPackage is null)
-        //     throw new ArgumentException("Gói giá đã thay đổi hoặc không còn khả dụng. Vui lòng chọn lại.");
-        
-        var totalPrice = 1000m; // Mock price
+        var totalPrice = 0.00m;
+        var milestones = new List<Milestone>();
+
+        if (!string.IsNullOrWhiteSpace(creator.RateCardJson))
+        {
+            try
+            {
+                var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var packages = System.Text.Json.JsonSerializer.Deserialize<List<ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardPackageDto>>(creator.RateCardJson, options);
+                var selectedPackage = packages?.FirstOrDefault(p => p.Id == request.PackageId);
+                if (selectedPackage != null)
+                {
+                    totalPrice = selectedPackage.Price;
+                    if (selectedPackage.Milestones != null && selectedPackage.Milestones.Count > 0)
+                    {
+                        foreach (var stage in selectedPackage.Milestones)
+                        {
+                            milestones.Add(new Milestone
+                            {
+                                Sequence = stage.Sequence,
+                                Title = stage.Title,
+                                Price = stage.Price,
+                                Status = MilestoneStatus.Pending
+                            });
+                        }
+                        var milestoneTotal = selectedPackage.Milestones.Sum(m => m.Price);
+                        if (milestoneTotal > 0) totalPrice = milestoneTotal;
+                    }
+                }
+            }
+            catch { }
+        }
+
+        if (milestones.Count == 0)
+        {
+            totalPrice = totalPrice > 0 ? totalPrice : 350000m;
+            milestones.Add(new Milestone { Sequence = 1, Title = "Phác thảo (Sketch)", Price = Math.Round(totalPrice * 0.30m, 0), Status = MilestoneStatus.Pending });
+            milestones.Add(new Milestone { Sequence = 2, Title = "Lineart & Màu cơ bản", Price = Math.Round(totalPrice * 0.40m, 0), Status = MilestoneStatus.Pending });
+            milestones.Add(new Milestone { Sequence = 3, Title = "Hoàn thiện & Bàn giao", Price = totalPrice - Math.Round(totalPrice * 0.30m, 0) - Math.Round(totalPrice * 0.40m, 0), Status = MilestoneStatus.Pending });
+        }
+
         var discountAmount = 0.00m;
         var finalPrice = totalPrice - discountAmount;
 
@@ -84,7 +118,7 @@ public class CommissionService : ICommissionService
             Title = request.Title,
             Description = request.Description,
             ClientId = clientId,
-            CreatorId = request.CreatorId,
+            CreatorId = creator.Id,
             TotalPrice = totalPrice,
             DiscountAmount = discountAmount,
             FinalPrice = finalPrice,
@@ -96,21 +130,10 @@ public class CommissionService : ICommissionService
             DeadlineAt = request.DeadlineAt
         };
 
-        // Mock milestones instead of using selectedPackage.Milestones
-        commission.Milestones.Add(new Milestone
+        foreach (var m in milestones)
         {
-            Sequence = 1,
-            Title = "Phác thảo",
-            Price = 500m,
-            Status = MilestoneStatus.Pending
-        });
-        commission.Milestones.Add(new Milestone
-        {
-            Sequence = 2,
-            Title = "Hoàn thiện",
-            Price = 500m,
-            Status = MilestoneStatus.Pending
-        });
+            commission.Milestones.Add(m);
+        }
 
         _dbContext.Commissions.Add(commission);
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -237,6 +260,8 @@ public class CommissionService : ICommissionService
         commission.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        if (tx is not null)
+            await tx.CommitAsync(cancellationToken);
 
         return MapToDto(commission);
     }
@@ -422,6 +447,8 @@ public class CommissionService : ICommissionService
         commission.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        if (tx is not null)
+            await tx.CommitAsync(cancellationToken);
 
         return MapToDto(commission);
     }

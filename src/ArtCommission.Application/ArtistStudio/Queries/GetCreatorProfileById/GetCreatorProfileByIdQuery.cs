@@ -42,7 +42,8 @@ public class GetCreatorProfileByIdQueryHandler : IRequestHandler<GetCreatorProfi
             profile.RatingAverage,
             profile.RatingCount,
             profile.FollowerCount,
-            profile.CreatedAt
+            profile.CreatedAt,
+            profile.AvailableSlots
         ), Array.Empty<string>());
     }
 }

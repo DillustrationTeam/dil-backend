@@ -15,7 +15,8 @@ public record CreatorProfileDto(
     decimal RatingAverage,
     int RatingCount,
     int FollowerCount,
-    DateTimeOffset CreatedAt
+    DateTimeOffset CreatedAt,
+    int AvailableSlots = 0
 );
 
 public record CreateCreatorProfileRequest(
@@ -26,7 +27,8 @@ public record CreateCreatorProfileRequest(
     string? Location,
     string? WebsiteUrl,
     string? BannerUrl,
-    bool IsAcceptingOrders = true
+    bool IsAcceptingOrders = true,
+    int AvailableSlots = 0
 );
 
 public record UpdateCreatorProfileRequest(
@@ -37,5 +39,6 @@ public record UpdateCreatorProfileRequest(
     string? Location,
     string? WebsiteUrl,
     string? BannerUrl,
-    bool? IsAcceptingOrders
+    bool? IsAcceptingOrders,
+    int? AvailableSlots
 );

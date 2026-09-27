@@ -55,7 +55,20 @@ public class UploadArtworkCommandHandler : IRequestHandler<UploadArtworkCommand,
 
         if (profile is null)
         {
-            return (false, null, new[] { "Create a creator profile before uploading artworks." });
+            var user = await _db.Set<ArtCommission.Domain.Entities.Identity.ApplicationUser>()
+                .FirstOrDefaultAsync(x => x.Id == request.UserId, cancellationToken);
+
+            profile = new ArtCommission.Domain.Entities.ArtistStudio.CreatorProfile
+            {
+                UserId = request.UserId,
+                DisplayName = string.IsNullOrWhiteSpace(user?.FullName) ? "Creator Studio" : user.FullName,
+                Bio = "Digital Artist Studio",
+                IsAcceptingOrders = true,
+                IsApproved = true
+            };
+
+            _db.Set<ArtCommission.Domain.Entities.ArtistStudio.CreatorProfile>().Add(profile);
+            await _db.SaveChangesAsync(cancellationToken);
         }
 
         var artwork = new ArtCommission.Domain.Entities.ArtistStudio.Artwork

@@ -28,7 +28,8 @@ public class CreatorProfilesController : ApiControllerBase
             request.Location,
             request.WebsiteUrl,
             request.BannerUrl,
-            request.IsAcceptingOrders);
+            request.IsAcceptingOrders,
+            request.AvailableSlots);
 
         var (success, data, errors) = await Mediator.Send(command, cancellationToken);
         if (!success || data == null)
@@ -51,6 +52,30 @@ public class CreatorProfilesController : ApiControllerBase
         return OkEnvelope(data);
     }
 
+    [HttpPut("creator/me")]
+    public async Task<IActionResult> UpdateMyProfile([FromBody] UpdateCreatorProfileRequest request, CancellationToken cancellationToken)
+    {
+        var command = new ArtCommission.Application.ArtistStudio.Commands.UpdateCreatorProfile.UpdateCreatorProfileCommand(
+            CurrentUserId,
+            request.DisplayName,
+            request.Headline,
+            request.Bio,
+            request.Specialties,
+            request.Location,
+            request.WebsiteUrl,
+            request.BannerUrl,
+            request.IsAcceptingOrders,
+            request.AvailableSlots);
+
+        var (success, data, errors) = await Mediator.Send(command, cancellationToken);
+        if (!success || data == null)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(data);
+    }
+
     [HttpGet("creator/{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
     {
@@ -61,6 +86,43 @@ public class CreatorProfilesController : ApiControllerBase
         }
 
         return OkEnvelope(data);
+    }
+
+    [HttpGet("creator/me/rate-card")]
+    public async Task<IActionResult> GetMyRateCard(CancellationToken cancellationToken)
+    {
+        var (success, data, errors) = await Mediator.Send(new ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.GetCreatorRateCardQuery(CurrentUserId), cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(data ?? new List<ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardPackageDto>());
+    }
+
+    [HttpGet("creator/{id:guid}/rate-card")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetRateCardByCreatorId(Guid id, CancellationToken cancellationToken)
+    {
+        var (success, data, errors) = await Mediator.Send(new ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.GetCreatorRateCardQuery(id), cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(data ?? new List<ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardPackageDto>());
+    }
+
+    [HttpPut("creator/me/rate-card")]
+    public async Task<IActionResult> SaveRateCard([FromBody] ArtCommission.Application.ArtistStudio.Commands.SaveCreatorRateCard.SaveRateCardRequest request, CancellationToken cancellationToken)
+    {
+        var (success, data, errors) = await Mediator.Send(new ArtCommission.Application.ArtistStudio.Commands.SaveCreatorRateCard.SaveCreatorRateCardCommand(CurrentUserId, request.Packages), cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(data ?? new List<ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardPackageDto>());
     }
 
     [HttpPost("artworks")]

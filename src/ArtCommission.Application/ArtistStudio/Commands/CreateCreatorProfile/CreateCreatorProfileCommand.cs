@@ -15,7 +15,8 @@ public record CreateCreatorProfileCommand(
     string? Location,
     string? WebsiteUrl,
     string? BannerUrl,
-    bool IsAcceptingOrders = true
+    bool IsAcceptingOrders = true,
+    int AvailableSlots = 0
 ) : IRequest<(bool Success, CreatorProfileDto? Data, string[] Errors)>;
 
 public class CreateCreatorProfileCommandValidator : AbstractValidator<CreateCreatorProfileCommand>
@@ -34,6 +35,7 @@ public class CreateCreatorProfileCommandValidator : AbstractValidator<CreateCrea
 
         RuleFor(x => x.Specialties)
             .MaximumLength(500).WithMessage("Specialties must be 500 characters or fewer.");
+        RuleFor(x => x.AvailableSlots).InclusiveBetween(0, 100);
     }
 }
 
@@ -54,11 +56,24 @@ public class CreateCreatorProfileCommandHandler : IRequestHandler<CreateCreatorP
             return (false, null, validation.Errors.Select(e => e.ErrorMessage).ToArray());
         }
 
-        var exists = await _db.Set<ArtCommission.Domain.Entities.ArtistStudio.CreatorProfile>()
-            .AnyAsync(x => x.UserId == request.UserId && !x.IsDeleted, cancellationToken);
-        if (exists)
+        var existingProfile = await _db.Set<ArtCommission.Domain.Entities.ArtistStudio.CreatorProfile>()
+            .FirstOrDefaultAsync(x => x.UserId == request.UserId && !x.IsDeleted, cancellationToken);
+
+        if (existingProfile != null)
         {
-            return (false, null, new[] { "A creator profile already exists for this user." });
+            existingProfile.DisplayName = request.DisplayName.Trim();
+            if (request.Headline != null) existingProfile.Headline = request.Headline;
+            if (request.Bio != null) existingProfile.Bio = request.Bio;
+            if (request.Specialties != null) existingProfile.Specialties = request.Specialties;
+            if (request.Location != null) existingProfile.Location = request.Location;
+            if (request.WebsiteUrl != null) existingProfile.WebsiteUrl = request.WebsiteUrl;
+            if (request.BannerUrl != null) existingProfile.BannerUrl = request.BannerUrl;
+            existingProfile.IsAcceptingOrders = request.IsAcceptingOrders;
+            existingProfile.AvailableSlots = request.AvailableSlots;
+            existingProfile.UpdatedAt = DateTimeOffset.UtcNow;
+
+            await _db.SaveChangesAsync(cancellationToken);
+            return (true, Map(existingProfile), Array.Empty<string>());
         }
 
         var profile = new ArtCommission.Domain.Entities.ArtistStudio.CreatorProfile
@@ -75,7 +90,8 @@ public class CreateCreatorProfileCommandHandler : IRequestHandler<CreateCreatorP
             IsApproved = false,
             RatingAverage = 0m,
             RatingCount = 0,
-            FollowerCount = 0
+            FollowerCount = 0,
+            AvailableSlots = request.AvailableSlots
         };
 
         _db.Set<ArtCommission.Domain.Entities.ArtistStudio.CreatorProfile>().Add(profile);
@@ -100,6 +116,7 @@ public class CreateCreatorProfileCommandHandler : IRequestHandler<CreateCreatorP
             profile.RatingAverage,
             profile.RatingCount,
             profile.FollowerCount,
-            profile.CreatedAt
+            profile.CreatedAt,
+            profile.AvailableSlots
         );
 }
