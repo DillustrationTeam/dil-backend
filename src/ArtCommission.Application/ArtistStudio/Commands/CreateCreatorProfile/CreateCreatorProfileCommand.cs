@@ -56,11 +56,24 @@ public class CreateCreatorProfileCommandHandler : IRequestHandler<CreateCreatorP
             return (false, null, validation.Errors.Select(e => e.ErrorMessage).ToArray());
         }
 
-        var exists = await _db.Set<ArtCommission.Domain.Entities.ArtistStudio.CreatorProfile>()
-            .AnyAsync(x => x.UserId == request.UserId && !x.IsDeleted, cancellationToken);
-        if (exists)
+        var existingProfile = await _db.Set<ArtCommission.Domain.Entities.ArtistStudio.CreatorProfile>()
+            .FirstOrDefaultAsync(x => x.UserId == request.UserId && !x.IsDeleted, cancellationToken);
+
+        if (existingProfile != null)
         {
-            return (false, null, new[] { "A creator profile already exists for this user." });
+            existingProfile.DisplayName = request.DisplayName.Trim();
+            if (request.Headline != null) existingProfile.Headline = request.Headline;
+            if (request.Bio != null) existingProfile.Bio = request.Bio;
+            if (request.Specialties != null) existingProfile.Specialties = request.Specialties;
+            if (request.Location != null) existingProfile.Location = request.Location;
+            if (request.WebsiteUrl != null) existingProfile.WebsiteUrl = request.WebsiteUrl;
+            if (request.BannerUrl != null) existingProfile.BannerUrl = request.BannerUrl;
+            existingProfile.IsAcceptingOrders = request.IsAcceptingOrders;
+            existingProfile.AvailableSlots = request.AvailableSlots;
+            existingProfile.UpdatedAt = DateTimeOffset.UtcNow;
+
+            await _db.SaveChangesAsync(cancellationToken);
+            return (true, Map(existingProfile), Array.Empty<string>());
         }
 
         var profile = new ArtCommission.Domain.Entities.ArtistStudio.CreatorProfile

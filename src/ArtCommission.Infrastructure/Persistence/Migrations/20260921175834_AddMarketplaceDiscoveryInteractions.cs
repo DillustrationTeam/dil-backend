@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -34,12 +34,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                 scale: 2,
                 nullable: true);
 
-            migrationBuilder.AddColumn<string>(
-                name: "Style",
-                table: "Artworks",
-                type: "nvarchar(100)",
-                maxLength: 100,
-                nullable: true);
+            migrationBuilder.Sql(
+                "IF COL_LENGTH('dbo.Artworks', 'Style') IS NULL " +
+                "ALTER TABLE [dbo].[Artworks] ADD [Style] nvarchar(100) NULL;");
 
             migrationBuilder.CreateTable(
                 name: "ArtworkComments",

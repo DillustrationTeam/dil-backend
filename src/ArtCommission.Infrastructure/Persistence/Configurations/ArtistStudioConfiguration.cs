@@ -24,7 +24,7 @@ public class CreatorProfileConfiguration : IEntityTypeConfiguration<CreatorProfi
         builder.Property(x => x.IsAiVerified).HasDefaultValue(false);
         builder.Property(x => x.CommissionSlots).HasDefaultValue(0);
         builder.Property(x => x.CompletedOrdersCount).HasDefaultValue(0);
-        builder.Property(x => x.RateCard);
+        builder.Property(x => x.RateCardJson);
     }
 }
 
@@ -54,6 +54,9 @@ public class ArtworkConfiguration : IEntityTypeConfiguration<Artwork>
         builder.Property(x => x.FlagReason).HasMaxLength(200);
         builder.Property(x => x.Resolution).HasMaxLength(50);
         builder.Property(x => x.ModerationNote).HasMaxLength(1000);
+
+        builder.Ignore(x => x.AutoWatermarkEnabled);
+        builder.Ignore(x => x.AutoTaggingEnabled);
     }
 }
 
@@ -104,5 +107,92 @@ public class FollowConfiguration : IEntityTypeConfiguration<Follow>
             .WithMany()
             .HasForeignKey(x => x.FollowerUserId)
             .OnDelete(DeleteBehavior.NoAction);
+    }
+}
+
+public class ArtworkFavoriteConfiguration : IEntityTypeConfiguration<ArtworkFavorite>
+{
+    public void Configure(EntityTypeBuilder<ArtworkFavorite> builder)
+    {
+        builder.ToTable("ArtworkFavorites");
+        builder.HasKey(x => new { x.UserId, x.ArtworkId });
+        builder.HasOne(x => x.Artwork)
+            .WithMany()
+            .HasForeignKey(x => x.ArtworkId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class ArtworkCommentConfiguration : IEntityTypeConfiguration<ArtworkComment>
+{
+    public void Configure(EntityTypeBuilder<ArtworkComment> builder)
+    {
+        builder.ToTable("ArtworkComments");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Body).HasMaxLength(1000).IsRequired();
+        builder.HasOne(x => x.Artwork)
+            .WithMany()
+            .HasForeignKey(x => x.ArtworkId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class PersonalCollectionConfiguration : IEntityTypeConfiguration<PersonalCollection>
+{
+    public void Configure(EntityTypeBuilder<PersonalCollection> builder)
+    {
+        builder.ToTable("PersonalCollections");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Name).HasMaxLength(100).IsRequired();
+        builder.HasMany(x => x.CollectionArtworks)
+            .WithOne(x => x.Collection)
+            .HasForeignKey(x => x.CollectionId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class CollectionArtworkConfiguration : IEntityTypeConfiguration<CollectionArtwork>
+{
+    public void Configure(EntityTypeBuilder<CollectionArtwork> builder)
+    {
+        builder.ToTable("CollectionArtworks");
+        builder.HasKey(x => new { x.CollectionId, x.ArtworkId });
+        builder.HasOne(x => x.Collection)
+            .WithMany(x => x.CollectionArtworks)
+            .HasForeignKey(x => x.CollectionId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.Artwork)
+            .WithMany()
+            .HasForeignKey(x => x.ArtworkId)
+            .OnDelete(DeleteBehavior.NoAction);
+    }
+}
+
+public class CommissionServiceConfiguration : IEntityTypeConfiguration<CommissionService>
+{
+    public void Configure(EntityTypeBuilder<CommissionService> builder)
+    {
+        builder.ToTable("CommissionServices");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Title).HasMaxLength(150).IsRequired();
+        builder.Property(x => x.StartingPrice).HasPrecision(18, 2);
+        builder.HasOne(x => x.CreatorProfile)
+            .WithMany()
+            .HasForeignKey(x => x.CreatorProfileId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class CreatorReviewConfiguration : IEntityTypeConfiguration<CreatorReview>
+{
+    public void Configure(EntityTypeBuilder<CreatorReview> builder)
+    {
+        builder.ToTable("CreatorReviews");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Comment).HasMaxLength(1000);
+        builder.HasOne(x => x.CreatorProfile)
+            .WithMany()
+            .HasForeignKey(x => x.CreatorProfileId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

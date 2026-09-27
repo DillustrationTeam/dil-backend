@@ -16,7 +16,7 @@ public class CreatorProfile : BaseEntity
     public bool IsAcceptingOrders { get; set; } = true;
     public int CommissionSlots { get; set; } // Số slot nhận vẽ (database.sql)
     public int CompletedOrdersCount { get; set; } // Số đơn hoàn thành (database.sql)
-    public string? RateCard { get; set; } // JSON config bảng giá & dịch vụ (database.sql)
+    public string? RateCardJson { get; set; } // JSON config bảng giá & dịch vụ (database.sql)
     public bool IsApproved { get; set; }
     public bool IsAiVerified { get; set; } // Huy hiệu xác thực vẽ tay không dùng AI (SCR-21)
     public decimal RatingAverage { get; set; }
