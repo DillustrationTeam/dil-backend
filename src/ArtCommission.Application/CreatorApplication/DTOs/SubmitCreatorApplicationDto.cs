@@ -1,10 +1,10 @@
 namespace ArtCommission.Application.CreatorApplication.DTOs;
 
-public class SubmitCreatorApplicationDto
+public sealed record SubmitCreatorApplicationDto
 {
-    public string? PrimaryStyle { get; set; }
-    public List<string> PortfolioLinks { get; set; } = new List<string>();
-    public string? SpeedpaintVideoUrl { get; set; }
-    public List<string>? SocialLinks { get; set; } = new List<string>();
-    public string IdProofUrl { get; set; } = string.Empty;
+    public string? PrimaryStyle { get; init; }
+    public List<string> PortfolioLinks { get; init; } = new();
+    public string? SpeedpaintVideoUrl { get; init; }
+    public List<string>? SocialLinks { get; init; } = new();
+    public string IdProofUrl { get; init; } = string.Empty;
 }

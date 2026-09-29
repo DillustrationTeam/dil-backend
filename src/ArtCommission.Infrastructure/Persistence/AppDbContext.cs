@@ -6,6 +6,7 @@ using ArtCommission.Domain.Entities.Commission;
 using ArtCommission.Domain.Entities.Auction;
 using ArtCommission.Domain.Entities.Chat;
 using ArtCommission.Domain.Entities.CreatorApplication;
+using ArtCommission.Domain.Entities.Event;
 using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Domain.Entities.Notifications;
 using ArtCommission.Domain.Entities.Payment;
@@ -101,6 +102,11 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
 
     // Module Identity & User Sanctions (SCR-23 / UC31)
     public DbSet<UserSanction> UserSanctions => Set<UserSanction>();
+
+    // Module Event & Contest (Module 10)
+    public DbSet<PlatformEvent> PlatformEvents => Set<PlatformEvent>();
+    public DbSet<EventSubmission> EventSubmissions => Set<EventSubmission>();
+    public DbSet<EventVote> EventVotes => Set<EventVote>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
