@@ -21,6 +21,12 @@ public class CommissionConfiguration : IEntityTypeConfiguration<Commission>
         builder.Property(c => c.DiscountAmount)
             .HasPrecision(18, 2);
 
+        builder.Property(c => c.LicenseType)
+            .HasMaxLength(20);
+
+        builder.Property(c => c.LicenseMultiplierApplied)
+            .HasPrecision(5, 2);
+
         builder.Property(c => c.TotalPrice)
             .HasPrecision(18, 2);
 

@@ -6,6 +6,7 @@ public class CreateCommissionRequest
 {
     public Guid CreatorId { get; set; }
     public Guid PackageId { get; set; }
+    public string LicenseType { get; set; } = "Personal";
     [Required, MinLength(1), MaxLength(200)]
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }

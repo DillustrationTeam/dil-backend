@@ -9,6 +9,9 @@ public class CreateCommissionRequestValidator : AbstractValidator<CreateCommissi
     {
         RuleFor(x => x.CreatorId).NotEmpty().WithMessage("CreatorId không được để trống.");
         RuleFor(x => x.PackageId).NotEmpty().WithMessage("Vui lòng chọn gói giá của Creator.");
+        RuleFor(x => x.LicenseType)
+            .Must(x => x is "Personal" or "Commercial")
+            .WithMessage("LicenseType chỉ có thể là Personal hoặc Commercial.");
         RuleFor(x => x.Title).NotEmpty().MaximumLength(200).WithMessage("Tiêu đề không được vượt quá 200 ký tự.");
     }
 }
