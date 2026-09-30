@@ -71,6 +71,7 @@ public class CommissionService : ICommissionService
 
         var totalPrice = 0.00m;
         var milestones = new List<Milestone>();
+        ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardPackageDto? selectedPackage = null;
 
         if (!string.IsNullOrWhiteSpace(creator.RateCardJson))
         {
@@ -78,7 +79,7 @@ public class CommissionService : ICommissionService
             {
                 var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                 var packages = System.Text.Json.JsonSerializer.Deserialize<List<ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardPackageDto>>(creator.RateCardJson, options);
-                var selectedPackage = packages?.FirstOrDefault(p => p.Id == request.PackageId);
+                selectedPackage = packages?.FirstOrDefault(p => p.Id == request.PackageId);
                 if (selectedPackage != null)
                 {
                     totalPrice = selectedPackage.Price;
@@ -99,16 +100,24 @@ public class CommissionService : ICommissionService
                     }
                 }
             }
-            catch { }
+            catch (System.Text.Json.JsonException) { }
         }
 
+        if (selectedPackage is null || totalPrice <= 0) throw new ArgumentException("Gói giá không tồn tại hoặc không còn khả dụng.");
+
         if (milestones.Count == 0)
-        {
-            totalPrice = totalPrice > 0 ? totalPrice : 350000m;
-            milestones.Add(new Milestone { Sequence = 1, Title = "Phác thảo (Sketch)", Price = Math.Round(totalPrice * 0.30m, 0), Status = MilestoneStatus.Pending });
-            milestones.Add(new Milestone { Sequence = 2, Title = "Lineart & Màu cơ bản", Price = Math.Round(totalPrice * 0.40m, 0), Status = MilestoneStatus.Pending });
-            milestones.Add(new Milestone { Sequence = 3, Title = "Hoàn thiện & Bàn giao", Price = totalPrice - Math.Round(totalPrice * 0.30m, 0) - Math.Round(totalPrice * 0.40m, 0), Status = MilestoneStatus.Pending });
-        }
+            milestones.Add(new Milestone { Sequence = 1, Title = selectedPackage.Name, Price = totalPrice, Status = MilestoneStatus.Pending });
+
+        var multiplier = request.LicenseType == "Commercial"
+            ? await _dbContext.CreatorTerms.AsNoTracking()
+                .Where(x => x.CreatorProfileId == creator.Id && !x.IsDeleted)
+                .Select(x => (decimal?)x.CommercialLicenseMultiplier)
+                .FirstOrDefaultAsync(cancellationToken) ?? 1.5m
+            : 1m;
+        totalPrice = Math.Round(totalPrice * multiplier, 2, MidpointRounding.AwayFromZero);
+        foreach (var milestone in milestones)
+            milestone.Price = Math.Round(milestone.Price * multiplier, 2, MidpointRounding.AwayFromZero);
+        milestones[^1].Price += totalPrice - milestones.Sum(x => x.Price);
 
         var discountAmount = 0.00m;
         var finalPrice = totalPrice - discountAmount;
@@ -119,6 +128,8 @@ public class CommissionService : ICommissionService
             Description = request.Description,
             ClientId = clientId,
             CreatorId = creator.Id,
+            LicenseType = request.LicenseType,
+            LicenseMultiplierApplied = multiplier,
             TotalPrice = totalPrice,
             DiscountAmount = discountAmount,
             FinalPrice = finalPrice,
@@ -569,6 +580,8 @@ public class CommissionService : ICommissionService
             ClientId = c.ClientId,
             CreatorId = c.CreatorId,
             VoucherId = c.VoucherId,
+            LicenseType = c.LicenseType,
+            LicenseMultiplierApplied = c.LicenseMultiplierApplied,
             DiscountAmount = c.DiscountAmount,
             TotalPrice = c.TotalPrice,
             FinalPrice = c.FinalPrice,
@@ -593,6 +606,8 @@ public class CommissionService : ICommissionService
             ClientId = dto.ClientId,
             CreatorId = dto.CreatorId,
             VoucherId = dto.VoucherId,
+            LicenseType = dto.LicenseType,
+            LicenseMultiplierApplied = dto.LicenseMultiplierApplied,
             DiscountAmount = dto.DiscountAmount,
             TotalPrice = dto.TotalPrice,
             FinalPrice = dto.FinalPrice,

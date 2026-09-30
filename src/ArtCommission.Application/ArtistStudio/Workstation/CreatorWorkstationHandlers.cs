@@ -7,12 +7,13 @@ using Microsoft.EntityFrameworkCore;
 namespace ArtCommission.Application.ArtistStudio.Workstation;
 
 public record GetCreatorWorkstationQuery(Guid UserId) : IRequest<CreatorWorkstationStateDto?>;
+public record GetCreatorTermsQuery(Guid CreatorId) : IRequest<CreatorTermsDto?>;
 public record GetCreatorFaqsQuery(Guid UserId) : IRequest<IReadOnlyList<CreatorFaqDto>>;
 public record GetCreatorWorkItemsQuery(Guid UserId) : IRequest<IReadOnlyList<CreatorWorkItemDto>>;
 public record GetCreatorAssetsQuery(Guid UserId, string? AssetType) : IRequest<IReadOnlyList<CreatorAssetDto>>;
 public record CreatorWorkstationStateDto(CreatorTermsDto Terms, AutoReplySettingDto AutoReply, IReadOnlyList<CreatorFaqDto> Faqs, IReadOnlyList<CreatorWorkItemDto> WorkItems, IReadOnlyList<CreatorAssetDto> Assets);
 
-public class CreatorWorkstationQueryHandler : IRequestHandler<GetCreatorWorkstationQuery, CreatorWorkstationStateDto?>, IRequestHandler<GetCreatorFaqsQuery, IReadOnlyList<CreatorFaqDto>>, IRequestHandler<GetCreatorWorkItemsQuery, IReadOnlyList<CreatorWorkItemDto>>, IRequestHandler<GetCreatorAssetsQuery, IReadOnlyList<CreatorAssetDto>>
+public class CreatorWorkstationQueryHandler : IRequestHandler<GetCreatorWorkstationQuery, CreatorWorkstationStateDto?>, IRequestHandler<GetCreatorTermsQuery, CreatorTermsDto?>, IRequestHandler<GetCreatorFaqsQuery, IReadOnlyList<CreatorFaqDto>>, IRequestHandler<GetCreatorWorkItemsQuery, IReadOnlyList<CreatorWorkItemDto>>, IRequestHandler<GetCreatorAssetsQuery, IReadOnlyList<CreatorAssetDto>>
 {
     private readonly IApplicationDbContext _db; public CreatorWorkstationQueryHandler(IApplicationDbContext db) => _db = db;
     private async Task<Guid?> ProfileId(Guid userId, CancellationToken ct) => await _db.CreatorProfiles.Where(x => x.UserId == userId && !x.IsDeleted).Select(x => (Guid?)x.Id).FirstOrDefaultAsync(ct);
@@ -28,6 +29,16 @@ public class CreatorWorkstationQueryHandler : IRequestHandler<GetCreatorWorkstat
         var terms = await _db.CreatorTerms.AsNoTracking().FirstOrDefaultAsync(x => x.CreatorProfileId == id && !x.IsDeleted, ct);
         var autoReply = await _db.CreatorAutoReplySettings.AsNoTracking().FirstOrDefaultAsync(x => x.CreatorProfileId == id && !x.IsDeleted, ct);
         return new CreatorWorkstationStateDto(terms is null ? new CreatorTermsDto(1.5m, null, null) : new CreatorTermsDto(terms.CommercialLicenseMultiplier, terms.RevisionPolicy, terms.CancellationPolicy), autoReply is null ? new AutoReplySettingDto(false, string.Empty) : new AutoReplySettingDto(autoReply.IsEnabled, autoReply.BriefTemplate), await Handle(new GetCreatorFaqsQuery(q.UserId), ct), await Handle(new GetCreatorWorkItemsQuery(q.UserId), ct), await Handle(new GetCreatorAssetsQuery(q.UserId, null), ct));
+    }
+    public async Task<CreatorTermsDto?> Handle(GetCreatorTermsQuery q, CancellationToken ct)
+    {
+        var profileId = await _db.CreatorProfiles.AsNoTracking()
+            .Where(x => (x.Id == q.CreatorId || x.UserId == q.CreatorId) && !x.IsDeleted)
+            .Select(x => (Guid?)x.Id)
+            .FirstOrDefaultAsync(ct);
+        if (profileId is null) return null;
+        var terms = await _db.CreatorTerms.AsNoTracking().FirstOrDefaultAsync(x => x.CreatorProfileId == profileId && !x.IsDeleted, ct);
+        return terms is null ? new CreatorTermsDto(1.5m, null, null) : new CreatorTermsDto(terms.CommercialLicenseMultiplier, terms.RevisionPolicy, terms.CancellationPolicy);
     }
 }
 
