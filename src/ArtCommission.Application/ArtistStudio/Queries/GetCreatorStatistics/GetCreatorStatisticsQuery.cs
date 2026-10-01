@@ -30,7 +30,7 @@ public sealed class GetCreatorStatisticsQueryHandler
         }
 
         var creator = await _db.CreatorProfiles.AsNoTracking()
-            .Where(x => x.Id == request.CreatorId && !x.IsDeleted)
+            .Where(x => (x.Id == request.CreatorId || x.UserId == request.CreatorId) && !x.IsDeleted)
             .Select(x => new { x.UserId, x.RatingAverage, x.RatingCount })
             .FirstOrDefaultAsync(cancellationToken);
         if (creator is null)

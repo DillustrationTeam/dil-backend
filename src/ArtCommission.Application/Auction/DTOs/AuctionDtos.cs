@@ -13,12 +13,25 @@ public sealed record AuctionArtworkDto(
     string ArtworkTitle,
     string? ThumbnailUrl,
     string? ImageUrl,
-    string? Style
+    string? Style,
+    DateTimeOffset? CreatedAt = null,
+    string? Resolution = null,
+    long? FileSizeBytes = null,
+    string? FileFormat = null,
+    int DeliverableCount = 0
 );
 
 public sealed record AuctionSellerDto(
     Guid UserId,
     string? FullName
+);
+
+public sealed record AuctionParticipantDto(
+    Guid UserId,
+    string? FullName,
+    string Role,
+    decimal? HighestBid,
+    int BidCount
 );
 
 /// <summary>Phiên đấu giá trả về sau khi tạo/sửa — khớp hợp đồng POST /auctions.</summary>
@@ -51,6 +64,7 @@ public sealed record AuctionListItemDto(
     AuctionArtworkDto? Artwork,
     decimal CurrentPrice,
     int BidCount,
+    DateTimeOffset StartAt,
     DateTimeOffset EndAt,
     string AuctionStatus,
     int WatchCount
@@ -77,7 +91,8 @@ public sealed record AuctionDetailDto(
     /// <summary>Người gọi hiện tại có đang theo dõi phiên không.</summary>
     bool IsWatching,
     /// <summary>Người dẫn đầu hiện tại.</summary>
-    Guid? LeadingBidderId
+    Guid? LeadingBidderId,
+    IReadOnlyList<AuctionParticipantDto> Participants
 );
 
 /// <summary>
