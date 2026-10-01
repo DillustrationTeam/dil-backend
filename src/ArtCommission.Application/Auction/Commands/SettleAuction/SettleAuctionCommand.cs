@@ -34,6 +34,8 @@ public class SettleAuctionCommandHandler
     private readonly IAuctionSettlementService _settlementService;
     private readonly IAuctionMoneyService _moneyService;
     private readonly INotificationPublisher _notifications;
+    private readonly IAuctionRealtimePublisher _realtime;
+    private readonly IAuctionLifecycleNotifier _lifecycleNotifier;
     private readonly ILogger<SettleAuctionCommandHandler> _logger;
 
     public SettleAuctionCommandHandler(
@@ -41,12 +43,16 @@ public class SettleAuctionCommandHandler
         IAuctionSettlementService settlementService,
         IAuctionMoneyService moneyService,
         INotificationPublisher notifications,
+        IAuctionRealtimePublisher realtime,
+        IAuctionLifecycleNotifier lifecycleNotifier,
         ILogger<SettleAuctionCommandHandler> logger)
     {
         _db = db;
         _settlementService = settlementService;
         _moneyService = moneyService;
         _notifications = notifications;
+        _realtime = realtime;
+        _lifecycleNotifier = lifecycleNotifier;
         _logger = logger;
     }
 
@@ -76,6 +82,7 @@ public class SettleAuctionCommandHandler
         }
 
         var now = DateTimeOffset.UtcNow;
+        var isLifecycleWorker = request.IsAdministrator && request.UserId == Guid.Empty;
 
         // ĐÃ CHỐT: trả lại kết quả cũ. Đây là chốt chặn idempotent quan trọng nhất —
         // job nền và Admin có thể cùng gọi settle cho một phiên.
@@ -113,6 +120,8 @@ public class SettleAuctionCommandHandler
             auction.UpdatedAt = now;
             await _db.SaveChangesAsync(cancellationToken);
             await tx.CommitAsync(cancellationToken);
+
+            await PublishEndedAsync(auction, !isLifecycleWorker, cancellationToken);
 
             return (false, null, ["Phiên không có lượt đặt giá hợp lệ nên không có người thắng."]);
         }
@@ -158,6 +167,8 @@ public class SettleAuctionCommandHandler
 
             await _db.SaveChangesAsync(cancellationToken);
             await tx.CommitAsync(cancellationToken);
+
+            await PublishEndedAsync(auction, !isLifecycleWorker, cancellationToken);
 
             return (false, null,
                 [$"Giá cao nhất chưa đạt giá sàn {auction.ReservePrice.Value:N0} VND nên phiên không bán được."]);
@@ -229,6 +240,8 @@ public class SettleAuctionCommandHandler
             }
         }
 
+        await PublishEndedAsync(auction, !isLifecycleWorker, cancellationToken);
+
         return (true, new AuctionSettlementDto(
             result.AuctionId,
             result.WinnerId,
@@ -236,6 +249,29 @@ public class SettleAuctionCommandHandler
             result.SettledAt,
             result.ArtworkOwnershipId,
             result.EscrowTransactionId), []);
+    }
+
+    private async Task PublishEndedAsync(
+        Domain.Entities.Auction.Auction auction,
+        bool broadcastStatus,
+        CancellationToken cancellationToken)
+    {
+        await _lifecycleNotifier.NotifyParticipantsAsync(
+            auction.Id, AuctionLifecycleEvent.Ended, cancellationToken: cancellationToken);
+        if (!broadcastStatus)
+        {
+            return;
+        }
+
+        try
+        {
+            await _realtime.PublishAuctionStatusChangedAsync(
+                auction.Id, auction.Status.ToString(), auction.CurrentPrice, auction.EndAt, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Không broadcast được trạng thái sau settlement auctionId={AuctionId}.", auction.Id);
+        }
     }
 
     /// <summary>

@@ -43,6 +43,7 @@ public class AuctionConfiguration : IEntityTypeConfiguration<AuctionEntity>
         builder.Property(a => a.FinalPrice).HasPrecision(18, 2);
 
         builder.Property(a => a.BidCount).HasDefaultValue(0);
+        builder.Property(a => a.RowVersion).IsRowVersion();
 
         builder.Property(a => a.CancelReason).HasMaxLength(500);
 
@@ -77,6 +78,23 @@ public class AuctionConfiguration : IEntityTypeConfiguration<AuctionEntity>
 
         builder.HasIndex(a => a.ArtworkId)
             .HasDatabaseName("IX_Auctions_ArtworkId");
+    }
+}
+
+public class AuctionAutoBidConfiguration : IEntityTypeConfiguration<AuctionAutoBid>
+{
+    public void Configure(EntityTypeBuilder<AuctionAutoBid> builder)
+    {
+        builder.ToTable("AuctionAutoBids");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.MaxAmount).HasPrecision(18, 2).IsRequired();
+        builder.Property(x => x.RegisteredAt).IsRequired();
+        builder.Property(x => x.CreatedAt).IsRequired();
+        builder.Property(x => x.IsDeleted).HasDefaultValue(false);
+        builder.HasOne(x => x.Auction).WithMany().HasForeignKey(x => x.AuctionId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Domain.Entities.Identity.ApplicationUser>().WithMany().HasForeignKey(x => x.BidderId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(x => new { x.AuctionId, x.BidderId }).IsUnique().HasDatabaseName("UX_AuctionAutoBids_Auction_Bidder");
+        builder.HasIndex(x => new { x.AuctionId, x.MaxAmount, x.RegisteredAt }).HasDatabaseName("IX_AuctionAutoBids_ProxyOrder");
     }
 }
 
