@@ -34,17 +34,20 @@ public class ExpireAuctionSettlementCommandHandler
     private readonly IApplicationDbContext _db;
     private readonly IAuctionMoneyService _moneyService;
     private readonly INotificationPublisher _notifications;
+    private readonly IAuctionRealtimePublisher _realtime;
     private readonly ILogger<ExpireAuctionSettlementCommandHandler> _logger;
 
     public ExpireAuctionSettlementCommandHandler(
         IApplicationDbContext db,
         IAuctionMoneyService moneyService,
         INotificationPublisher notifications,
+        IAuctionRealtimePublisher realtime,
         ILogger<ExpireAuctionSettlementCommandHandler> logger)
     {
         _db = db;
         _moneyService = moneyService;
         _notifications = notifications;
+        _realtime = realtime;
         _logger = logger;
     }
 
@@ -216,6 +219,16 @@ public class ExpireAuctionSettlementCommandHandler
 
         await _db.SaveChangesAsync(cancellationToken);
         await tx.CommitAsync(cancellationToken);
+
+        try
+        {
+            await _realtime.PublishAuctionStatusChangedAsync(
+                auction.Id, auction.Status.ToString(), auction.CurrentPrice, auction.EndAt, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Không broadcast được trạng thái quá hạn auctionId={AuctionId}.", auction.Id);
+        }
 
         _logger.LogInformation(
             "Xử lý quá hạn phiên {AuctionId}: winner={WinnerId}, hoàn cọc={Released}, nextBidder={Next}.",

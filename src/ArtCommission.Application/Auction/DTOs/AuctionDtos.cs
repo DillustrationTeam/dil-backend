@@ -119,6 +119,14 @@ public sealed record PlaceBidResultDto(
     WalletSnapshotDto Wallet
 );
 
+/// <summary>Trạng thái mới nhất khi bid thua một thao tác cạnh tranh.</summary>
+public sealed record AuctionBidConflictDto(
+    decimal CurrentPrice,
+    decimal MinimumNextBid,
+    DateTimeOffset EndAt,
+    string AuctionStatus
+);
+
 /// <summary>Kết quả theo dõi / bỏ theo dõi.</summary>
 public sealed record AuctionWatchDto(
     Guid? AuctionWatchId,

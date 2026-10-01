@@ -15,6 +15,19 @@ namespace ArtCommission.API.Controllers;
 [Route("api/v1")]
 public class CreatorProfilesController : ApiControllerBase
 {
+    /// <summary>Thống kê công khai của creator profile.</summary>
+    [HttpGet("creator-profiles/{creatorId:guid}/statistics")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetStatistics(Guid creatorId, CancellationToken cancellationToken)
+    {
+        var (success, data, errors) = await Mediator.Send(
+            new ArtCommission.Application.ArtistStudio.Queries.GetCreatorStatistics.GetCreatorStatisticsQuery(creatorId),
+            cancellationToken);
+        return success ? OkEnvelope(data) : NotFoundEnvelope(errors);
+    }
+
     [HttpPost("profile/setup")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

@@ -17,6 +17,7 @@ public enum NotificationType
     /// <summary>Mình thắng phiên đấu giá (UC34).</summary>
     AuctionWon,
 
+
     /// <summary>Cảnh báo mốc hoàn thành có nguy cơ trễ (UC46).</summary>
     DeadlineRiskWarning,
 
@@ -36,7 +37,10 @@ public enum NotificationType
     /// Khuyến mãi / ưu đãi của sàn (SCR-45 — tab "Khuyến mãi").
     /// Chưa có worker tự phát; Admin phát khi mở chiến dịch ưu đãi.
     /// </summary>
-    PromotionAnnouncement
+    PromotionAnnouncement,
+
+    /// <summary>Phiên đấu giá bắt đầu, kết thúc hoặc được gia hạn.</summary>
+    AuctionLifecycle
 }
 
 public static class NotificationTypeNames
