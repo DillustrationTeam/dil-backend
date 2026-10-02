@@ -92,7 +92,11 @@ public class ResolveDisputeArbitrationCommandHandler
             if (totalLockedEscrow > 0)
             {
                 var clientWallet = await _walletService.GetOrCreateWalletAsync(commission.ClientId, cancellationToken);
-                var creatorWallet = await _walletService.GetOrCreateWalletAsync(commission.CreatorId, cancellationToken);
+                var creatorUserId = await _db.CreatorProfiles
+                    .Where(profile => profile.Id == commission.CreatorId && !profile.IsDeleted)
+                    .Select(profile => profile.UserId)
+                    .SingleAsync(cancellationToken);
+                var creatorWallet = await _walletService.GetOrCreateWalletAsync(creatorUserId, cancellationToken);
 
                 // ------------------------------------------------------------------
                 // SỬA 3 LỖI SỔ CÁI Ở KHỐI NÀY (trước đây làm ví Creator luôn lệch khi đối soát):

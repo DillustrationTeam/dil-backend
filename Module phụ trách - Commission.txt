@@ -1,62 +1,72 @@
 Module phụ trách: Commission & Escrow Core
+Contract hiện hành: 02/10/2026
+
+Quy tắc chính
+- Commission.CreatorId lưu CreatorProfile.Id; ví Creator luôn dùng CreatorProfile.UserId.
+- Client tạo đơn từ package trong rate card. Giá và milestones do backend lấy từ package.
+- Voucher được kiểm tra lúc tạo đơn và tiêu đúng một lượt khi Client đặt cọc.
+- Creator chỉ làm milestone hiện tại sau khi escrow đã được giữ.
+- Approve milestone giải ngân đúng một lần trong transaction.
+- Đơn đã giữ escrow không được hủy đơn phương; Client hoặc Creator phải mở dispute.
+- Final file chỉ tải được sau khi Client hoàn tất đơn.
+
 POST /api/v1/commissions
+Input: creatorId, packageId, licenseType (Personal|Commercial), title, description?, deadlineAt?, voucherCode?
+Output: CommissionDto. Status ban đầu PendingAcceptance.
 
-Mục đích: Client tạo và gửi Yêu cầu Đặt vẽ (Brief) mới cho Artist/Creator
-Input chính: creatorId, title, description, deadlineAt, totalPrice, voucherCode (tùy chọn), milestones: [{ sequence, title, price }]
-Output trả về: id, status, escrowHeldAmount, createdAt
-
-Module phụ trách: Commission & Escrow Core
 GET /api/v1/commissions
+Query: page, pageSize, status?, role? (Client|Creator)
+Output: items CommissionDto và meta phân trang.
 
-Mục đích: Client/Creator lấy danh sách Commission của mình (có filter/phân trang)
-Input chính: page, size, status, role
-Output trả về: items: [id, title, status, totalPrice, clientName, creatorName, createdAt], total
-
-Module phụ trách: Commission & Escrow Core
 GET /api/v1/commissions/{id}
+Output: CommissionDetailDto gồm milestones, review và dispute.
 
-Mục đích: Lấy chi tiết một Commission kèm theo danh sách Milestones
-Input chính: id (Path variable)
-Output trả về: Chi tiết Commission, milestones: [id, title, price, status, submittedUrl, feedback]
-
-Module phụ trách: Commission & Escrow Core
 PATCH /api/v1/commissions/{id}/respond
+Creator input: action (Accept|Reject|Negotiate), negotiatePrice?, rejectReason?
 
-Mục đích: Creator Chấp nhận hoặc Từ chối yêu cầu Brief
-Input chính: id (Path variable), isAccepted (boolean), reason (nếu từ chối)
-Output trả về: id, status (InProgress hoặc Cancelled), respondedAt
+PATCH /api/v1/commissions/{id}/counteroffer
+Client input: accept.
 
-Module phụ trách: Commission & Escrow Core
-POST /api/v1/commissions/milestones/{milestoneId}/submit
+POST /api/v1/commissions/{id}/escrow/deposit?paymentMethod=Wallet
+Client giữ FinalPrice trong ví. Nếu có voucher, hệ thống tiêu voucher trong cùng transaction.
 
-Mục đích: Creator nộp bản vẽ cho một Milestone cụ thể
-Input chính: milestoneId (Path variable), previewUrl, watermarkedUrl (optional), note
-Output trả về: milestoneId, status (Submitted), submittedAt
+POST /api/v1/commissions/{commissionId}/milestones/{milestoneId}/submit
+Creator multipart: file, creatorNote?. Chỉ nhận JPEG, PNG, WEBP; tối đa 25 MB.
 
-Module phụ trách: Commission & Escrow Core
-PATCH /api/v1/commissions/milestones/{milestoneId}/approve
+GET /api/v1/commissions/{commissionId}/milestones/{milestoneId}/preview
+Output: { previewUrl }.
 
-Mục đích: Client duyệt bản nộp của Milestone, tự động giải ngân tiền Escrow của Milestone đó cho Creator
-Input chính: milestoneId (Path variable)
-Output trả về: milestoneId, status (Approved), disbursedAmount, approvedAt
+PATCH /api/v1/commissions/{commissionId}/milestones/{milestoneId}/approve
+Client duyệt và giải ngân milestone hiện tại.
 
-Module phụ trách: Commission & Escrow Core
-PATCH /api/v1/commissions/milestones/{milestoneId}/request-revision
+POST /api/v1/commissions/{commissionId}/milestones/{milestoneId}/request-revision
+Client input: feedbackComment, referenceImages?.
 
-Mục đích: Client yêu cầu sửa đổi bản nộp của Milestone
-Input chính: milestoneId (Path variable), feedback
-Output trả về: milestoneId, status (RevisionRequested), revisionCount
+POST /api/v1/commissions/{id}/deliver
+Creator multipart: file. Tối đa 100 MB; tên file được làm sạch trước khi tạo storage key.
 
-Module phụ trách: Commission & Escrow Core
-POST /api/v1/commissions/{id}/final-delivery
-
-Mục đích: Creator nộp file gốc (final deliverable) sau khi các milestone đều đã pass
-Input chính: id (Path variable), finalFileUrl
-Output trả về: id, status (SubmittedFinal), finalFileUrl, submittedAt
-
-Module phụ trách: Commission & Escrow Core
 PATCH /api/v1/commissions/{id}/complete
+Client hoàn tất sau final delivery và sau khi escrow đã giải ngân hết.
 
-Mục đích: Client nghiệm thu hoàn tất đơn hàng, hệ thống phát sinh Presigned URL để tải file gốc và giải ngân số tiền Escrow còn lại cho Creator
-Input chính: id (Path variable)
-Output trả về: id, status (Completed), downloadPresignedUrl, completedAt
+GET /api/v1/commissions/{id}/final/download
+Output: presigned download URL có hạn 15 phút.
+
+POST /api/v1/commissions/{id}/cancel
+Input: cancellationReason, details?. Chỉ dùng trước khi escrow được giữ.
+
+POST /api/v1/commissions/{id}/disputes
+Client hoặc Creator input: reason, evidenceUrls?. Dùng cho đơn đã funded cần can thiệp.
+
+GET /api/v1/commissions/{id}/disputes
+Client hoặc Creator xem dispute của đơn.
+
+POST /api/v1/commissions/{id}/reviews
+Client đánh giá đơn Completed đúng một lần.
+
+POST /api/v1/commissions/{id}/reviews/reply
+Creator phản hồi review đúng một lần.
+
+Kiểm tra bắt buộc
+dotnet build ArtCommission.sln --no-restore
+dotnet run --project tests/CommissionWorkflowChecks/CommissionWorkflowChecks.csproj --no-restore
+dotnet run --project tests/LicensePricingChecks/LicensePricingChecks.csproj --no-restore
