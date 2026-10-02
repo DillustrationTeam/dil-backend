@@ -70,6 +70,7 @@ public class ReplyReviewRequest
 
 public class CancelWithPolicyRequest
 {
+    [Required, MinLength(1), MaxLength(500)]
     public string CancellationReason { get; set; } = string.Empty;
     public string? Details { get; set; }
 }
