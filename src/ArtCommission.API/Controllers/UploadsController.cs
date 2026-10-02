@@ -19,10 +19,10 @@ public class UploadsController : ApiControllerBase
         _signatureService = signatureService;
     }
 
-    public record SignatureRequest(string? Folder);
+    public record SignatureRequest(string? Folder, string? Transformation);
 
     /// <summary>
-    /// Lấy chữ ký để upload file lên Cloudinary (vd: ảnh CCCD, ảnh portfolio).
+    /// Lấy chữ ký để upload file lên Cloudinary (vd: ảnh CCCD, ảnh portfolio, avatar, cover).
     /// </summary>
     [HttpPost("signature")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -35,7 +35,7 @@ public class UploadsController : ApiControllerBase
         }
 
         var folder = string.IsNullOrWhiteSpace(request?.Folder) ? "creator-applications" : request.Folder;
-        var signature = _signatureService.GenerateUploadSignature(folder);
+        var signature = _signatureService.GenerateUploadSignature(folder, request?.Transformation);
 
         return OkEnvelope(signature);
     }

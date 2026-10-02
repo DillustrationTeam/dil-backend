@@ -453,7 +453,9 @@ if (!isDocumentGeneration)
 {
     try
     {
-        RecurringJob.AddOrUpdate<AuctionLifecycleJob>(
+        using var recurringJobScope = app.Services.CreateScope();
+        var recurringJobManager = recurringJobScope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+        recurringJobManager.AddOrUpdate<AuctionLifecycleJob>(
             "auction-lifecycle",
             job => job.RunAsync(CancellationToken.None),
             Cron.Minutely);

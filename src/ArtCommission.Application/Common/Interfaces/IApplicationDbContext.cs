@@ -42,6 +42,8 @@ public interface IApplicationDbContext
     DbSet<CollectionArtwork> CollectionArtworks { get; }
     DbSet<CommissionService> CommissionServices { get; }
     DbSet<CreatorReview> CreatorReviews { get; }
+    DbSet<ClientProfile> ClientProfiles { get; }
+    DbSet<ClientReview> ClientReviews { get; }
     DbSet<CreatorTerms> CreatorTerms { get; }
     DbSet<CreatorAutoReplySetting> CreatorAutoReplySettings { get; }
     DbSet<CreatorFaq> CreatorFaqs { get; }

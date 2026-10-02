@@ -10,6 +10,8 @@ namespace ArtCommission.Domain.Entities.Identity;
 /// </summary>
 public class EmailVerificationCode : BaseEntity
 {
+    /// <summary>Gắn với user đã tồn tại (đổi email/mật khẩu...) — null ở luồng đăng ký, vì tài khoản chưa tồn tại khi gửi mã.</summary>
+    public Guid? UserId { get; set; }
     public string Email { get; set; } = string.Empty;
     public string CodeHash { get; set; } = string.Empty;
     public VerificationCodePurpose Purpose { get; set; } = VerificationCodePurpose.EmailVerification;
