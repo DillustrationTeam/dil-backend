@@ -29,25 +29,26 @@ public class GetEventByIdQueryHandler
         return await _db.PlatformEvents
             .AsNoTracking()
             .Where(e => e.Id == request.EventId && !e.IsDeleted)
-            .Select(e => new EventDetailDto(
-                e.Id,
-                e.Title,
-                e.BannerUrl,
-                e.Description,
-                e.Rules,
-                e.Prize,
-                e.Status.ToString(),
-                e.StartAt,
-                e.EndsAt,
-                e.CreatedByAdminId,
-                e.CreatedByAdmin != null ? e.CreatedByAdmin.FullName : null,
-                null,
-                e.Submissions.Count,
-                e.Submissions.Sum(s => (int?)s.VoteCount) ?? 0,
-                e.CreatedAt,
-                e.UpdatedAt,
-                e.Status == EventStatus.Open && e.StartAt <= now && e.EndsAt >= now
-            ))
+            .Select(e => new EventDetailDto
+            {
+                Id = e.Id,
+                Title = e.Title,
+                BannerUrl = e.BannerUrl,
+                Description = e.Description,
+                Rules = e.Rules,
+                Prize = e.Prize,
+                Status = e.Status.ToString(),
+                StartAt = e.StartAt,
+                EndsAt = e.EndsAt,
+                CreatedByAdminId = e.CreatedByAdminId,
+                CreatedByAdminName = e.CreatedByAdmin != null ? e.CreatedByAdmin.FullName : null,
+                CreatedByAdminAvatarUrl = null,
+                SubmissionCount = e.Submissions.Count,
+                TotalVoteCount = e.Submissions.Sum(s => (int?)s.VoteCount) ?? 0,
+                CreatedAt = e.CreatedAt,
+                UpdatedAt = e.UpdatedAt,
+                IsOpenForSubmission = e.Status == EventStatus.Open && e.StartAt <= now && e.EndsAt >= now
+            })
             .FirstOrDefaultAsync(cancellationToken);
     }
 }

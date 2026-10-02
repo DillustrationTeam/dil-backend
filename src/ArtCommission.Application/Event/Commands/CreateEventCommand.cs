@@ -68,25 +68,26 @@ public class CreateEventCommandHandler
         _db.PlatformEvents.Add(platformEvent);
         await _db.SaveChangesAsync(cancellationToken);
 
-        var data = new EventDetailDto(
-            platformEvent.Id,
-            platformEvent.Title,
-            platformEvent.BannerUrl,
-            platformEvent.Description,
-            platformEvent.Rules,
-            platformEvent.Prize,
-            platformEvent.Status.ToString(),
-            platformEvent.StartAt,
-            platformEvent.EndsAt,
-            platformEvent.CreatedByAdminId,
-            admin.FullName,
-            null,
-            0,
-            0,
-            platformEvent.CreatedAt,
-            platformEvent.UpdatedAt,
-            platformEvent.Status == EventStatus.Open && platformEvent.StartAt <= now && platformEvent.EndsAt >= now
-        );
+        var data = new EventDetailDto
+        {
+            Id = platformEvent.Id,
+            Title = platformEvent.Title,
+            BannerUrl = platformEvent.BannerUrl,
+            Description = platformEvent.Description,
+            Rules = platformEvent.Rules,
+            Prize = platformEvent.Prize,
+            Status = platformEvent.Status.ToString(),
+            StartAt = platformEvent.StartAt,
+            EndsAt = platformEvent.EndsAt,
+            CreatedByAdminId = platformEvent.CreatedByAdminId,
+            CreatedByAdminName = admin.FullName,
+            CreatedByAdminAvatarUrl = null,
+            SubmissionCount = 0,
+            TotalVoteCount = 0,
+            CreatedAt = platformEvent.CreatedAt,
+            UpdatedAt = platformEvent.UpdatedAt,
+            IsOpenForSubmission = platformEvent.Status == EventStatus.Open && platformEvent.StartAt <= now && platformEvent.EndsAt >= now
+        };
 
         return (true, data, Array.Empty<string>());
     }

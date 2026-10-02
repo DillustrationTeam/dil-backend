@@ -78,22 +78,23 @@ public class GetEventsQueryHandler
         var items = await query
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(e => new EventDto(
-                e.Id,
-                e.Title,
-                e.BannerUrl,
-                e.Description,
-                e.Prize,
-                e.Status.ToString(),
-                e.StartAt,
-                e.EndsAt,
-                e.CreatedByAdminId,
-                e.CreatedByAdmin != null ? e.CreatedByAdmin.FullName : null,
-                e.Submissions.Count,
-                e.CreatedAt,
-                e.UpdatedAt,
-                e.Status == EventStatus.Open && e.StartAt <= now && e.EndsAt >= now
-            ))
+            .Select(e => new EventDto
+            {
+                Id = e.Id,
+                Title = e.Title,
+                BannerUrl = e.BannerUrl,
+                Description = e.Description,
+                Prize = e.Prize,
+                Status = e.Status.ToString(),
+                StartAt = e.StartAt,
+                EndsAt = e.EndsAt,
+                CreatedByAdminId = e.CreatedByAdminId,
+                CreatedByAdminName = e.CreatedByAdmin != null ? e.CreatedByAdmin.FullName : null,
+                SubmissionCount = e.Submissions.Count,
+                CreatedAt = e.CreatedAt,
+                UpdatedAt = e.UpdatedAt,
+                IsActive = e.Status == EventStatus.Open && e.StartAt <= now && e.EndsAt >= now
+            })
             .ToListAsync(cancellationToken);
 
         return (items, totalCount);
