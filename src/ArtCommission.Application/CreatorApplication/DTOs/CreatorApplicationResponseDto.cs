@@ -1,21 +1,21 @@
 namespace ArtCommission.Application.CreatorApplication.DTOs;
 
-public sealed record CreatorApplicationResponseDto 
+public sealed record CreatorApplicationResponseDto
 {
-    public Guid Id { get; init; }
-    public string ApplicantName { get; init; } = string.Empty;
-    public string ApplicantUsername { get; init; } = string.Empty;
-    public string ApplicantEmail { get; init; } = string.Empty;
-    public string? PrimaryStyle { get; init; }
-    public List<string> PortfolioLinks { get; init; } = new();
-    public string? SpeedpaintVideoUrl { get; init; }
-    public List<string>? SocialLinks { get; init; }
-    public string IdProofUrl { get; init; } = string.Empty;
-    public bool IsNationalIdVerified { get; init; }
-    public string Status { get; init; } = string.Empty;
-    public Guid? ReviewedByModId { get; init; }
-    public string? ReviewedByModName { get; init; }
-    public string? ReviewNote { get; init; }
-    public DateTimeOffset SubmittedAt { get; init; } = DateTimeOffset.Now;
-    public DateTimeOffset? ReviewedAt { get; init; }
+    public Guid Id { get; set; }
+    public string ApplicantName { get; set; } = string.Empty;
+    public string ApplicantUsername { get; set; } = string.Empty;
+    public string ApplicantEmail { get; set; } = string.Empty;
+    public string? PrimaryStyle { get; set; }
+    public List<string> PortfolioLinks { get; set; } = new();
+    public string? SpeedpaintVideoUrl { get; set; }
+    public List<string>? SocialLinks { get; set; }
+    public string IdProofUrl { get; set; } = string.Empty;
+    public bool IsNationalIdVerified { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public Guid? ReviewedByModId { get; set; }
+    public string? ReviewedByModName { get; set; }
+    public string? ReviewNote { get; set; }
+    public DateTimeOffset SubmittedAt { get; set; } = DateTimeOffset.Now;
+    public DateTimeOffset? ReviewedAt { get; set; }
 }

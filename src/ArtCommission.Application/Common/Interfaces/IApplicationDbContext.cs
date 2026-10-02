@@ -105,6 +105,10 @@ public interface IApplicationDbContext
     DbSet<PlatformEvent> PlatformEvents { get; }
     DbSet<EventSubmission> EventSubmissions { get; }
     DbSet<EventVote> EventVotes { get; }
+    DbSet<EventCriteria> EventCriteria { get; }
+    DbSet<CriteriaScore> CriteriaScores { get; }
+    DbSet<Jury> Juries { get; }
+    DbSet<Invitation> Invitations { get; }
 
     DbSet<T> Set<T>() where T : class;
 

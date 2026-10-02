@@ -1,9 +1,10 @@
 using ArtCommission.Domain.Enums;
 
 namespace ArtCommission.Application.CreatorApplication.DTOs;
-public sealed record ReviewCreatorApplicationDto 
+
+public sealed record ReviewCreatorApplicationDto
 {
-    public ApplicationStatus Status { get; init; }
-    public string? ReviewNote { get; init; }
-    public bool GrantAiVerifiedBadge { get; init; } = true;
+    public ApplicationStatus Status { get; set; }
+    public string? ReviewNote { get; set; }
+    public bool GrantAiVerifiedBadge { get; set; } = true;
 }

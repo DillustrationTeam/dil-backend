@@ -107,6 +107,10 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<PlatformEvent> PlatformEvents => Set<PlatformEvent>();
     public DbSet<EventSubmission> EventSubmissions => Set<EventSubmission>();
     public DbSet<EventVote> EventVotes => Set<EventVote>();
+    public DbSet<EventCriteria> EventCriteria => Set<EventCriteria>();
+    public DbSet<CriteriaScore> CriteriaScores => Set<CriteriaScore>();
+    public DbSet<Jury> Juries => Set<Jury>();
+    public DbSet<Invitation> Invitations => Set<Invitation>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
