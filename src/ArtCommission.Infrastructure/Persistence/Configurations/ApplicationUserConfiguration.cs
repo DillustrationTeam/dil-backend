@@ -23,6 +23,21 @@ public class ApplicationUserConfiguration : IEntityTypeConfiguration<Application
         builder.Property(u => u.IsDeleted)
             .HasDefaultValue(false);
 
+        builder.Property(u => u.AvatarUrl)
+            .HasMaxLength(500);
+
+        builder.Property(u => u.CoverUrl)
+            .HasMaxLength(500);
+
+        builder.Property(u => u.Bio)
+            .HasMaxLength(1000);
+
+        builder.Property(u => u.SocialLinks)
+            .HasConversion(
+                 v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                 v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<string>()
+             );
+
         builder.HasMany(u => u.RefreshTokens)
             .WithOne(rt => rt.User)
             .HasForeignKey(rt => rt.UserId)
