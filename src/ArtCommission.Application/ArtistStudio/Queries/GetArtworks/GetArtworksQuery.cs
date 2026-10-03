@@ -20,7 +20,7 @@ public class GetArtworksQueryHandler : IRequestHandler<GetArtworksQuery, (bool S
     {
         var artworks = await _db.Set<ArtCommission.Domain.Entities.ArtistStudio.Artwork>()
             .AsNoTracking()
-            .Where(x => !x.IsDeleted)
+            .Where(x => !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted)
             .OrderByDescending(x => x.CreatedAt)
             .Select(x => new ArtworkDto(
                 x.Id,

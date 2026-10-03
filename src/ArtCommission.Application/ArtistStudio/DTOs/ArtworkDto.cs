@@ -13,7 +13,16 @@ public record ArtworkDto(
     int ViewCount,
     DateTimeOffset CreatedAt,
     IReadOnlyList<string> Tags
-);
+)
+{
+    public string? CreatorName { get; init; }
+    public string? CreatorHeadline { get; init; }
+    public decimal CreatorRating { get; init; }
+    public int AvailableSlots { get; init; }
+    public string? Style { get; init; }
+    public string LicenseType { get; init; } = "Personal";
+    public decimal? StartingPrice { get; init; }
+}
 
 public record CreateArtworkRequest(
     string Title,
@@ -35,3 +44,10 @@ public record UpdateArtworkRequest(
     string? ModerationStatus,
     IReadOnlyList<string>? Tags
 );
+
+public record UpdateCreatorArtworkRequest(
+    string Title,
+    string? Description,
+    IReadOnlyList<string>? Tags,
+    string? ImageUrl,
+    string? ThumbnailUrl);
