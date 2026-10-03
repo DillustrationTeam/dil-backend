@@ -13,15 +13,19 @@ public class EventSubmission
 
     public Guid ArtworkId { get; set; }
 
+    public string Title { get; set; } = string.Empty;
+
+    public string? Description { get; set; }
+
     public bool AiScanPassed { get; set; } = false;
 
     public int VoteCount { get; set; } = 0;
 
-    public Decimal? Score { get; set; }
+    public decimal? Score { get; set; }
 
     public string? AdminNote { get; set; }
 
-    public DateTimeOffset SubmittedAt { get; set; } = DateTimeOffset.Now;
+    public DateTimeOffset SubmittedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public PlatformEvent? Event { get; set; }
 

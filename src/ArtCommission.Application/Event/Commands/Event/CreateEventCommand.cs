@@ -14,9 +14,15 @@ public record CreateEventCommand(
     string? BannerUrl,
     string? Rules,
     string? Prize,
+    int MaxVote,
     EventStatus Status,
-    DateTimeOffset StartAt,
-    DateTimeOffset EndsAt,
+    DateTimeOffset SubmissionStartAt,
+    DateTimeOffset SubmissionEndAt,
+    DateTimeOffset JudgingStartAt,
+    DateTimeOffset JudgingEndAt,
+    DateTimeOffset VotingStartAt,
+    DateTimeOffset VotingEndAt,
+    DateTimeOffset ResultAnnouncementAt,
     Guid AdminId
 ) : IRequest<(bool Success, EventDetailDto? Data, string[] Errors)>;
 
@@ -57,9 +63,15 @@ public class CreateEventCommandHandler
             Description = request.Description.Trim(),
             Rules = string.IsNullOrWhiteSpace(request.Rules) ? null : request.Rules.Trim(),
             Prize = string.IsNullOrWhiteSpace(request.Prize) ? null : request.Prize.Trim(),
+            MaxVote = request.MaxVote > 0 ? request.MaxVote : 1,
             Status = request.Status,
-            StartAt = request.StartAt,
-            EndsAt = request.EndsAt,
+            SubmissionStartAt = request.SubmissionStartAt,
+            SubmissionEndAt = request.SubmissionEndAt,
+            JudgingStartAt = request.JudgingStartAt,
+            JudgingEndAt = request.JudgingEndAt,
+            VotingStartAt = request.VotingStartAt,
+            VotingEndAt = request.VotingEndAt,
+            ResultAnnouncementAt = request.ResultAnnouncementAt,
             CreatedByAdminId = request.AdminId,
             CreatedAt = now,
             IsDeleted = false
@@ -76,17 +88,22 @@ public class CreateEventCommandHandler
             Description = platformEvent.Description,
             Rules = platformEvent.Rules,
             Prize = platformEvent.Prize,
+            MaxVote = platformEvent.MaxVote,
             Status = platformEvent.Status.ToString(),
-            StartAt = platformEvent.StartAt,
-            EndsAt = platformEvent.EndsAt,
-            CreatedByAdminId = platformEvent.CreatedByAdminId,
+            SubmissionStartAt = platformEvent.SubmissionStartAt,
+            SubmissionEndAt = platformEvent.SubmissionEndAt,
+            JudgingStartAt = platformEvent.JudgingStartAt,
+            JudgingEndAt = platformEvent.JudgingEndAt,
+            VotingStartAt = platformEvent.VotingStartAt,
+            VotingEndAt = platformEvent.VotingEndAt,
+            ResultAnnouncementAt = platformEvent.ResultAnnouncementAt,
             CreatedByAdminName = admin.FullName,
             CreatedByAdminAvatarUrl = null,
             SubmissionCount = 0,
             TotalVoteCount = 0,
             CreatedAt = platformEvent.CreatedAt,
             UpdatedAt = platformEvent.UpdatedAt,
-            IsOpenForSubmission = platformEvent.Status == EventStatus.Open && platformEvent.StartAt <= now && platformEvent.EndsAt >= now
+            IsOpenForSubmission = platformEvent.Status == EventStatus.Open && platformEvent.SubmissionStartAt <= now && platformEvent.SubmissionEndAt >= now
         };
 
         return (true, data, Array.Empty<string>());

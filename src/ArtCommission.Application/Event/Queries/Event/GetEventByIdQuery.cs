@@ -37,17 +37,22 @@ public class GetEventByIdQueryHandler
                 Description = e.Description,
                 Rules = e.Rules,
                 Prize = e.Prize,
+                MaxVote = e.MaxVote,
                 Status = e.Status.ToString(),
-                StartAt = e.StartAt,
-                EndsAt = e.EndsAt,
-                CreatedByAdminId = e.CreatedByAdminId,
+                SubmissionStartAt = e.SubmissionStartAt,
+                SubmissionEndAt = e.SubmissionEndAt,
+                JudgingStartAt = e.JudgingStartAt,
+                JudgingEndAt = e.JudgingEndAt,
+                VotingStartAt = e.VotingStartAt,
+                VotingEndAt = e.VotingEndAt,
+                ResultAnnouncementAt = e.ResultAnnouncementAt,
                 CreatedByAdminName = e.CreatedByAdmin != null ? e.CreatedByAdmin.FullName : null,
                 CreatedByAdminAvatarUrl = null,
                 SubmissionCount = e.Submissions.Count,
                 TotalVoteCount = e.Submissions.Sum(s => (int?)s.VoteCount) ?? 0,
                 CreatedAt = e.CreatedAt,
                 UpdatedAt = e.UpdatedAt,
-                IsOpenForSubmission = e.Status == EventStatus.Open && e.StartAt <= now && e.EndsAt >= now
+                IsOpenForSubmission = e.Status == EventStatus.Open && e.SubmissionStartAt <= now && e.SubmissionEndAt >= now
             })
             .FirstOrDefaultAsync(cancellationToken);
     }

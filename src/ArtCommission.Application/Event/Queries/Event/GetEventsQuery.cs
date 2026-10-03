@@ -70,7 +70,7 @@ public class GetEventsQueryHandler
         {
             "a-z" => query.OrderBy(e => e.Title),
             "popularity" => query.OrderByDescending(e => e.Submissions.Count).ThenByDescending(e => e.CreatedAt),
-            "end date" => query.OrderByDescending(e => e.EndsAt),
+            "end date" => query.OrderByDescending(e => e.ResultAnnouncementAt),
             "latest" => query.OrderByDescending(e => e.CreatedAt),
             _ => query.OrderByDescending(e => e.CreatedAt)
         };
@@ -84,16 +84,23 @@ public class GetEventsQueryHandler
                 Title = e.Title,
                 BannerUrl = e.BannerUrl,
                 Description = e.Description,
+                Rules = e.Rules,
                 Prize = e.Prize,
-                Status = e.Status.ToString(),
-                StartAt = e.StartAt,
-                EndsAt = e.EndsAt,
+                MaxVote = e.MaxVote,
+                Status = e.Status,
+                SubmissionStartAt = e.SubmissionStartAt,
+                SubmissionEndAt = e.SubmissionEndAt,
+                JudgingStartAt = e.JudgingStartAt,
+                JudgingEndAt = e.JudgingEndAt,
+                VotingStartAt = e.VotingStartAt,
+                VotingEndAt = e.VotingEndAt,
+                ResultAnnouncementAt = e.ResultAnnouncementAt,
                 CreatedByAdminId = e.CreatedByAdminId,
                 CreatedByAdminName = e.CreatedByAdmin != null ? e.CreatedByAdmin.FullName : null,
                 SubmissionCount = e.Submissions.Count,
                 CreatedAt = e.CreatedAt,
                 UpdatedAt = e.UpdatedAt,
-                IsActive = e.Status == EventStatus.Open && e.StartAt <= now && e.EndsAt >= now
+                IsActive = e.Status == EventStatus.Open && e.SubmissionStartAt <= now && e.ResultAnnouncementAt >= now
             })
             .ToListAsync(cancellationToken);
 

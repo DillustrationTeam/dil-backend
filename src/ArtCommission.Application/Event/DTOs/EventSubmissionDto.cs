@@ -12,9 +12,15 @@ public sealed record EventSubmissionDto
 
     public string? SubmitterName { get; set; }
 
+    public string? SubmitterUsername { get; set; }
+
     public string? SubmitterAvatarUrl { get; set; }
 
     public Guid ArtworkId { get; set; }
+
+    public string Title { get; set; } = string.Empty;
+
+    public string? Description { get; set; }
 
     public string? ArtworkTitle { get; set; }
 

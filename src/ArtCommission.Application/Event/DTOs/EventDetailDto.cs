@@ -14,13 +14,23 @@ public sealed record EventDetailDto
 
     public string? Prize { get; set; }
 
+    public int MaxVote { get; set; }
+
     public string Status { get; set; } = string.Empty;
 
-    public DateTimeOffset StartAt { get; set; }
+    public DateTimeOffset SubmissionStartAt { get; set; }
 
-    public DateTimeOffset EndsAt { get; set; }
+    public DateTimeOffset SubmissionEndAt { get; set; }
 
-    public Guid CreatedByAdminId { get; set; }
+    public DateTimeOffset JudgingStartAt { get; set; }
+
+    public DateTimeOffset JudgingEndAt { get; set; }
+
+    public DateTimeOffset VotingStartAt { get; set; }
+
+    public DateTimeOffset VotingEndAt { get; set; }
+
+    public DateTimeOffset ResultAnnouncementAt { get; set; }
 
     public string? CreatedByAdminName { get; set; }
 

@@ -1,5 +1,3 @@
-using ArtCommission.Domain.Enums;
-
 namespace ArtCommission.Application.Event.DTOs;
 
 public sealed record InvitationDto
@@ -24,7 +22,7 @@ public sealed record InvitationDto
 
     public string? SentToCreatorAvatarUrl { get; set; }
 
-    public JuryRole Role { get; set; }
+    public bool IsHeadJury { get; set; }
 
     public string Status { get; set; } = string.Empty;
 

@@ -562,15 +562,31 @@ BEGIN
         Description NVARCHAR(MAX) NOT NULL,
         Rules NVARCHAR(MAX) NULL,
         Prize NVARCHAR(1000) NULL,
+        MaxVote INT NOT NULL DEFAULT 1,               -- ⚡ Số lượt bình chọn tối đa của mỗi người dùng
         Status NVARCHAR(50) NOT NULL DEFAULT 'Draft', -- Draft, Open, Judging, Ended
-        StartAt DATETIMEOFFSET NOT NULL,
-        EndsAt DATETIMEOFFSET NOT NULL,
+        SubmissionStartAt DATETIMEOFFSET NOT NULL,
+        SubmissionEndAt DATETIMEOFFSET NOT NULL,
+        JudgingStartAt DATETIMEOFFSET NOT NULL,
+        JudgingEndAt DATETIMEOFFSET NOT NULL,
+        VotingStartAt DATETIMEOFFSET NOT NULL,
+        VotingEndAt DATETIMEOFFSET NOT NULL,
+        ResultAnnouncementAt DATETIMEOFFSET NOT NULL,
         CreatedByAdminId UNIQUEIDENTIFIER NOT NULL,
         CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
         UpdatedAt DATETIMEOFFSET NULL,
         IsDeleted BIT NOT NULL DEFAULT 0,
-        CONSTRAINT FK_PlatformEvents_Admin FOREIGN KEY (CreatedByAdminId) REFERENCES dbo.AspNetUsers(Id)
+        CONSTRAINT FK_PlatformEvents_Admin FOREIGN KEY (CreatedByAdminId) REFERENCES dbo.AspNetUsers(Id),
+        CONSTRAINT CK_PlatformEvents_Timeline CHECK (
+            SubmissionStartAt < SubmissionEndAt
+            AND SubmissionEndAt < JudgingStartAt
+            AND JudgingStartAt < JudgingEndAt
+            AND JudgingEndAt < VotingStartAt
+            AND VotingStartAt < VotingEndAt
+            AND VotingEndAt < ResultAnnouncementAt
+        )
     );
+
+    CREATE INDEX IX_PlatformEvents_Status_SubmissionTimeline ON dbo.PlatformEvents(Status, SubmissionStartAt, SubmissionEndAt);
 END
 GO
 
@@ -589,7 +605,7 @@ BEGIN
         CONSTRAINT FK_Invitations_Event FOREIGN KEY (EventId) REFERENCES dbo.PlatformEvents(Id) ON DELETE CASCADE,
         CONSTRAINT FK_Invitations_SentFromAdmin FOREIGN KEY (SentFromAdminId) REFERENCES dbo.AspNetUsers(Id),
         CONSTRAINT FK_Invitations_SentToCreator FOREIGN KEY (SentToCreatorId) REFERENCES dbo.CreatorProfiles(Id),
-        CONSTRAINT CK_Invitations_Status CHECK (Status IN ('Pending', 'Accepted', 'Rejected', 'Declined', 'Expired', 'Cancelled')),
+        CONSTRAINT CK_Invitations_Status CHECK (Status IN ('Pending', 'Accepted', 'Declined', 'Canceled', 'Expired')),
         CONSTRAINT CK_Invitations_RespondedAt CHECK (RespondedAt IS NULL OR RespondedAt >= CreatedAt)
     );
 
@@ -655,6 +671,8 @@ BEGIN
         EventId UNIQUEIDENTIFIER NOT NULL,
         SubmitterId UNIQUEIDENTIFIER NOT NULL,
         ArtworkId UNIQUEIDENTIFIER NOT NULL,
+        Title NVARCHAR(200) NOT NULL DEFAULT '',
+        Description NVARCHAR(2000) NULL,
         AiScanPassed BIT NOT NULL DEFAULT 0,
         VoteCount INT NOT NULL DEFAULT 0,              -- ⚡ [CẢI TIẾN] Đếm tổng lượt vote (Leaderboard O(1))
         Score DECIMAL(5, 2) NULL,                     -- Điểm BGK chấm

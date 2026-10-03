@@ -39,11 +39,25 @@ public class DeleteEventCommandHandler
             return (false, ["Platform event not found."]);
         }
 
-        platformEvent.IsDeleted = true;
-        platformEvent.UpdatedAt = DateTimeOffset.UtcNow;
+        var now = DateTimeOffset.UtcNow;
 
-        await _db.SaveChangesAsync(cancellationToken);
+        var deleteErrors = DeleteEventCommandValidator.ValidateCanDelete(platformEvent, now);
+        if (deleteErrors.Count > 0)
+        {
+            return (false, deleteErrors.ToArray());
+        }
 
-        return (true, Array.Empty<string>());
+        if (platformEvent.Status == ArtCommission.Domain.Enums.EventStatus.Draft &&
+            platformEvent.SubmissionStartAt > now)
+        {
+            platformEvent.IsDeleted = true;
+            platformEvent.UpdatedAt = now;
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            return (true, Array.Empty<string>());
+        }
+
+        return (false, ["The event cannot be deleted because it does not meet the deletion criteria."]);
     }
 }

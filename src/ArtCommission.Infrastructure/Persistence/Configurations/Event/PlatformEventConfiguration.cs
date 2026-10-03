@@ -8,7 +8,11 @@ public class PlatformEventConfiguration : IEntityTypeConfiguration<PlatformEvent
 {
     public void Configure(EntityTypeBuilder<PlatformEvent> builder)
     {
-        builder.ToTable("PlatformEvents");
+        builder.ToTable("PlatformEvents", t =>
+        {
+            t.HasCheckConstraint("CK_PlatformEvents_Timeline",
+                "[SubmissionStartAt] < [SubmissionEndAt] AND [SubmissionEndAt] < [JudgingStartAt] AND [JudgingStartAt] < [JudgingEndAt] AND [JudgingEndAt] < [VotingStartAt] AND [VotingStartAt] < [VotingEndAt] AND [VotingEndAt] < [ResultAnnouncementAt]");
+        });
 
         builder.HasKey(e => e.Id);
 
@@ -27,16 +31,35 @@ public class PlatformEventConfiguration : IEntityTypeConfiguration<PlatformEvent
         builder.Property(e => e.Prize)
             .HasMaxLength(1000);
 
+        builder.Property(e => e.MaxVote)
+            .HasDefaultValue(1)
+            .IsRequired();
+
         builder.Property(e => e.Status)
             .HasConversion<string>()
             .HasMaxLength(50)
             .HasDefaultValue(EventStatus.Draft)
             .IsRequired();
 
-        builder.Property(e => e.StartAt)
+        builder.Property(e => e.SubmissionStartAt)
             .IsRequired();
 
-        builder.Property(e => e.EndsAt)
+        builder.Property(e => e.SubmissionEndAt)
+            .IsRequired();
+
+        builder.Property(e => e.JudgingStartAt)
+            .IsRequired();
+
+        builder.Property(e => e.JudgingEndAt)
+            .IsRequired();
+
+        builder.Property(e => e.VotingStartAt)
+            .IsRequired();
+
+        builder.Property(e => e.VotingEndAt)
+            .IsRequired();
+
+        builder.Property(e => e.ResultAnnouncementAt)
             .IsRequired();
 
         builder.Property(e => e.CreatedAt)
@@ -57,7 +80,7 @@ public class PlatformEventConfiguration : IEntityTypeConfiguration<PlatformEvent
             .HasForeignKey(s => s.EventId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasIndex(e => new { e.Status, e.StartAt, e.EndsAt });
+        builder.HasIndex(e => new { e.Status, e.SubmissionStartAt, e.SubmissionEndAt });
 
         builder.HasIndex(e => e.CreatedByAdminId);
 

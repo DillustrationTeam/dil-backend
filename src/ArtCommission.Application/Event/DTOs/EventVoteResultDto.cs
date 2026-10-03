@@ -11,4 +11,6 @@ public sealed record EventVoteResultDto
     public int UpdatedVoteCount { get; set; }
 
     public bool IsVoted { get; set; }
+
+    public int RemainingVotesInEvent { get; set; }
 }

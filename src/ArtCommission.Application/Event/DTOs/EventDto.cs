@@ -1,3 +1,5 @@
+using ArtCommission.Domain.Enums;
+
 namespace ArtCommission.Application.Event.DTOs;
 
 public sealed record EventDto
@@ -10,13 +12,27 @@ public sealed record EventDto
 
     public string Description { get; set; } = string.Empty;
 
+    public string? Rules { get; set; }
+
     public string? Prize { get; set; }
 
-    public string Status { get; set; } = string.Empty;
+    public int MaxVote { get; set; }
 
-    public DateTimeOffset StartAt { get; set; }
+    public EventStatus Status { get; set; } = EventStatus.Draft;
 
-    public DateTimeOffset EndsAt { get; set; }
+    public DateTimeOffset SubmissionStartAt { get; set; }
+
+    public DateTimeOffset SubmissionEndAt { get; set; }
+
+    public DateTimeOffset JudgingStartAt { get; set; }
+
+    public DateTimeOffset JudgingEndAt { get; set; }
+
+    public DateTimeOffset VotingStartAt { get; set; }
+
+    public DateTimeOffset VotingEndAt { get; set; }
+
+    public DateTimeOffset ResultAnnouncementAt { get; set; }
 
     public Guid CreatedByAdminId { get; set; }
 

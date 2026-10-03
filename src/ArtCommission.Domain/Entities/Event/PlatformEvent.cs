@@ -16,11 +16,23 @@ public class PlatformEvent : BaseEntity
 
     public string? Prize { get; set; }
 
+    public int MaxVote { get; set; } = 1;
+
     public EventStatus Status { get; set; } = EventStatus.Draft;
 
-    public DateTimeOffset StartAt { get; set; }
+    public DateTimeOffset SubmissionStartAt { get; set; }
 
-    public DateTimeOffset EndsAt { get; set; }
+    public DateTimeOffset SubmissionEndAt { get; set; }
+
+    public DateTimeOffset JudgingStartAt { get; set; }
+
+    public DateTimeOffset JudgingEndAt { get; set; }
+
+    public DateTimeOffset VotingStartAt { get; set; }
+
+    public DateTimeOffset VotingEndAt { get; set; }
+
+    public DateTimeOffset ResultAnnouncementAt { get; set; }
 
     public Guid CreatedByAdminId { get; set; }
 

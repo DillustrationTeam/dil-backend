@@ -1,5 +1,3 @@
-using ArtCommission.Domain.Enums;
-
 namespace ArtCommission.Application.Event.DTOs;
 
 public sealed record JuryDto
@@ -20,7 +18,9 @@ public sealed record JuryDto
 
     public string? CreatorBio { get; set; }
 
-    public JuryRole Role { get; set; }
+    public bool IsHeadJury { get; set; }
+
+    public string Role => IsHeadJury ? "HeadJury" : "Jury";
 
     public DateTimeOffset CreatedAt { get; set; }
 }
