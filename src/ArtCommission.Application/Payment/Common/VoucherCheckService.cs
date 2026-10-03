@@ -124,6 +124,11 @@ public class VoucherCheckService : IVoucherCheckService
             return Fail("Mã giảm giá không tồn tại.");
         }
 
+        if (voucher.CreatedByUserId == userId)
+        {
+            return Fail("Bạn không thể sử dụng mã giảm giá do chính mình tạo.", voucher);
+        }
+
         var today = TodayInVietnam();
 
         if (!voucher.IsActive)

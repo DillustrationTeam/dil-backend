@@ -7,6 +7,7 @@ using ArtCommission.Application.ArtistStudio.Queries.GetCreatorProfile;
 using ArtCommission.Application.ArtistStudio.Queries.GetCreatorProfileById;
 using ArtCommission.Application.ArtistStudio.Queries.ManageCreatorArtworks;
 using ArtCommission.Application.Commission.Interfaces;
+using ArtCommission.Application.ArtistStudio.Workstation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -27,6 +28,19 @@ public class CreatorProfilesController : ApiControllerBase
     public CreatorProfilesController(IStorageService storageService)
     {
         _storageService = storageService;
+    }
+
+    /// <summary>Thống kê công khai của creator profile.</summary>
+    [HttpGet("creator-profiles/{creatorId:guid}/statistics")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetStatistics(Guid creatorId, CancellationToken cancellationToken)
+    {
+        var (success, data, errors) = await Mediator.Send(
+            new ArtCommission.Application.ArtistStudio.Queries.GetCreatorStatistics.GetCreatorStatisticsQuery(creatorId),
+            cancellationToken);
+        return success ? OkEnvelope(data) : NotFoundEnvelope(errors);
     }
 
     [HttpPost("profile/setup")]
@@ -126,6 +140,14 @@ public class CreatorProfilesController : ApiControllerBase
         }
 
         return OkEnvelope(data ?? new List<ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardPackageDto>());
+    }
+
+    [HttpGet("creator/{id:guid}/terms")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetTermsByCreatorId(Guid id, CancellationToken cancellationToken)
+    {
+        var terms = await Mediator.Send(new GetCreatorTermsQuery(id), cancellationToken);
+        return terms is null ? NotFound() : OkEnvelope(terms);
     }
 
     [HttpPut("creator/me/rate-card")]

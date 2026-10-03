@@ -4,6 +4,7 @@ using ArtCommission.Domain.Enums;
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using INotificationPublisher = ArtCommission.Application.Notifications.Common.INotificationPublisher;
 
 namespace ArtCommission.Application.CreatorApplication.Commands;
 
@@ -47,13 +48,16 @@ public class ReviewCreatorApplicationCommandHandler
 {
     private readonly IApplicationDbContext _db;
     private readonly IIdentityService _identityService;
+    private readonly INotificationPublisher _notificationPublisher;
 
     public ReviewCreatorApplicationCommandHandler(
         IApplicationDbContext db,
-        IIdentityService identityService)
+        IIdentityService identityService,
+        INotificationPublisher notificationPublisher)
     {
         _db = db;
         _identityService = identityService;
+        _notificationPublisher = notificationPublisher;
     }
 
     public async Task<(bool Success, string[] Errors)> Handle(
@@ -127,6 +131,34 @@ public class ReviewCreatorApplicationCommandHandler
         application.ReviewNote = request.ReviewNote;
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        var (title, body) = request.Status switch
+        {
+            ApplicationStatus.Approved =>
+                ("Đơn đăng ký Creator đã được duyệt!",
+                 "Chúc mừng bạn đã trở thành Creator. Bạn có thể bắt đầu nhận đơn đặt vẽ ngay bây giờ."),
+            ApplicationStatus.Rejected =>
+                ("Đơn đăng ký Creator bị từ chối",
+                 request.ReviewNote ?? "Đơn đăng ký của bạn đã bị từ chối."),
+            ApplicationStatus.AdditionalProofRequested =>
+                ("Cần bổ sung hồ sơ Creator",
+                 request.ReviewNote ?? "Vui lòng bổ sung thêm minh chứng cho đơn đăng ký của bạn."),
+            _ => (string.Empty, string.Empty)
+        };
+
+        if (!string.IsNullOrEmpty(title))
+        {
+            await _notificationPublisher.PublishAsync(
+                userId: application.ApplicantId,
+                notificationType: NotificationType.CreatorApplicationStatusChanged,
+                title: title,
+                body: body,
+                refType: "CreatorApplication",
+                refId: application.Id,
+                dedupKey: $"CreatorApplicationReview:{application.Id}:{request.Status}",
+                cancellationToken: cancellationToken
+            );
+        }
 
         return (true, Array.Empty<string>());
     }

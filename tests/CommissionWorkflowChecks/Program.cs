@@ -25,7 +25,7 @@ var profile = new CreatorProfile { UserId = creatorId, DisplayName = "Test creat
 db.CreatorProfiles.Add(profile);
 db.Wallets.Add(new Wallet { UserId = clientId, Balance = 10000m });
 await db.SaveChangesAsync();
-var service = new CommissionService(db, new WalletService(db), new TestWatermark(), new TestStorage());
+var service = new CommissionService(db, new WalletService(db), new TestWatermark(), new TestStorage(), new VoucherCheckService(db));
 var checks = 0;
 
 void Equal<T>(T expected, T actual, string name)
@@ -47,7 +47,7 @@ async Task<(Guid Id, Guid[] Milestones)> Create(string title)
 {
     var created = await service.CreateCommissionAsync(new CreateCommissionRequest
     {
-        CreatorId = creatorId,
+        CreatorId = profile.Id,
         Title = title,
         PackageId = packageId
     }, clientId);
@@ -132,7 +132,7 @@ await Rejected(() => service.DepositEscrowAsync(cancelled.Id, clientId, "Wallet"
 
 await Rejected(() => service.CreateCommissionAsync(new CreateCommissionRequest
 {
-    CreatorId = creatorId,
+    CreatorId = profile.Id,
     Title = "bad total",
     PackageId = Guid.NewGuid()
 }, clientId), "unknown package cannot create fallback commission");
@@ -149,7 +149,7 @@ foreach (var invalidRates in new[] {
 {
     profile.RateCardJson = invalidRates;
     await db.SaveChangesAsync();
-    await Rejected(() => service.CreateCommissionAsync(new CreateCommissionRequest { CreatorId = creatorId, PackageId = packageId, Title = "invalid" }, clientId), "invalid rates never create a default-priced order");
+    await Rejected(() => service.CreateCommissionAsync(new CreateCommissionRequest { CreatorId = profile.Id, PackageId = packageId, Title = "invalid" }, clientId), "invalid rates never create a default-priced order");
 }
 Equal(countBeforeInvalid, await db.Commissions.CountAsync(), "invalid requests persist no commissions");
 profile.RateCardJson = validRates;
@@ -162,7 +162,7 @@ await using (var seed = new AppDbContext(raceOptions))
 {
     seed.Commissions.Add(new Commission
     {
-        Id = raceId, ClientId = clientId, CreatorId = creatorId, Title = "race",
+        Id = raceId, ClientId = clientId, CreatorId = profile.Id, Title = "race",
         Status = CommissionStatus.InProgress, EscrowStatus = EscrowStatus.Deposited,
         TotalPrice = 100, FinalPrice = 100, EscrowHeldAmount = 100,
         Milestones = [new Milestone { Sequence = 1, Title = "Stage", Price = 100, Status = MilestoneStatus.Submitted }]

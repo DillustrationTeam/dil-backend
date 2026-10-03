@@ -2216,6 +2216,31 @@ GO
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921165830_AddCreatorApplicationIdProofBackUrl'
+)
+BEGIN
+    ALTER TABLE [CreatorApplications] ADD [IdProofBackUrl] nvarchar(500) NOT NULL DEFAULT N'';
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260921165830_AddCreatorApplicationIdProofBackUrl'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260921165830_AddCreatorApplicationIdProofBackUrl', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
     WHERE [MigrationId] = N'20260921175834_AddMarketplaceDiscoveryInteractions'
 )
 BEGIN
@@ -2538,9 +2563,152 @@ GO
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260922153808_AddEmailVerificationCodes'
+)
+BEGIN
+    CREATE TABLE [EmailVerificationCodes] (
+        [Id] uniqueidentifier NOT NULL,
+        [Email] nvarchar(256) NOT NULL,
+        [CodeHash] nvarchar(64) NOT NULL,
+        [ExpiresAt] datetimeoffset NOT NULL,
+        [ConsumedAt] datetimeoffset NULL,
+        [AttemptCount] int NOT NULL,
+        [CreatedAt] datetimeoffset NOT NULL,
+        [UpdatedAt] datetimeoffset NULL,
+        [IsDeleted] bit NOT NULL,
+        CONSTRAINT [PK_EmailVerificationCodes] PRIMARY KEY ([Id])
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260922153808_AddEmailVerificationCodes'
+)
+BEGIN
+    CREATE INDEX [IX_EmailVerificationCodes_Email] ON [EmailVerificationCodes] ([Email]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260922153808_AddEmailVerificationCodes'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260922153808_AddEmailVerificationCodes', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260922164534_ConvertSpeedpaintVideoUrlToList'
+)
+BEGIN
+    ALTER TABLE [CreatorApplications] ADD [SpeedpaintVideoUrls] nvarchar(max) NOT NULL DEFAULT N'[]';
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260922164534_ConvertSpeedpaintVideoUrlToList'
+)
+BEGIN
+
+                    UPDATE CreatorApplications
+                    SET SpeedpaintVideoUrls = CASE
+                        WHEN SpeedpaintVideoUrl IS NULL OR LTRIM(RTRIM(SpeedpaintVideoUrl)) = '' THEN '[]'
+                        ELSE '["' + STRING_ESCAPE(SpeedpaintVideoUrl, 'json') + '"]'
+                    END
+
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260922164534_ConvertSpeedpaintVideoUrlToList'
+)
+BEGIN
+    DECLARE @var0 sysname;
+    SELECT @var0 = [d].[name]
+    FROM [sys].[default_constraints] [d]
+    INNER JOIN [sys].[columns] [c] ON [d].[parent_column_id] = [c].[column_id] AND [d].[parent_object_id] = [c].[object_id]
+    WHERE ([d].[parent_object_id] = OBJECT_ID(N'[CreatorApplications]') AND [c].[name] = N'SpeedpaintVideoUrl');
+    IF @var0 IS NOT NULL EXEC(N'ALTER TABLE [CreatorApplications] DROP CONSTRAINT [' + @var0 + '];');
+    ALTER TABLE [CreatorApplications] DROP COLUMN [SpeedpaintVideoUrl];
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260922164534_ConvertSpeedpaintVideoUrlToList'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260922164534_ConvertSpeedpaintVideoUrlToList', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260922171322_AddPurposeToEmailVerificationCodes'
+)
+BEGIN
+    ALTER TABLE [EmailVerificationCodes] ADD [Purpose] nvarchar(30) NOT NULL DEFAULT N'EmailVerification';
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260922171322_AddPurposeToEmailVerificationCodes'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260922171322_AddPurposeToEmailVerificationCodes', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
     WHERE [MigrationId] = N'20260927132120_SyncLocalRuntimeSchema'
 )
 BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260927132120_SyncLocalRuntimeSchema', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260930095000_AddCreatorWorkstationTables'
+)
+BEGIN
+    IF OBJECT_ID(N'[dbo].[CreatorAssets]', N'U') IS NULL
+    BEGIN
     CREATE TABLE [CreatorAssets] (
         [Id] uniqueidentifier NOT NULL,
         [CreatorProfileId] uniqueidentifier NOT NULL,
@@ -2554,14 +2722,10 @@ BEGIN
         CONSTRAINT [PK_CreatorAssets] PRIMARY KEY ([Id]),
         CONSTRAINT [FK_CreatorAssets_CreatorProfiles_CreatorProfileId] FOREIGN KEY ([CreatorProfileId]) REFERENCES [CreatorProfiles] ([Id]) ON DELETE CASCADE
     );
-END;
-GO
+    END;
 
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260927132120_SyncLocalRuntimeSchema'
-)
-BEGIN
+    IF OBJECT_ID(N'[dbo].[CreatorAutoReplySettings]', N'U') IS NULL
+    BEGIN
     CREATE TABLE [CreatorAutoReplySettings] (
         [Id] uniqueidentifier NOT NULL,
         [CreatorProfileId] uniqueidentifier NOT NULL,
@@ -2573,14 +2737,10 @@ BEGIN
         CONSTRAINT [PK_CreatorAutoReplySettings] PRIMARY KEY ([Id]),
         CONSTRAINT [FK_CreatorAutoReplySettings_CreatorProfiles_CreatorProfileId] FOREIGN KEY ([CreatorProfileId]) REFERENCES [CreatorProfiles] ([Id]) ON DELETE CASCADE
     );
-END;
-GO
+    END;
 
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260927132120_SyncLocalRuntimeSchema'
-)
-BEGIN
+    IF OBJECT_ID(N'[dbo].[CreatorFaqs]', N'U') IS NULL
+    BEGIN
     CREATE TABLE [CreatorFaqs] (
         [Id] uniqueidentifier NOT NULL,
         [CreatorProfileId] uniqueidentifier NOT NULL,
@@ -2593,14 +2753,10 @@ BEGIN
         CONSTRAINT [PK_CreatorFaqs] PRIMARY KEY ([Id]),
         CONSTRAINT [FK_CreatorFaqs_CreatorProfiles_CreatorProfileId] FOREIGN KEY ([CreatorProfileId]) REFERENCES [CreatorProfiles] ([Id]) ON DELETE CASCADE
     );
-END;
-GO
+    END;
 
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260927132120_SyncLocalRuntimeSchema'
-)
-BEGIN
+    IF OBJECT_ID(N'[dbo].[CreatorTerms]', N'U') IS NULL
+    BEGIN
     CREATE TABLE [CreatorTerms] (
         [Id] uniqueidentifier NOT NULL,
         [CreatorProfileId] uniqueidentifier NOT NULL,
@@ -2613,14 +2769,10 @@ BEGIN
         CONSTRAINT [PK_CreatorTerms] PRIMARY KEY ([Id]),
         CONSTRAINT [FK_CreatorTerms_CreatorProfiles_CreatorProfileId] FOREIGN KEY ([CreatorProfileId]) REFERENCES [CreatorProfiles] ([Id]) ON DELETE CASCADE
     );
-END;
-GO
+    END;
 
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260927132120_SyncLocalRuntimeSchema'
-)
-BEGIN
+    IF OBJECT_ID(N'[dbo].[CreatorWorkItems]', N'U') IS NULL
+    BEGIN
     CREATE TABLE [CreatorWorkItems] (
         [Id] uniqueidentifier NOT NULL,
         [CreatorProfileId] uniqueidentifier NOT NULL,
@@ -2634,61 +2786,249 @@ BEGIN
         CONSTRAINT [PK_CreatorWorkItems] PRIMARY KEY ([Id]),
         CONSTRAINT [FK_CreatorWorkItems_CreatorProfiles_CreatorProfileId] FOREIGN KEY ([CreatorProfileId]) REFERENCES [CreatorProfiles] ([Id]) ON DELETE CASCADE
     );
-END;
-GO
+    END;
 
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260927132120_SyncLocalRuntimeSchema'
-)
-BEGIN
+    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'[dbo].[CreatorAssets]') AND name = N'IX_CreatorAssets_CreatorProfileId')
+    BEGIN
     CREATE INDEX [IX_CreatorAssets_CreatorProfileId] ON [CreatorAssets] ([CreatorProfileId]);
-END;
-GO
+    END;
 
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260927132120_SyncLocalRuntimeSchema'
-)
-BEGIN
+    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'[dbo].[CreatorAutoReplySettings]') AND name = N'IX_CreatorAutoReplySettings_CreatorProfileId')
+    BEGIN
     CREATE INDEX [IX_CreatorAutoReplySettings_CreatorProfileId] ON [CreatorAutoReplySettings] ([CreatorProfileId]);
-END;
-GO
+    END;
 
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260927132120_SyncLocalRuntimeSchema'
-)
-BEGIN
+    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'[dbo].[CreatorFaqs]') AND name = N'IX_CreatorFaqs_CreatorProfileId')
+    BEGIN
     CREATE INDEX [IX_CreatorFaqs_CreatorProfileId] ON [CreatorFaqs] ([CreatorProfileId]);
-END;
-GO
+    END;
 
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260927132120_SyncLocalRuntimeSchema'
-)
-BEGIN
+    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'[dbo].[CreatorTerms]') AND name = N'IX_CreatorTerms_CreatorProfileId')
+    BEGIN
     CREATE INDEX [IX_CreatorTerms_CreatorProfileId] ON [CreatorTerms] ([CreatorProfileId]);
-END;
-GO
+    END;
 
-IF NOT EXISTS (
-    SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260927132120_SyncLocalRuntimeSchema'
-)
-BEGIN
+    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'[dbo].[CreatorWorkItems]') AND name = N'IX_CreatorWorkItems_CreatorProfileId')
+    BEGIN
     CREATE INDEX [IX_CreatorWorkItems_CreatorProfileId] ON [CreatorWorkItems] ([CreatorProfileId]);
+    END;
 END;
 GO
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260927132120_SyncLocalRuntimeSchema'
+    WHERE [MigrationId] = N'20260930095000_AddCreatorWorkstationTables'
 )
 BEGIN
     INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
-    VALUES (N'20260927132120_SyncLocalRuntimeSchema', N'8.0.8');
+    VALUES (N'20260930095000_AddCreatorWorkstationTables', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260930103000_AddCommissionLicensePricing'
+)
+BEGIN
+    ALTER TABLE [Commissions] ADD [LicenseType] nvarchar(20) NOT NULL DEFAULT N'Personal';
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260930103000_AddCommissionLicensePricing'
+)
+BEGIN
+    ALTER TABLE [Commissions] ADD [LicenseMultiplierApplied] decimal(5,2) NOT NULL DEFAULT 1.0;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260930103000_AddCommissionLicensePricing'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260930103000_AddCommissionLicensePricing', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260930163701_AuctionConcurrencyAndAutoBid'
+)
+BEGIN
+    ALTER TABLE [Auctions] ADD [RowVersion] rowversion NOT NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260930163701_AuctionConcurrencyAndAutoBid'
+)
+BEGIN
+    CREATE TABLE [AuctionAutoBids] (
+        [Id] uniqueidentifier NOT NULL,
+        [AuctionId] uniqueidentifier NOT NULL,
+        [BidderId] uniqueidentifier NOT NULL,
+        [MaxAmount] decimal(18,2) NOT NULL,
+        [RegisteredAt] datetimeoffset NOT NULL,
+        [CreatedAt] datetimeoffset NOT NULL,
+        [UpdatedAt] datetimeoffset NULL,
+        [IsDeleted] bit NOT NULL DEFAULT CAST(0 AS bit),
+        CONSTRAINT [PK_AuctionAutoBids] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_AuctionAutoBids_Auctions_AuctionId] FOREIGN KEY ([AuctionId]) REFERENCES [Auctions] ([Id]) ON DELETE CASCADE,
+        CONSTRAINT [FK_AuctionAutoBids_Users_BidderId] FOREIGN KEY ([BidderId]) REFERENCES [Users] ([Id]) ON DELETE NO ACTION
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260930163701_AuctionConcurrencyAndAutoBid'
+)
+BEGIN
+    CREATE INDEX [IX_AuctionAutoBids_BidderId] ON [AuctionAutoBids] ([BidderId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260930163701_AuctionConcurrencyAndAutoBid'
+)
+BEGIN
+    CREATE INDEX [IX_AuctionAutoBids_ProxyOrder] ON [AuctionAutoBids] ([AuctionId], [MaxAmount], [RegisteredAt]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260930163701_AuctionConcurrencyAndAutoBid'
+)
+BEGIN
+    CREATE UNIQUE INDEX [UX_AuctionAutoBids_Auction_Bidder] ON [AuctionAutoBids] ([AuctionId], [BidderId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260930163701_AuctionConcurrencyAndAutoBid'
+)
+BEGIN
+    ;WITH RankedAutoBids AS
+    (
+        SELECT AuctionId, BidderId, MaxAutoBid,
+               MIN(PlacedAt) OVER (PARTITION BY AuctionId, BidderId) AS RegisteredAt,
+               ROW_NUMBER() OVER (PARTITION BY AuctionId, BidderId ORDER BY PlacedAt DESC, Id DESC) AS LatestRank
+        FROM dbo.Bids
+        WHERE IsAuto = 1 AND MaxAutoBid IS NOT NULL AND IsDeleted = 0
+    )
+    INSERT INTO dbo.AuctionAutoBids
+        (Id, AuctionId, BidderId, MaxAmount, RegisteredAt, CreatedAt, UpdatedAt, IsDeleted)
+    SELECT NEWID(), AuctionId, BidderId, MaxAutoBid, RegisteredAt, RegisteredAt, NULL, 0
+    FROM RankedAutoBids
+    WHERE LatestRank = 1;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260930163701_AuctionConcurrencyAndAutoBid'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260930163701_AuctionConcurrencyAndAutoBid', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261002043141_AddCommissionQueryIndexes'
+)
+BEGIN
+    CREATE INDEX [IX_Commissions_ClientId_CreatedAt] ON [Commissions] ([ClientId], [CreatedAt] DESC);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261002043141_AddCommissionQueryIndexes'
+)
+BEGIN
+    CREATE INDEX [IX_Commissions_CreatorId_CreatedAt] ON [Commissions] ([CreatorId], [CreatedAt] DESC);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261002043141_AddCommissionQueryIndexes'
+)
+BEGIN
+    CREATE INDEX [IX_Commissions_Status_UpdatedAt] ON [Commissions] ([Status], [UpdatedAt] DESC);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261002043141_AddCommissionQueryIndexes'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20261002043141_AddCommissionQueryIndexes', N'8.0.8');
+END;
+GO
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261003000000_PreserveLegacyArtworkBookmarks'
+)
+BEGIN
+    DECLARE @Imported TABLE (UserId uniqueidentifier PRIMARY KEY, CollectionId uniqueidentifier);
+    INSERT INTO @Imported (UserId, CollectionId)
+    SELECT DISTINCT UserId, NEWID() FROM (SELECT DISTINCT UserId FROM ArtworkFavorites) AS Owners;
+
+    INSERT INTO PersonalCollections (Id, OwnerUserId, Name, IsPublic, CreatedAt, UpdatedAt, IsDeleted)
+    SELECT CollectionId, UserId, N'Tranh đã lưu trước đây', 0, SYSDATETIMEOFFSET(), NULL, 0
+    FROM @Imported;
+
+    INSERT INTO CollectionArtworks (CollectionId, ArtworkId, CreatedAt)
+    SELECT imported.CollectionId, favorite.ArtworkId, favorite.CreatedAt
+    FROM ArtworkFavorites AS favorite
+    INNER JOIN @Imported AS imported ON imported.UserId = favorite.UserId;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261003000000_PreserveLegacyArtworkBookmarks'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20261003000000_PreserveLegacyArtworkBookmarks', N'8.0.8');
 END;
 GO
 

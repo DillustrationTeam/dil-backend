@@ -3,6 +3,7 @@ using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Enums;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace ArtCommission.Application.Auction.Commands.DeleteAuction;
 
@@ -23,10 +24,20 @@ public class DeleteAuctionCommandHandler
     : IRequestHandler<DeleteAuctionCommand, (bool, string[])>
 {
     private readonly IApplicationDbContext _db;
+    private readonly IAuctionRealtimePublisher _realtime;
+    private readonly IAuctionLifecycleNotifier _lifecycleNotifier;
+    private readonly ILogger<DeleteAuctionCommandHandler> _logger;
 
-    public DeleteAuctionCommandHandler(IApplicationDbContext db)
+    public DeleteAuctionCommandHandler(
+        IApplicationDbContext db,
+        IAuctionRealtimePublisher realtime,
+        IAuctionLifecycleNotifier lifecycleNotifier,
+        ILogger<DeleteAuctionCommandHandler> logger)
     {
         _db = db;
+        _realtime = realtime;
+        _lifecycleNotifier = lifecycleNotifier;
+        _logger = logger;
     }
 
     public async Task<(bool, string[])> Handle(
@@ -75,6 +86,18 @@ public class DeleteAuctionCommandHandler
         auction.IsDeleted = true;
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        await _lifecycleNotifier.NotifyParticipantsAsync(
+            auction.Id, AuctionLifecycleEvent.Ended, cancellationToken: cancellationToken);
+        try
+        {
+            await _realtime.PublishAuctionStatusChangedAsync(
+                auction.Id, auction.Status.ToString(), auction.CurrentPrice, auction.EndAt, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Không broadcast được trạng thái huỷ auctionId={AuctionId}.", auction.Id);
+        }
 
         return (true, []);
     }

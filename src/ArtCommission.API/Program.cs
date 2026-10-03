@@ -13,6 +13,7 @@ using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
 using ArtCommission.Application.Revenue.Common;
 using ArtCommission.Domain.Entities.Identity;
+using ArtCommission.Infrastructure.ExternalServices.Cloudinary;
 using ArtCommission.Infrastructure.ExternalServices.Common;
 using ArtCommission.Infrastructure.ExternalServices.Gemini;
 using ArtCommission.Infrastructure.ExternalServices.Google;
@@ -21,8 +22,10 @@ using ArtCommission.Infrastructure.ExternalServices.R2;
 using ArtCommission.Infrastructure.ExternalServices.Watermark;
 using ArtCommission.Infrastructure.Identity;
 using ArtCommission.Infrastructure.Persistence;
+using ArtCommission.Infrastructure.Persistence.Seed;
 using ArtCommission.Infrastructure.Services;
 using FluentValidation;
+using Hangfire;
 using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
@@ -72,6 +75,14 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(connectionString));
 
+// Hangfire lưu recurring job trong cùng SQL Server theo tài liệu kiến trúc.
+builder.Services.AddHangfire(configuration => configuration
+    .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+    .UseSimpleAssemblyNameTypeSerializer()
+    .UseRecommendedSerializerSettings()
+    .UseSqlServerStorage(connectionString));
+builder.Services.AddHangfireServer();
+
 // 2. Add ASP.NET Core Identity
 builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
 {
@@ -88,6 +99,7 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
 builder.Services.AddScoped<IIdentityService, IdentityService>();
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IEmailVerificationService, EmailVerificationService>();
 
 // 3b. Payment module — DbContext exposed qua interface cho tầng Application
 builder.Services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<AppDbContext>());
@@ -130,6 +142,16 @@ builder.Services.AddSingleton<PayOSClient>(sp =>
 
 builder.Services.AddScoped<IPaymentGateway, PayOsPaymentGateway>();
 
+// 3d-2. Cloudinary Signed Upload — client tự upload file thẳng lên Cloudinary, server chỉ ký.
+// Secret lấy từ User Secrets (dev) hoặc biến môi trường Cloudinary__ApiSecret.
+builder.Services.Configure<CloudinaryOptions>(builder.Configuration.GetSection(CloudinaryOptions.SectionName));
+builder.Services.AddScoped<ICloudinarySignatureService, CloudinarySignatureService>();
+
+// 3d-3. Google OAuth (custom button, access-token flow) — server verifies token via Google's
+// tokeninfo (aud check) + userinfo endpoints. No Client Secret required for this flow.
+builder.Services.Configure<GoogleAuthOptions>(builder.Configuration.GetSection(GoogleAuthOptions.SectionName));
+builder.Services.AddHttpClient<IGoogleUserInfoService, GoogleUserInfoService>();
+
 // 3e. UC45 — Notification: ghi DB + đẩy SignalR real-time
 builder.Services.AddScoped<INotificationPublisher, SignalRNotificationPublisher>();
 
@@ -139,6 +161,8 @@ builder.Services.AddScoped<IVoucherCheckService, VoucherCheckService>();
 // 3g. UC32–UC35 — Auction: cọc đấu giá + chốt phiên (dùng chung IWalletService)
 builder.Services.AddScoped<IAuctionMoneyService, AuctionMoneyService>();
 builder.Services.AddScoped<IAuctionSettlementService, AuctionSettlementService>();
+builder.Services.AddScoped<IAuctionRealtimePublisher, AuctionRealtimePublisher>();
+builder.Services.AddScoped<IAuctionLifecycleNotifier, AuctionLifecycleNotifier>();
 
 // 3h. UC43 — Workroom Chat: phân giải phòng, kiểm quyền thành viên
 builder.Services.AddScoped<IChatRoomService, ChatRoomService>();
@@ -366,13 +390,14 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
     var exception = context.Features.Get<IExceptionHandlerPathFeature>()?.Error;
     var (status, title, detail) = exception switch
     {
-        DbUpdateConcurrencyException => (409, "Conflict", "This commission changed while your request was being processed. Please retry."),
-        DbUpdateException { InnerException: SqlException { Number: 2601 or 2627 } } => (409, "Conflict", "A record with the same key already exists."),
+        DbUpdateConcurrencyException => (409, "Xung đột", "Dữ liệu vừa được cập nhật bởi thao tác khác. Vui lòng tải lại và thử lại."),
+        DbUpdateException { InnerException: SqlException { Number: 1205 or 2601 or 2627 or 3960 } } => (409, "Xung đột", "Dữ liệu vừa được cập nhật bởi thao tác khác. Vui lòng tải lại và thử lại."),
+        SqlException { Number: 1205 or 2601 or 2627 or 3960 } => (409, "Xung đột", "Dữ liệu vừa được cập nhật bởi thao tác khác. Vui lòng tải lại và thử lại."),
         KeyNotFoundException => (404, "Not Found", exception.Message),
         UnauthorizedAccessException => (403, "Forbidden", exception.Message),
         ArgumentException => (400, "Bad Request", exception.Message),
         InvalidOperationException => (400, "Bad Request", exception.Message),
-        _ => (500, "Internal Server Error", "An unexpected error occurred.")
+        _ => (500, "Lỗi máy chủ", "Đã xảy ra lỗi không mong muốn.")
     };
     app.Logger.LogError(exception, "API request failed with status {StatusCode}", status);
     context.Response.StatusCode = status;
@@ -402,6 +427,17 @@ if (!isDocumentGeneration)
                 var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
                 var roleManager = services.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
                 await DevelopmentDemoSeeder.SeedAsync(dbContext, userManager, roleManager);
+
+                // Seed dữ liệu mẫu riêng cho Creator Application (5 user + wallet + creator profile + artwork),
+                // idempotent. Nằm trong cùng guard isDocumentGeneration để không chạy lúc build export OpenAPI.
+                try
+                {
+                    await DevDataSeeder.SeedSampleDataAsync(services, logger);
+                }
+                catch (Exception seedEx)
+                {
+                    logger.LogError(seedEx, "An error occurred while seeding development sample data.");
+                }
             }
 
             logger.LogInformation("Database initialized successfully.");
@@ -413,8 +449,22 @@ if (!isDocumentGeneration)
     }
 }
 
+if (!isDocumentGeneration)
+{
+    try
+    {
+        RecurringJob.AddOrUpdate<AuctionLifecycleJob>(
+            "auction-lifecycle",
+            job => job.RunAsync(CancellationToken.None),
+            Cron.Minutely);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Không đăng ký được recurring job auction-lifecycle.");
+    }
+}
 
-
+// Configure HTTP request pipeline
 // openapi/v1.json luôn public (cả Production) để GitHub Actions export & Scalar Netlify fetch được
 app.UseSwagger(options =>
 {
@@ -472,6 +522,9 @@ app.MapControllers();
 
 // UC45 — SignalR hub. Client kết nối: /hubs/notifications?access_token={jwt}
 app.MapHub<NotificationHub>("/hubs/notifications");
+
+// UC32–UC36 — hub giá và trạng thái auction.
+app.MapHub<AuctionHub>("/hubs/auctions");
 
 // UC43 — SignalR hub chat. Client kết nối: /hubs/chat?access_token={jwt}
 app.MapHub<ChatHub>("/hubs/chat");

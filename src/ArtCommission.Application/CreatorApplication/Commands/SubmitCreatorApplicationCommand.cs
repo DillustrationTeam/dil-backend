@@ -8,12 +8,13 @@ using Microsoft.EntityFrameworkCore;
 namespace ArtCommission.Application.CreatorApplication.Commands;
 
 public record SubmitCreatorApplicationCommand(
-    Guid ApplicantId, 
+    Guid ApplicantId,
     List<string> PortfolioLinks,
     List<string>? SocialLinks,
     string IdProofUrl,
+    string IdProofBackUrl,
     string? PrimaryStyle = null,
-    string? SpeedpaintVideoUrl = null
+    List<string>? SpeedpaintVideoUrls = null
 ) : IRequest<(bool Success, Guid? ApplicationId, string[] Errors)>;
 
 public class SubmitCreatorApplicationCommandValidator : 
@@ -32,13 +33,23 @@ public class SubmitCreatorApplicationCommandValidator :
             .Must(IsValidUrl).WithMessage("Social links must be a valid URL.");
 
         RuleFor(c => c.IdProofUrl)
-            .NotEmpty().WithMessage("Identification card image is required.")
-            .Must(IsValidUrl).WithMessage("Identification card image must be a valid URL.");
+            .NotEmpty().WithMessage("Front-side identification card image is required.")
+            .Must(IsValidUrl).WithMessage("Front-side identification card image must be a valid URL.");
+
+        RuleFor(c => c.IdProofBackUrl)
+            .NotEmpty().WithMessage("Back-side identification card image is required.")
+            .Must(IsValidUrl).WithMessage("Back-side identification card image must be a valid URL.");
 
         When (c => c.SocialLinks != null && c.SocialLinks.Count > 0, () =>
         {
             RuleForEach(c => c.SocialLinks)
                 .Must(IsValidUrl).WithMessage("Social link must be a valid URL.");
+        });
+
+        When (c => c.SpeedpaintVideoUrls != null && c.SpeedpaintVideoUrls.Count > 0, () =>
+        {
+            RuleForEach(c => c.SpeedpaintVideoUrls)
+                .Must(IsValidUrl).WithMessage("Speedpaint video link must be a valid URL.");
         });
     }
 
@@ -99,8 +110,9 @@ public class SubmitCreatorApplicationCommandHandler
             PortfolioLinks = request.PortfolioLinks,
             SocialLinks = request.SocialLinks ?? new List<string>(),
             IdProofUrl = request.IdProofUrl,
+            IdProofBackUrl = request.IdProofBackUrl,
             PrimaryStyle = request.PrimaryStyle,
-            SpeedpaintVideoUrl = request.SpeedpaintVideoUrl,
+            SpeedpaintVideoUrls = request.SpeedpaintVideoUrls ?? new List<string>(),
             Status = ApplicationStatus.Pending,
             SubmittedAt = DateTimeOffset.UtcNow
         };

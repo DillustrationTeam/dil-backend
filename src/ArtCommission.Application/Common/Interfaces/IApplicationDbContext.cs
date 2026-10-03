@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 // ArtCommission.Domain.Entities.Auction.Auction, nên tên trần "Auction" sẽ bind vào
 // namespace chứ không phải kiểu entity.
 using AuctionEntity = ArtCommission.Domain.Entities.Auction.Auction;
+using AuctionAutoBid = ArtCommission.Domain.Entities.Auction.AuctionAutoBid;
 using BidEntity = ArtCommission.Domain.Entities.Auction.Bid;
 using AuctionWatchEntity = ArtCommission.Domain.Entities.Auction.AuctionWatch;
 using ArtworkOwnershipEntity = ArtCommission.Domain.Entities.Auction.ArtworkOwnership;
@@ -76,6 +77,7 @@ public interface IApplicationDbContext
     // Module Auction & Art Trade (UC32–UC35)
     DbSet<AuctionEntity> Auctions { get; }
     DbSet<BidEntity> Bids { get; }
+    DbSet<AuctionAutoBid> AuctionAutoBids { get; }
     DbSet<AuctionWatchEntity> AuctionWatches { get; }
     DbSet<ArtworkOwnershipEntity> ArtworkOwnerships { get; }
     DbSet<EscrowTransactionEntity> EscrowTransactions { get; }
@@ -99,6 +101,7 @@ public interface IApplicationDbContext
     DbSet<ApplicationUser> Users { get; }
     DbSet<UserSanction> UserSanctions { get; }
     DbSet<RefreshToken> RefreshTokens { get; }
+    DbSet<EmailVerificationCode> EmailVerificationCodes { get; }
 
     DbSet<T> Set<T>() where T : class;
 
