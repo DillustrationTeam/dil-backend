@@ -73,45 +73,32 @@ public class CommissionService : ICommissionService
         if (creator is null || !creator.IsAcceptingOrders)
             throw new ArgumentException("Creator hiện không nhận đơn.");
 
-        var totalPrice = 0.00m;
-        var milestones = new List<Milestone>();
-        ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardPackageDto? selectedPackage = null;
-
-        if (!string.IsNullOrWhiteSpace(creator.RateCardJson))
+        if (string.IsNullOrWhiteSpace(creator.RateCardJson))
+            throw new ArgumentException("Creator chưa cấu hình bảng giá.");
+        ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardPackageDto? selectedPackage;
+        try
         {
-            try
-            {
-                var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var packages = System.Text.Json.JsonSerializer.Deserialize<List<ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardPackageDto>>(creator.RateCardJson, options);
-                selectedPackage = packages?.FirstOrDefault(p => p.Id == request.PackageId);
-                if (selectedPackage != null)
-                {
-                    totalPrice = selectedPackage.Price;
-                    if (selectedPackage.Milestones != null && selectedPackage.Milestones.Count > 0)
-                    {
-                        foreach (var stage in selectedPackage.Milestones)
-                        {
-                            milestones.Add(new Milestone
-                            {
-                                Sequence = stage.Sequence,
-                                Title = stage.Title,
-                                Price = stage.Price,
-                                Status = MilestoneStatus.Pending
-                            });
-                        }
-                        var milestoneTotal = selectedPackage.Milestones.Sum(m => m.Price);
-                        if (milestoneTotal > 0) totalPrice = milestoneTotal;
-                    }
-                }
-            }
-            catch (System.Text.Json.JsonException) { }
+            var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardIdConverter() } };
+            var packages = System.Text.Json.JsonSerializer.Deserialize<List<ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardPackageDto>>(creator.RateCardJson, options);
+            selectedPackage = packages?.FirstOrDefault(p => p != null && p.Id == request.PackageId);
         }
-
-        if (selectedPackage is null || totalPrice <= 0) throw new ArgumentException("Gói giá không tồn tại hoặc không còn khả dụng.");
-
-        if (milestones.Count == 0)
-            milestones.Add(new Milestone { Sequence = 1, Title = selectedPackage.Name, Price = totalPrice, Status = MilestoneStatus.Pending });
-
+        catch (System.Text.Json.JsonException)
+        {
+            throw new ArgumentException("Bảng giá Creator không hợp lệ. Vui lòng liên hệ Creator cập nhật.");
+        }
+        if (selectedPackage is null)
+            throw new ArgumentException("Gói giá không tồn tại hoặc đã bị thay đổi. Vui lòng chọn lại.");
+        var stages = selectedPackage.Milestones;
+        if (selectedPackage.Price <= 0 || stages is null || stages.Count == 0
+            || stages.Any(stage => stage is null || stage.Price <= 0 || string.IsNullOrWhiteSpace(stage.Title))
+            || !stages.OrderBy(stage => stage.Sequence).Select(stage => stage.Sequence).SequenceEqual(Enumerable.Range(1, stages.Count))
+            || stages.Sum(stage => stage.Price) != selectedPackage.Price)
+            throw new ArgumentException("Giá và milestone của gói không hợp lệ. Vui lòng liên hệ Creator cập nhật.");
+        var totalPrice = selectedPackage.Price;
+        var milestones = stages.OrderBy(stage => stage.Sequence).Select(stage => new Milestone
+        {
+            Sequence = stage.Sequence, Title = stage.Title, Price = stage.Price, Status = MilestoneStatus.Pending
+        }).ToList();
         var multiplier = request.LicenseType == "Commercial"
             ? await _dbContext.CreatorTerms.AsNoTracking()
                 .Where(x => x.CreatorProfileId == creator.Id && !x.IsDeleted)
@@ -202,6 +189,18 @@ public class CommissionService : ICommissionService
             .ToListAsync(cancellationToken);
 
         var items = commissionEntities.Select(c => MapToDto(c)).ToList();
+        var clientIds = items.Select(item => item.ClientId).Distinct().ToArray();
+        var clientNames = await _dbContext.Users.AsNoTracking()
+            .Where(user => clientIds.Contains(user.Id))
+            .ToDictionaryAsync(user => user.Id, user => user.FullName, cancellationToken);
+
+        foreach (var item in items)
+        {
+            if (clientNames.TryGetValue(item.ClientId, out var clientName))
+            {
+                item.ClientName = clientName;
+            }
+        }
 
         return (items, totalItems);
     }
@@ -356,11 +355,11 @@ public class CommissionService : ICommissionService
         // Upload original
         var originalKey = $"commissions/{commissionId}/milestone-{milestone.Sequence}-original-{Guid.NewGuid()}.jpg";
         var originalUrl = await _storageService.UploadPrivateAsync(fileStream, originalKey, contentType, cancellationToken);
-        
+
         // Reset stream for watermark
         fileStream.Position = 0;
         using var watermarkedStream = await _watermarkService.ApplyWatermarkAsync(fileStream, "PROTECTED DEMO · DO NOT COPY", cancellationToken);
-        
+
         var watermarkedKey = $"commissions/{commissionId}/milestone-{milestone.Sequence}-watermarked-{Guid.NewGuid()}.jpg";
         var watermarkedUrl = await _storageService.UploadPublicAsync(watermarkedStream, watermarkedKey, "image/jpeg", cancellationToken);
 
@@ -423,7 +422,7 @@ public class CommissionService : ICommissionService
         if (milestone == null) throw new KeyNotFoundException("Không tìm thấy cột mốc milestone.");
         if (milestone.Status != MilestoneStatus.Submitted || milestone.Sequence != commission.CurrentStage)
             throw new InvalidOperationException("Milestone cannot be revised in this state.");
-            
+
         if (milestone.RevisionCount >= milestone.MaxRevisions)
             throw new InvalidOperationException("Đã vượt quá số lần sửa tối đa cho cột mốc này.");
 
@@ -479,7 +478,7 @@ public class CommissionService : ICommissionService
 
         return MapToDto(commission);
     }
-    
+
     public async Task<string> GetFinalDownloadUrlAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
         var commission = await PartyCommissionAsync(id, userId, cancellationToken);
@@ -499,7 +498,7 @@ public class CommissionService : ICommissionService
         await PartyCommissionAsync(commissionId, userId, cancellationToken);
         var milestone = await _dbContext.Milestones.FirstOrDefaultAsync(m => m.Id == milestoneId && m.CommissionId == commissionId, cancellationToken);
         if (milestone == null) throw new KeyNotFoundException("Milestone not found.");
-        
+
         return milestone.WatermarkedUrl ?? string.Empty;
     }
 
@@ -511,7 +510,7 @@ public class CommissionService : ICommissionService
             throw new InvalidOperationException("Commission cannot be cancelled in this state.");
         if (commission.EscrowHeldAmount > 0 || commission.Status == CommissionStatus.Delivered)
             throw new InvalidOperationException("Funded commissions must be resolved through a dispute.");
-        
+
         commission.Status = CommissionStatus.Cancelled;
         commission.UpdatedAt = DateTimeOffset.UtcNow;
 

@@ -27,6 +27,7 @@ public class GetCreatorProfileQueryHandler : IRequestHandler<GetCreatorProfileQu
             return (false, null, new[] { "Creator profile not found." });
         }
 
+        var rating = (await CreatorRatingStats.LoadAsync(_db, cancellationToken)).GetValueOrDefault(profile.Id);
         return (true, new CreatorProfileDto(
             profile.Id,
             profile.UserId,
@@ -39,8 +40,8 @@ public class GetCreatorProfileQueryHandler : IRequestHandler<GetCreatorProfileQu
             profile.BannerUrl,
             profile.IsAcceptingOrders,
             profile.IsApproved,
-            profile.RatingAverage,
-            profile.RatingCount,
+            rating.Average,
+            rating.Count,
             profile.FollowerCount,
             profile.CreatedAt,
             profile.AvailableSlots

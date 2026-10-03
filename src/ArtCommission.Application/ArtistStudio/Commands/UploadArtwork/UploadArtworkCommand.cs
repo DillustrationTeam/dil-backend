@@ -26,10 +26,19 @@ public class UploadArtworkCommandValidator : AbstractValidator<UploadArtworkComm
             .MaximumLength(200).WithMessage("Artwork title must be 200 characters or fewer.");
 
         RuleFor(x => x.ImageUrl)
-            .NotEmpty().WithMessage("Image URL is required.");
+            .NotEmpty().WithMessage("Image URL is required.")
+            .Must(url => url is not null && !url.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            .WithMessage("Data URLs are not supported. Upload the image file first.")
+            .MaximumLength(500).WithMessage("Image URL must be 500 characters or fewer. Upload the image file first.");
+
+        RuleFor(x => x.ThumbnailUrl)
+            .Must(url => url is null || !url.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            .WithMessage("Data URLs are not supported. Upload the thumbnail file first.")
+            .MaximumLength(500).WithMessage("Thumbnail URL must be 500 characters or fewer. Upload the image file first.");
 
         RuleFor(x => x.Tags)
             .Must(tags => tags is null || tags.Count <= 10).WithMessage("You can assign up to 10 tags.");
+        RuleForEach(x => x.Tags).NotEmpty().MaximumLength(50);
     }
 }
 
@@ -89,7 +98,7 @@ public class UploadArtworkCommandHandler : IRequestHandler<UploadArtworkCommand,
 
         if (request.Tags is { Count: > 0 })
         {
-            foreach (var tagName in request.Tags.Distinct(StringComparer.OrdinalIgnoreCase))
+            foreach (var tagName in request.Tags.Select(tag => tag.Trim()).Where(tag => tag.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 var tag = await _db.Set<ArtCommission.Domain.Entities.ArtistStudio.Tag>()
                     .FirstOrDefaultAsync(x => x.Name == tagName, cancellationToken);
