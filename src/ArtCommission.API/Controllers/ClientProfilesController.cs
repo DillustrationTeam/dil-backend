@@ -20,7 +20,8 @@ public class ClientProfilesController : ApiControllerBase
         List<string>? InterestTags,
         string? Country,
         string? Timezone,
-        List<string>? PreferredLanguages);
+        List<string>? PreferredLanguages,
+        string? CurrentPassword = null);
 
     /// <summary>Hồ sơ công khai của Client — không cần đăng nhập.</summary>
     [HttpGet("{id:guid}")]
@@ -111,7 +112,7 @@ public class ClientProfilesController : ApiControllerBase
         }
 
         var (success, data, errors) = await Mediator.Send(
-            new UpdateClientProfileCommand(CurrentUserId, request.Username, request.InterestTags, request.Country, request.Timezone, request.PreferredLanguages),
+            new UpdateClientProfileCommand(CurrentUserId, request.Username, request.InterestTags, request.Country, request.Timezone, request.PreferredLanguages, request.CurrentPassword),
             cancellationToken);
 
         return success ? OkEnvelope(data) : BadRequestEnvelope(errors);

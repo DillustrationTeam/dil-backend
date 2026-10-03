@@ -96,10 +96,10 @@ public class RequestChangeEmailCommandHandler : IRequestHandler<RequestChangeEma
                     return (false, new[] { "Two-factor code is required." });
                 }
 
-                var (twoFactorValid, _) = await _identityService.VerifyTwoFactorCodeAsync(request.UserId, request.TwoFactorCode, cancellationToken);
+                var (twoFactorValid, _, twoFactorCodeAlreadyUsed) = await _identityService.VerifyTwoFactorCodeAsync(request.UserId, request.TwoFactorCode, cancellationToken);
                 if (!twoFactorValid)
                 {
-                    return (false, new[] { "Invalid two-factor code." });
+                    return (false, new[] { twoFactorCodeAlreadyUsed ? "This recovery code has already been used." : "Invalid two-factor code." });
                 }
             }
         }

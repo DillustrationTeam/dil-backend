@@ -104,6 +104,7 @@ public interface IApplicationDbContext
     DbSet<UserSanction> UserSanctions { get; }
     DbSet<RefreshToken> RefreshTokens { get; }
     DbSet<EmailVerificationCode> EmailVerificationCodes { get; }
+    DbSet<TwoFactorRecoveryCode> TwoFactorRecoveryCodes { get; }
 
     DbSet<T> Set<T>() where T : class;
 

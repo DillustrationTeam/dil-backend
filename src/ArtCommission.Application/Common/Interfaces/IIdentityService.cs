@@ -5,7 +5,8 @@ namespace ArtCommission.Application.Common.Interfaces;
 public interface IIdentityService
 {
     Task<(bool Success, Guid UserId, string[] Errors)> RegisterUserAsync(string email, string password, string fullName, string? role = null, bool isVerified = false, CancellationToken cancellationToken = default);
-    Task<(bool Success, UserDto? User, string[] Roles, string[] Errors)> AuthenticateUserAsync(string email, string password, CancellationToken cancellationToken = default);
+    /// <summary>Đăng nhập bằng email HOẶC username (ClientProfile.Username) — thử tìm theo email trước, không thấy thì thử theo username.</summary>
+    Task<(bool Success, UserDto? User, string[] Roles, string[] Errors)> AuthenticateUserAsync(string emailOrUsername, string password, CancellationToken cancellationToken = default);
     Task<(bool Success, UserDto? User, string[] Roles, string[] Errors)> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default);
     Task<(bool Success, UserDto? User, string[] Roles, string[] Errors)> GetUserByEmailAsync(string email, CancellationToken cancellationToken = default);
     Task<bool> IsEmailUniqueAsync(string email, CancellationToken cancellationToken = default);
@@ -55,6 +56,9 @@ public interface IIdentityService
 
     Task<bool> IsTwoFactorEnabledAsync(Guid userId, CancellationToken cancellationToken = default);
 
-    /// <summary>Xác minh mã 2FA lúc login — thử mã TOTP trước, nếu sai thử như recovery code (tiêu luôn nếu đúng).</summary>
-    Task<(bool Success, bool IsRecoveryCode)> VerifyTwoFactorCodeAsync(Guid userId, string code, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Xác minh mã 2FA lúc login — thử mã TOTP trước, nếu sai thử như recovery code (tiêu luôn nếu đúng).
+    /// CodeAlreadyUsed=true khi mã đúng định dạng và từng được cấp cho user này nhưng đã bị tiêu trước đó.
+    /// </summary>
+    Task<(bool Success, bool IsRecoveryCode, bool CodeAlreadyUsed)> VerifyTwoFactorCodeAsync(Guid userId, string code, CancellationToken cancellationToken = default);
 }

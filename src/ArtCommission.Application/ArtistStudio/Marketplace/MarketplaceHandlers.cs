@@ -52,10 +52,24 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
     public async Task<IReadOnlyList<CommissionServiceDto>> Handle(GetCreatorServicesQuery q, CancellationToken ct) => await _db.CommissionServices.AsNoTracking().Where(x => x.CreatorProfileId == q.CreatorId && x.IsActive && !x.IsDeleted).OrderBy(x => x.StartingPrice).Select(x => new CommissionServiceDto(x.Id, x.Title, x.Description, x.StartingPrice, x.DeliveryDays, x.MaxRevisions, x.IsActive)).ToListAsync(ct);
     public async Task<IReadOnlyList<CreatorReviewDto>> Handle(GetCreatorReviewsQuery q, CancellationToken ct) => await _db.CreatorReviews.AsNoTracking().Where(x => x.CreatorProfileId == q.CreatorId && !x.IsDeleted).OrderByDescending(x => x.CreatedAt).Select(x => new CreatorReviewDto(x.Id, x.ReviewerUserId, x.Rating, x.Comment, x.CreatedAt)).ToListAsync(ct);
     public async Task<IReadOnlyList<PersonalCollectionDto>> Handle(GetMyCollectionsQuery q, CancellationToken ct) => await _db.PersonalCollections.AsNoTracking().Where(x => x.OwnerUserId == q.UserId && !x.IsDeleted).OrderByDescending(x => x.CreatedAt).Select(x => new PersonalCollectionDto(x.Id, x.Name, x.IsPublic, x.CollectionArtworks.Count, x.CreatedAt)).ToListAsync(ct);
-    public async Task<IReadOnlyList<ArtworkDto>> Handle(GetMyFavoritesQuery q, CancellationToken ct) { var items = await _db.ArtworkFavorites.AsNoTracking().Where(x => x.UserId == q.UserId).Select(x => x.Artwork!).Where(x => !x.IsDeleted).Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).ToListAsync(ct); return items.Select(Map).ToList(); }
+    public async Task<IReadOnlyList<ArtworkDto>> Handle(GetMyFavoritesQuery q, CancellationToken ct)
+    {
+        // EF Core không cho Include() sau khi Select() đã đổi kiểu root entity (ArtworkFavorite -> Artwork) —
+        // query thẳng từ Artworks qua subquery id thay vì project qua navigation rồi mới Include.
+        var favoritedArtworkIds = _db.ArtworkFavorites.AsNoTracking().Where(x => x.UserId == q.UserId).Select(x => x.ArtworkId);
+        var items = await _db.Artworks.AsNoTracking()
+            .Where(a => !a.IsDeleted && favoritedArtworkIds.Contains(a.Id))
+            .Include(a => a.ArtworkTags).ThenInclude(t => t.Tag)
+            .ToListAsync(ct);
+        return items.Select(Map).ToList();
+    }
     public async Task<IReadOnlyList<ArtworkDto>> Handle(GetFollowingFeedQuery q, CancellationToken ct)
     {
-        var items = await _db.Follows.AsNoTracking().Where(x => x.FollowerUserId == q.UserId).Select(x => x.CreatorProfile!).SelectMany(x => x.Artworks).Where(x => !x.IsDeleted).Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).OrderByDescending(x => x.CreatedAt).Take(Math.Clamp(q.Take, 1, 100)).ToListAsync(ct);
+        var followedCreatorIds = _db.Follows.AsNoTracking().Where(x => x.FollowerUserId == q.UserId).Select(x => x.CreatorProfileId);
+        var items = await _db.Artworks.AsNoTracking()
+            .Where(a => !a.IsDeleted && followedCreatorIds.Contains(a.CreatorProfileId))
+            .Include(a => a.ArtworkTags).ThenInclude(t => t.Tag)
+            .OrderByDescending(a => a.CreatedAt).Take(Math.Clamp(q.Take, 1, 100)).ToListAsync(ct);
         return items.Select(Map).ToList();
     }
 

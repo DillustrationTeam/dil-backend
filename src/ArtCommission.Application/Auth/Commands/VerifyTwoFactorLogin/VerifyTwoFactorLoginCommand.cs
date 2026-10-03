@@ -58,10 +58,10 @@ public class VerifyTwoFactorLoginCommandHandler : IRequestHandler<VerifyTwoFacto
             return (false, null, findErrors);
         }
 
-        var (codeValid, _) = await _identityService.VerifyTwoFactorCodeAsync(user.Id, request.Code, cancellationToken);
+        var (codeValid, _, codeAlreadyUsed) = await _identityService.VerifyTwoFactorCodeAsync(user.Id, request.Code, cancellationToken);
         if (!codeValid)
         {
-            return (false, null, new[] { "Invalid verification code." });
+            return (false, null, new[] { codeAlreadyUsed ? "This recovery code has already been used." : "Invalid verification code." });
         }
 
         var tokens = await _jwtTokenGenerator.GenerateTokensAsync(user, roles, request.ClientIp, request.UserAgent, cancellationToken);

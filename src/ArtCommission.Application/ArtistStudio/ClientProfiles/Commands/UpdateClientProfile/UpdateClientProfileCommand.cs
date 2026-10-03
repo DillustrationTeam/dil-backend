@@ -13,7 +13,8 @@ public record UpdateClientProfileCommand(
     List<string>? InterestTags,
     string? Country,
     string? Timezone,
-    List<string>? PreferredLanguages
+    List<string>? PreferredLanguages,
+    string? CurrentPassword = null
 ) : IRequest<(bool Success, ClientProfileDto? Data, string[] Errors)>;
 
 public class UpdateClientProfileCommandValidator : AbstractValidator<UpdateClientProfileCommand>
@@ -48,10 +49,12 @@ public class UpdateClientProfileCommandValidator : AbstractValidator<UpdateClien
 public class UpdateClientProfileCommandHandler : IRequestHandler<UpdateClientProfileCommand, (bool Success, ClientProfileDto? Data, string[] Errors)>
 {
     private readonly IApplicationDbContext _db;
+    private readonly IIdentityService _identityService;
 
-    public UpdateClientProfileCommandHandler(IApplicationDbContext db)
+    public UpdateClientProfileCommandHandler(IApplicationDbContext db, IIdentityService identityService)
     {
         _db = db;
+        _identityService = identityService;
     }
 
     public async Task<(bool Success, ClientProfileDto? Data, string[] Errors)> Handle(UpdateClientProfileCommand request, CancellationToken cancellationToken)
@@ -107,13 +110,21 @@ public class UpdateClientProfileCommandHandler : IRequestHandler<UpdateClientPro
 
                 if (isActualChange)
                 {
-                    var cooldownUntil = profile.UsernameChangedAt?.AddDays(30);
-                    if (cooldownUntil.HasValue && cooldownUntil.Value > DateTimeOffset.UtcNow)
+                    // Không còn giới hạn 30 ngày — đổi được bất cứ lúc nào, nhưng phải xác thực lại mật khẩu
+                    // (nếu tài khoản có mật khẩu; tài khoản chỉ đăng nhập Google thì bỏ qua bước này).
+                    var hasPassword = await _identityService.HasPasswordAsync(request.UserId, cancellationToken);
+                    if (hasPassword)
                     {
-                        return (false, null, new[]
+                        if (string.IsNullOrWhiteSpace(request.CurrentPassword))
                         {
-                            $"You can change your username again after {cooldownUntil.Value:yyyy-MM-dd}."
-                        });
+                            return (false, null, new[] { "Please enter your current password to change your username." });
+                        }
+
+                        var passwordValid = await _identityService.VerifyPasswordAsync(request.UserId, request.CurrentPassword, cancellationToken);
+                        if (!passwordValid)
+                        {
+                            return (false, null, new[] { "Current password is incorrect." });
+                        }
                     }
 
                     profile.UsernameChangedAt = DateTimeOffset.UtcNow;

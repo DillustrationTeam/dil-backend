@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using ArtCommission.Application.Common.DTOs;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Entities.Identity;
@@ -11,11 +13,19 @@ public class IdentityService : IIdentityService
 {
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly RoleManager<IdentityRole<Guid>> _roleManager;
+    private readonly IApplicationDbContext _db;
 
-    public IdentityService(UserManager<ApplicationUser> userManager, RoleManager<IdentityRole<Guid>> roleManager)
+    public IdentityService(UserManager<ApplicationUser> userManager, RoleManager<IdentityRole<Guid>> roleManager, IApplicationDbContext db)
     {
         _userManager = userManager;
         _roleManager = roleManager;
+        _db = db;
+    }
+
+    private static string HashRecoveryCode(string code)
+    {
+        var bytes = Encoding.UTF8.GetBytes(code.Trim().ToUpperInvariant());
+        return Convert.ToHexString(SHA256.HashData(bytes));
     }
 
     public async Task<(bool Success, Guid UserId, string[] Errors)> RegisterUserAsync(string email, string password, string fullName, string? role = null, bool isVerified = false, CancellationToken cancellationToken = default)
@@ -63,24 +73,48 @@ public class IdentityService : IIdentityService
         return (true, user.Id, Array.Empty<string>());
     }
 
-    public async Task<(bool Success, UserDto? User, string[] Roles, string[] Errors)> AuthenticateUserAsync(string email, string password, CancellationToken cancellationToken = default)
+    public async Task<(bool Success, UserDto? User, string[] Roles, string[] Errors)> AuthenticateUserAsync(string emailOrUsername, string password, CancellationToken cancellationToken = default)
     {
-        var user = await _userManager.FindByEmailAsync(email);
+        var user = await ResolveUserByEmailOrUsernameAsync(emailOrUsername, cancellationToken);
         if (user == null || user.IsDeleted)
         {
-            return (false, null, Array.Empty<string>(), new[] { "Invalid email or password." });
+            return (false, null, Array.Empty<string>(), new[] { "Invalid email/username or password." });
         }
 
         var isValidPassword = await _userManager.CheckPasswordAsync(user, password);
         if (!isValidPassword)
         {
-            return (false, null, Array.Empty<string>(), new[] { "Invalid email or password." });
+            return (false, null, Array.Empty<string>(), new[] { "Invalid email/username or password." });
         }
 
         var roles = await _userManager.GetRolesAsync(user);
         var userDto = new UserDto(user.Id, user.Email!, user.FullName, user.IsVerified, user.CreatedAt, user.AvatarUrl, user.CoverUrl, user.Bio, user.SocialLinks);
 
         return (true, userDto, roles.ToArray(), Array.Empty<string>());
+    }
+
+    /// <summary>
+    /// Thử tìm theo email trước (đa số trường hợp). Nếu không khớp, coi input là username công khai
+    /// (ClientProfile.Username — hiện chỉ Client mới có field này) và tra ngược ra user qua UserId.
+    /// </summary>
+    private async Task<ApplicationUser?> ResolveUserByEmailOrUsernameAsync(string identifier, CancellationToken cancellationToken)
+    {
+        var trimmed = identifier.Trim();
+        var byEmail = await _userManager.FindByEmailAsync(trimmed);
+        if (byEmail is not null)
+        {
+            return byEmail;
+        }
+
+        var normalizedUsername = trimmed.ToLowerInvariant();
+        var profile = await _db.ClientProfiles.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Username == normalizedUsername && !p.IsDeleted, cancellationToken);
+        if (profile is null)
+        {
+            return null;
+        }
+
+        return await _userManager.FindByIdAsync(profile.UserId.ToString());
     }
 
     public async Task<(bool Success, UserDto? User, string[] Roles, string[] Errors)> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default)
@@ -460,8 +494,24 @@ public class IdentityService : IIdentityService
 
         await _userManager.SetTwoFactorEnabledAsync(user, true);
         var recoveryCodes = await _userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10);
+        var codesArray = recoveryCodes?.ToArray() ?? Array.Empty<string>();
 
-        return (true, recoveryCodes?.ToArray() ?? Array.Empty<string>(), Array.Empty<string>());
+        // Xoá dấu vết các mã cũ (nếu từng bật 2FA trước đó) rồi ghi lại hash của 10 mã mới —
+        // dùng để phân biệt "mã sai" với "mã đúng nhưng đã dùng rồi" lúc verify.
+        var oldCodes = await _db.TwoFactorRecoveryCodes.Where(c => c.UserId == userId).ToListAsync(cancellationToken);
+        _db.TwoFactorRecoveryCodes.RemoveRange(oldCodes);
+        foreach (var plainCode in codesArray)
+        {
+            _db.TwoFactorRecoveryCodes.Add(new TwoFactorRecoveryCode
+            {
+                UserId = userId,
+                CodeHash = HashRecoveryCode(plainCode),
+                IsUsed = false
+            });
+        }
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return (true, codesArray, Array.Empty<string>());
     }
 
     public async Task<(bool Success, string[] Errors)> Disable2FAAsync(Guid userId, CancellationToken cancellationToken = default)
@@ -490,21 +540,40 @@ public class IdentityService : IIdentityService
         return await _userManager.GetTwoFactorEnabledAsync(user);
     }
 
-    public async Task<(bool Success, bool IsRecoveryCode)> VerifyTwoFactorCodeAsync(Guid userId, string code, CancellationToken cancellationToken = default)
+    public async Task<(bool Success, bool IsRecoveryCode, bool CodeAlreadyUsed)> VerifyTwoFactorCodeAsync(Guid userId, string code, CancellationToken cancellationToken = default)
     {
         var user = await _userManager.FindByIdAsync(userId.ToString());
         if (user == null || user.IsDeleted)
         {
-            return (false, false);
+            return (false, false, false);
         }
 
         var isValidTotp = await _userManager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, code);
         if (isValidTotp)
         {
-            return (true, false);
+            return (true, false, false);
         }
 
+        var codeHash = HashRecoveryCode(code);
+        var tracked = await _db.TwoFactorRecoveryCodes
+            .FirstOrDefaultAsync(c => c.UserId == userId && c.CodeHash == codeHash, cancellationToken);
+
         var redeemResult = await _userManager.RedeemTwoFactorRecoveryCodeAsync(user, code);
-        return (redeemResult.Succeeded, redeemResult.Succeeded);
+        if (redeemResult.Succeeded)
+        {
+            if (tracked is not null)
+            {
+                tracked.IsUsed = true;
+                tracked.UsedAt = DateTimeOffset.UtcNow;
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+
+            return (true, true, false);
+        }
+
+        // ASP.NET Identity tự xoá mã khỏi danh sách còn hiệu lực ngay khi redeem thành công, nên bản thân
+        // nó không phân biệt được "mã sai" với "mã đã dùng" — dựa vào bảng theo dõi riêng để báo đúng lý do.
+        var alreadyUsed = tracked is { IsUsed: true };
+        return (false, false, alreadyUsed);
     }
 }

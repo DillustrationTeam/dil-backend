@@ -6,7 +6,7 @@ using MediatR;
 namespace ArtCommission.Application.Auth.Commands.Login;
 
 public record LoginCommand(
-    string Email,
+    string EmailOrUsername,
     string Password,
     string? ClientIp = null,
     string? UserAgent = null
@@ -28,7 +28,7 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, (bool Success, 
     public async Task<(bool Success, AuthResponseDto? AuthResponse, bool RequiresTwoFactor, string? TwoFactorTicket, string? TwoFactorEmail, string[] Errors)> Handle(LoginCommand request, CancellationToken cancellationToken)
     {
         var (authSuccess, user, roles, authErrors) = await _identityService.AuthenticateUserAsync(
-            request.Email, request.Password, cancellationToken);
+            request.EmailOrUsername, request.Password, cancellationToken);
 
         if (!authSuccess || user == null)
         {
@@ -54,9 +54,8 @@ public class LoginCommandValidator : AbstractValidator<LoginCommand>
 {
     public LoginCommandValidator()
     {
-        RuleFor(x => x.Email)
-            .NotEmpty().WithMessage("Email is required.")
-            .EmailAddress().WithMessage("A valid email address is required.");
+        RuleFor(x => x.EmailOrUsername)
+            .NotEmpty().WithMessage("Email or username is required.");
 
         RuleFor(x => x.Password)
             .NotEmpty().WithMessage("Password is required.");

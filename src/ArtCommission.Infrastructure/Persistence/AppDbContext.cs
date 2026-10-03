@@ -24,6 +24,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
 
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<EmailVerificationCode> EmailVerificationCodes => Set<EmailVerificationCode>();
+    public DbSet<TwoFactorRecoveryCode> TwoFactorRecoveryCodes => Set<TwoFactorRecoveryCode>();
 
     // Module Artist Studio
     public DbSet<CreatorProfile> CreatorProfiles => Set<CreatorProfile>();
