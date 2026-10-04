@@ -106,6 +106,7 @@ public class CreatorProfilesController : ApiControllerBase
     }
 
     [HttpGet("creator/{id:guid}")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
     {
         var (success, data, errors) = await Mediator.Send(new GetCreatorProfileByIdQuery(id), cancellationToken);
