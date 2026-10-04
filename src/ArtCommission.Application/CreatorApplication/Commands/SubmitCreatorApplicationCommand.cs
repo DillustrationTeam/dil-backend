@@ -9,12 +9,13 @@ using Microsoft.EntityFrameworkCore;
 namespace ArtCommission.Application.CreatorApplication.Commands;
 
 public record SubmitCreatorApplicationCommand(
-    Guid ApplicantId, 
+    Guid ApplicantId,
     List<string> PortfolioLinks,
     List<string>? SocialLinks,
     string IdProofUrl,
+    string IdProofBackUrl,
     string? PrimaryStyle = null,
-    string? SpeedpaintVideoUrl = null
+    List<string>? SpeedpaintVideoUrls = null
 ) : IRequest<(bool Success, Guid? ApplicationId, string[] Errors)>;
 
 public class SubmitCreatorApplicationCommandHandler 
@@ -66,8 +67,9 @@ public class SubmitCreatorApplicationCommandHandler
             PortfolioLinks = request.PortfolioLinks,
             SocialLinks = request.SocialLinks ?? new List<string>(),
             IdProofUrl = request.IdProofUrl,
+            IdProofBackUrl = request.IdProofBackUrl,
             PrimaryStyle = request.PrimaryStyle,
-            SpeedpaintVideoUrl = request.SpeedpaintVideoUrl,
+            SpeedpaintVideoUrls = request.SpeedpaintVideoUrls ?? new List<string>(),
             Status = ApplicationStatus.Pending,
             SubmittedAt = DateTimeOffset.UtcNow
         };

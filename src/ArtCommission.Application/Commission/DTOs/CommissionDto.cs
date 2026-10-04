@@ -10,6 +10,8 @@ public class CommissionDto
     public Guid CreatorId { get; set; }
     public string? CreatorName { get; set; }
     public Guid? VoucherId { get; set; }
+    public string LicenseType { get; set; } = "Personal";
+    public decimal LicenseMultiplierApplied { get; set; }
     public decimal DiscountAmount { get; set; }
     public decimal TotalPrice { get; set; }
     public decimal FinalPrice { get; set; }

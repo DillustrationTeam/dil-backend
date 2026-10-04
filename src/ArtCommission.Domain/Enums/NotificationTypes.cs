@@ -17,6 +17,7 @@ public enum NotificationType
     /// <summary>Mình thắng phiên đấu giá (UC34).</summary>
     AuctionWon,
 
+
     /// <summary>Cảnh báo mốc hoàn thành có nguy cơ trễ (UC46).</summary>
     DeadlineRiskWarning,
 
@@ -29,12 +30,15 @@ public enum NotificationType
     /// <summary>Thông báo chế tài xử phạt tài khoản (SCR-23 / UC31).</summary>
     UserSanctionAlert,
 
+    /// <summary>Kết quả duyệt đơn đăng ký Creator thay đổi — Approved/Rejected/AdditionalProofRequested (UC29).</summary>
+    CreatorApplicationStatusChanged,
+
     /// <summary>
     /// Khuyến mãi / ưu đãi của sàn (SCR-45 — tab "Khuyến mãi").
     /// Chưa có worker tự phát; Admin phát khi mở chiến dịch ưu đãi.
     /// </summary>
     PromotionAnnouncement,
-
+    
     /// <summary>Creator nhận được lời mời tham gia Ban giám khảo sự kiện.</summary>
     InvitationReceived,
 
@@ -48,7 +52,10 @@ public enum NotificationType
     InvitationCanceled,
 
     /// <summary>Lời mời tham gia Ban giám khảo sự kiện đã hết hạn.</summary>
-    InvitationExpired
+    InvitationExpired,
+
+    /// <summary>Phiên đấu giá bắt đầu, kết thúc hoặc được gia hạn.</summary>
+    AuctionLifecycle
 }
 
 public static class NotificationTypeNames
@@ -60,6 +67,7 @@ public static class NotificationTypeNames
     public const string PaymentSucceeded = nameof(NotificationType.PaymentSucceeded);
     public const string PayoutStatusChanged = nameof(NotificationType.PayoutStatusChanged);
     public const string UserSanctionAlert = nameof(NotificationType.UserSanctionAlert);
+    public const string CreatorApplicationStatusChanged = nameof(NotificationType.CreatorApplicationStatusChanged);
     public const string PromotionAnnouncement = nameof(NotificationType.PromotionAnnouncement);
     public const string InvitationReceived = nameof(NotificationType.InvitationReceived);
     public const string InvitationAccepted = nameof(NotificationType.InvitationAccepted);
@@ -76,6 +84,7 @@ public static class NotificationTypeNames
         PaymentSucceeded,
         PayoutStatusChanged,
         UserSanctionAlert,
+        CreatorApplicationStatusChanged,
         PromotionAnnouncement,
         InvitationReceived,
         InvitationAccepted,
@@ -137,6 +146,7 @@ public static class NotificationCategoryMap
         NotificationCategory.System =>
         [
             NotificationType.UserSanctionAlert,
+            NotificationType.CreatorApplicationStatusChanged,
             NotificationType.InvitationReceived,
             NotificationType.InvitationAccepted,
             NotificationType.InvitationDeclined,

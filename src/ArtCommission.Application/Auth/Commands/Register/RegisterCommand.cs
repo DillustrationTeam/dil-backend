@@ -9,24 +9,33 @@ public record RegisterCommand(
     string Email,
     string Password,
     string FullName,
-    string? Role = null
+    string VerificationTicket,
+    string? Role = null,
+    string? UserAgent = null
 ) : IRequest<(bool Success, AuthResponseDto? AuthResponse, string[] Errors)>;
 
 public class RegisterCommandHandler : IRequestHandler<RegisterCommand, (bool Success, AuthResponseDto? AuthResponse, string[] Errors)>
 {
     private readonly IIdentityService _identityService;
     private readonly IJwtTokenGenerator _jwtTokenGenerator;
+    private readonly IEmailVerificationService _emailVerificationService;
 
-    public RegisterCommandHandler(IIdentityService identityService, IJwtTokenGenerator jwtTokenGenerator)
+    public RegisterCommandHandler(IIdentityService identityService, IJwtTokenGenerator jwtTokenGenerator, IEmailVerificationService emailVerificationService)
     {
         _identityService = identityService;
         _jwtTokenGenerator = jwtTokenGenerator;
+        _emailVerificationService = emailVerificationService;
     }
 
     public async Task<(bool Success, AuthResponseDto? AuthResponse, string[] Errors)> Handle(RegisterCommand request, CancellationToken cancellationToken)
     {
+        if (!_emailVerificationService.ValidateTicket(request.Email, request.VerificationTicket))
+        {
+            return (false, null, new[] { "Please verify your email before registering." });
+        }
+
         var (registerSuccess, userId, registerErrors) = await _identityService.RegisterUserAsync(
-            request.Email, request.Password, request.FullName, request.Role, cancellationToken);
+            request.Email, request.Password, request.FullName, request.Role, isVerified: true, cancellationToken: cancellationToken);
 
         if (!registerSuccess)
         {
@@ -39,7 +48,7 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, (bool Suc
             return (false, null, authErrors);
         }
 
-        var tokens = await _jwtTokenGenerator.GenerateTokensAsync(user, roles, clientIp: null, cancellationToken);
+        var tokens = await _jwtTokenGenerator.GenerateTokensAsync(user, roles, clientIp: null, request.UserAgent, cancellationToken);
         var authResponse = new AuthResponseDto(user, roles, tokens);
 
         return (true, authResponse, Array.Empty<string>());
@@ -61,5 +70,8 @@ public class RegisterCommandValidator : AbstractValidator<RegisterCommand>
         RuleFor(x => x.Password)
             .NotEmpty().WithMessage("Password is required.")
             .MinimumLength(6).WithMessage("Password must be at least 6 characters long.");
+
+        RuleFor(x => x.VerificationTicket)
+            .NotEmpty().WithMessage("Please verify your email before registering.");
     }
 }

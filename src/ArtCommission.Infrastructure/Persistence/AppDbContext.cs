@@ -24,6 +24,8 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     }
 
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<EmailVerificationCode> EmailVerificationCodes => Set<EmailVerificationCode>();
+    public DbSet<TwoFactorRecoveryCode> TwoFactorRecoveryCodes => Set<TwoFactorRecoveryCode>();
 
     // Module Artist Studio
     public DbSet<CreatorProfile> CreatorProfiles => Set<CreatorProfile>();
@@ -37,6 +39,8 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<CollectionArtwork> CollectionArtworks => Set<CollectionArtwork>();
     public DbSet<CommissionService> CommissionServices => Set<CommissionService>();
     public DbSet<CreatorReview> CreatorReviews => Set<CreatorReview>();
+    public DbSet<ClientProfile> ClientProfiles => Set<ClientProfile>();
+    public DbSet<ClientReview> ClientReviews => Set<ClientReview>();
     public DbSet<CreatorTerms> CreatorTerms => Set<CreatorTerms>();
     public DbSet<CreatorAutoReplySetting> CreatorAutoReplySettings => Set<CreatorAutoReplySetting>();
     public DbSet<CreatorFaq> CreatorFaqs => Set<CreatorFaq>();
@@ -75,6 +79,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     // ---------------------------------------------------------------------
     public DbSet<Auction> Auctions => Set<Auction>();
     public DbSet<Bid> Bids => Set<Bid>();
+    public DbSet<AuctionAutoBid> AuctionAutoBids => Set<AuctionAutoBid>();
     public DbSet<AuctionWatch> AuctionWatches => Set<AuctionWatch>();
     public DbSet<ArtworkOwnership> ArtworkOwnerships => Set<ArtworkOwnership>();
     public DbSet<EscrowTransaction> EscrowTransactions => Set<EscrowTransaction>();

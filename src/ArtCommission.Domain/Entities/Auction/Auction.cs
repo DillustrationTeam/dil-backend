@@ -55,6 +55,9 @@ public class Auction : BaseEntity
     /// <summary>Hạn thanh toán của winner sau khi chốt.</summary>
     public DateTimeOffset? PaymentDeadline { get; set; }
 
+    /// <summary>Token SQL Server thay đổi mỗi lần ghi, dùng để phát hiện bid cạnh tranh.</summary>
+    public byte[] RowVersion { get; set; } = [];
+
     /// <summary>
     /// Lý do huỷ phiên. Bắt buộc có giá trị khi <see cref="Status"/> là Cancelled hoặc Expired
     /// để tra soát về sau.

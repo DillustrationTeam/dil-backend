@@ -4,6 +4,7 @@ using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Enums;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace ArtCommission.Application.Auction.Commands.BuyNow;
 
@@ -25,13 +26,22 @@ public class BuyNowCommandHandler
 {
     private readonly IApplicationDbContext _db;
     private readonly IAuctionSettlementService _settlementService;
+    private readonly IAuctionRealtimePublisher _realtime;
+    private readonly IAuctionLifecycleNotifier _lifecycleNotifier;
+    private readonly ILogger<BuyNowCommandHandler> _logger;
 
     public BuyNowCommandHandler(
         IApplicationDbContext db,
-        IAuctionSettlementService settlementService)
+        IAuctionSettlementService settlementService,
+        IAuctionRealtimePublisher realtime,
+        IAuctionLifecycleNotifier lifecycleNotifier,
+        ILogger<BuyNowCommandHandler> logger)
     {
         _db = db;
         _settlementService = settlementService;
+        _realtime = realtime;
+        _lifecycleNotifier = lifecycleNotifier;
+        _logger = logger;
     }
 
     public async Task<(bool, BuyNowResultDto?, string[])> Handle(
@@ -92,6 +102,18 @@ public class BuyNowCommandHandler
         }
 
         await tx.CommitAsync(cancellationToken);
+
+        await _lifecycleNotifier.NotifyParticipantsAsync(
+            auction.Id, AuctionLifecycleEvent.Ended, cancellationToken: cancellationToken);
+        try
+        {
+            await _realtime.PublishAuctionStatusChangedAsync(
+                auction.Id, auction.Status.ToString(), auction.CurrentPrice, auction.EndAt, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Không broadcast được trạng thái mua ngay auctionId={AuctionId}.", auction.Id);
+        }
 
         var auctionDto = AuctionMapper.ToDto(auction, null);
 

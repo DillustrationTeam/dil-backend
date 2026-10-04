@@ -432,6 +432,101 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.ToTable("ArtworkTags", (string)null);
                 });
 
+            modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.ClientProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Country")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("InterestTags")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PreferredLanguages")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Timezone")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Username")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTimeOffset?>("UsernameChangedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.HasIndex("Username")
+                        .IsUnique()
+                        .HasFilter("[Username] IS NOT NULL");
+
+                    b.ToTable("ClientProfiles", (string)null);
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.ClientReview", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("CommissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("CreatorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Rating")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId");
+
+                    b.HasIndex("CommissionId");
+
+                    b.HasIndex("CreatorId");
+
+                    b.ToTable("ClientReviews", (string)null);
+                });
+
             modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.CollectionArtwork", b =>
                 {
                     b.Property<Guid>("CollectionId")
@@ -804,6 +899,180 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.Follow", b =>
                 {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("CreatorProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Rating")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ReviewerUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatorProfileId");
+
+                    b.ToTable("CreatorReviews", (string)null);
+                });
+
+modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.CreatorTerms", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CancellationPolicy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("CommercialLicenseMultiplier")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("CreatorProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("RevisionPolicy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatorProfileId");
+
+                    b.ToTable("CreatorTerms");
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.PersonalCollection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPublic")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PersonalCollections", (string)null);
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.Tag", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CancellationPolicy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("CommercialLicenseMultiplier")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("CreatorProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("RevisionPolicy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatorProfileId");
+
+                    b.ToTable("CreatorTerms");
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.CreatorWorkItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ClientName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("CreatorProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DueAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Stage")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatorProfileId");
+
+                    b.ToTable("CreatorWorkItems");
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.Follow", b =>
+                {
                     b.Property<Guid>("FollowerUserId")
                         .HasColumnType("uniqueidentifier");
 
@@ -1001,6 +1270,12 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<Guid>("SellerId")
                         .HasColumnType("uniqueidentifier");
 
@@ -1044,6 +1319,50 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_Auctions_Status_EndAt");
 
                     b.ToTable("Auctions", (string)null);
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.Auction.AuctionAutoBid", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AuctionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BidderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<decimal>("MaxAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTimeOffset>("RegisteredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BidderId");
+
+                    b.HasIndex("AuctionId", "BidderId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_AuctionAutoBids_Auction_Bidder");
+
+                    b.HasIndex("AuctionId", "MaxAmount", "RegisteredAt")
+                        .HasDatabaseName("IX_AuctionAutoBids_ProxyOrder");
+
+                    b.ToTable("AuctionAutoBids", (string)null);
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.Auction.AuctionWatch", b =>
@@ -1582,6 +1901,15 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
+                    b.Property<decimal>("LicenseMultiplierApplied")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<string>("LicenseType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<string>("Status")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -1605,6 +1933,18 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ClientId", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_Commissions_ClientId_CreatedAt");
+
+                    b.HasIndex("CreatorId", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_Commissions_CreatorId_CreatedAt");
+
+                    b.HasIndex("Status", "UpdatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_Commissions_Status_UpdatedAt");
 
                     b.ToTable("Commissions", (string)null);
                 });
@@ -1805,6 +2145,11 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("IdProofBackUrl")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("IdProofUrl")
                         .IsRequired()
@@ -2155,6 +2500,10 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<string>("Rules")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("SpeedpaintVideoUrls")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -2205,11 +2554,26 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<int>("AccessFailedCount")
                         .HasColumnType("int");
 
+                    b.Property<string>("AvatarUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Bio")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("CoverUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<string>("Email")
@@ -2260,6 +2624,10 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("SocialLinks")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<bool>("TwoFactorEnabled")
                         .HasColumnType("bit");
 
@@ -2283,6 +2651,56 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.ToTable("Users", (string)null);
                 });
 
+            modelBuilder.Entity("ArtCommission.Domain.Entities.Identity.EmailVerificationCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTimeOffset?>("ConsumedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Email")
+                        .HasDatabaseName("IX_EmailVerificationCodes_Email");
+
+                    b.ToTable("EmailVerificationCodes", (string)null);
+                });
+
             modelBuilder.Entity("ArtCommission.Domain.Entities.Identity.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2302,6 +2720,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<string>("ReplacedByTokenHash")
                         .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
@@ -2317,6 +2738,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("UserAgent")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
 
@@ -2330,6 +2754,44 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_RefreshTokens_UserId");
 
                     b.ToTable("RefreshTokens", (string)null);
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.Identity.TwoFactorRecoveryCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsUsed")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("UsedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "CodeHash")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TwoFactorRecoveryCodes_UserId_CodeHash");
+
+                    b.ToTable("TwoFactorRecoveryCodes", (string)null);
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.Identity.UserSanction", b =>
@@ -3315,6 +3777,36 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Navigation("Tag");
                 });
 
+            modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.ClientProfile", b =>
+                {
+                    b.HasOne("ArtCommission.Domain.Entities.Identity.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.ClientReview", b =>
+                {
+                    b.HasOne("ArtCommission.Domain.Entities.Identity.ApplicationUser", "Client")
+                        .WithMany()
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ArtCommission.Domain.Entities.Identity.ApplicationUser", "Creator")
+                        .WithMany()
+                        .HasForeignKey("CreatorId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Client");
+
+                    b.Navigation("Creator");
+                });
+
             modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.CollectionArtwork", b =>
                 {
                     b.HasOne("ArtCommission.Domain.Entities.ArtistStudio.Artwork", "Artwork")
@@ -3481,6 +3973,23 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Artwork");
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.Auction.AuctionAutoBid", b =>
+                {
+                    b.HasOne("ArtCommission.Domain.Entities.Auction.Auction", "Auction")
+                        .WithMany()
+                        .HasForeignKey("AuctionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ArtCommission.Domain.Entities.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("BidderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Auction");
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.Auction.AuctionWatch", b =>
@@ -3822,6 +4331,17 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                 {
                     b.HasOne("ArtCommission.Domain.Entities.Identity.ApplicationUser", "User")
                         .WithMany("RefreshTokens")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.Identity.TwoFactorRecoveryCode", b =>
+                {
+                    b.HasOne("ArtCommission.Domain.Entities.Identity.ApplicationUser", "User")
+                        .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

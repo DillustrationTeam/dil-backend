@@ -58,6 +58,46 @@ public sealed record SettleAuctionRequest(bool Force = false);
 [Route("api/v1/auctions")]
 public class AuctionsController : ApiControllerBase
 {
+    /// <summary>Danh sách phiên người dùng đang tham gia và tổng tiền cọc còn khóa.</summary>
+    [HttpGet("my-active-bids")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetMyActiveBids(
+        [FromQuery] string? cursor,
+        [FromQuery] int limit,
+        CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var (success, data, meta, errors) = await Mediator.Send(
+            new ArtCommission.Application.Auction.Queries.MyActiveBids.MyActiveBidsQuery(CurrentUserId, cursor, limit),
+            cancellationToken);
+        return success ? OkEnvelope(data, meta) : BadRequestEnvelope(errors);
+    }
+
+    /// <summary>Danh sách tranh người dùng đang sở hữu và chưa thuộc phiên còn hiệu lực.</summary>
+    [HttpGet("eligible-artworks")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetEligibleArtworks(
+        [FromQuery] string? cursor,
+        [FromQuery] int limit,
+        CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var (success, data, meta, errors) = await Mediator.Send(
+            new ArtCommission.Application.Auction.Queries.EligibleArtworks.EligibleArtworksQuery(CurrentUserId, cursor, limit),
+            cancellationToken);
+        return success ? OkEnvelope(data, meta) : BadRequestEnvelope(errors);
+    }
+
     // =================================================================
     // UC32 — Tạo / danh sách / chi tiết / sửa / huỷ
     // =================================================================
@@ -66,6 +106,7 @@ public class AuctionsController : ApiControllerBase
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Create(
         [FromBody] CreateAuctionRequest request,
@@ -76,7 +117,7 @@ public class AuctionsController : ApiControllerBase
             return UnauthorizedEnvelope();
         }
 
-        var (success, data, errors) = await Mediator.Send(
+        var (success, data, errors, conflict) = await Mediator.Send(
             new CreateAuctionCommand(
                 CurrentUserId,
                 request.ArtworkId,
@@ -87,6 +128,21 @@ public class AuctionsController : ApiControllerBase
                 request.StartAt,
                 request.EndAt),
             cancellationToken);
+
+        if (conflict)
+        {
+            return StatusCode(StatusCodes.Status409Conflict, new
+            {
+                data = (object?)null,
+                meta = (object?)null,
+                error = new
+                {
+                    code = "AuctionArtworkConflict",
+                    message = string.Join(" ", errors),
+                    traceId = HttpContext.TraceIdentifier
+                }
+            });
+        }
 
         return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
     }
@@ -263,11 +319,31 @@ public class AuctionsController : ApiControllerBase
             return UnauthorizedEnvelope();
         }
 
-        var (success, data, errors) = await Mediator.Send(
+        var (success, data, errors, conflict) = await Mediator.Send(
             new PlaceBidCommand(CurrentUserId, auctionId, request.Amount, request.IsAuto, request.MaxAutoBid),
             cancellationToken);
 
-        return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
+        if (success)
+        {
+            return OkEnvelope(data);
+        }
+
+        if (conflict is not null)
+        {
+            return StatusCode(StatusCodes.Status409Conflict, new
+            {
+                data = conflict,
+                meta = (object?)null,
+                error = new
+                {
+                    code = "AuctionBidConflict",
+                    message = string.Join(" ", errors),
+                    traceId = HttpContext.TraceIdentifier
+                }
+            });
+        }
+
+        return BadRequestEnvelope(errors);
     }
 
     /// <summary>Lịch sử đặt giá của phiên, cursor theo placed_at (UC32).</summary>

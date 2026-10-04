@@ -10,6 +10,8 @@ public class Commission : BaseEntity
     public Guid ClientId { get; set; }
     public Guid CreatorId { get; set; }
     public Guid? VoucherId { get; set; }
+    public string LicenseType { get; set; } = "Personal";
+    public decimal LicenseMultiplierApplied { get; set; } = 1m;
 
     public decimal DiscountAmount { get; set; } = 0.00m;
     public decimal TotalPrice { get; set; } = 0.00m;

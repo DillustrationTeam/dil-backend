@@ -9,6 +9,13 @@ public class ApplicationUser : IdentityUser<Guid>
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
     public bool IsDeleted { get; set; } = false;
+    public DateTimeOffset? DeletedAt { get; set; }
+
+    // Profile Settings
+    public string? AvatarUrl { get; set; }
+    public string? CoverUrl { get; set; }
+    public string? Bio { get; set; }
+    public List<string> SocialLinks { get; set; } = new();
 
     // Navigation Properties
     public virtual ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();

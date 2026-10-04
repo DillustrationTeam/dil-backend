@@ -4,5 +4,6 @@ public record TokenDto(
     string AccessToken,
     string RefreshToken,
     DateTimeOffset AccessTokenExpiresAt,
-    DateTimeOffset RefreshTokenExpiresAt
+    DateTimeOffset RefreshTokenExpiresAt,
+    Guid SessionId
 );

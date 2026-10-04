@@ -4,6 +4,12 @@ using ArtCommission.Domain.Entities.Commission;
 using ArtCommission.Domain.Enums;
 using ArtCommission.Infrastructure.Persistence;
 using ArtCommission.Infrastructure.Services;
+using ArtCommission.Application.Payment.Common;
+using ArtCommission.Application.Commission.Interfaces;
+using ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard;
+using ArtCommission.Domain.Entities.Payment;
+using System.Text.Json;
+using CommissionService = ArtCommission.Infrastructure.Services.CommissionService;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,9 +20,12 @@ await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>(
     .UseInMemoryDatabase("commission-" + Guid.NewGuid()).Options);
 db.Roles.Add(new IdentityRole<Guid>("Creator") { Id = roleId });
 db.UserRoles.Add(new IdentityUserRole<Guid> { UserId = creatorId, RoleId = roleId });
-db.CreatorProfiles.Add(new CreatorProfile { UserId = creatorId, DisplayName = "Test creator" });
+var packageId = Guid.NewGuid();
+var profile = new CreatorProfile { UserId = creatorId, DisplayName = "Test creator", IsAcceptingOrders = true, RateCardJson = JsonSerializer.Serialize(new[] { new RateCardPackageDto(packageId, "Test package", null, 300m, Enumerable.Range(1, 3).Select(i => new RateCardMilestoneDto(i, $"Stage {i}", 100m)).ToList()) }) };
+db.CreatorProfiles.Add(profile);
+db.Wallets.Add(new Wallet { UserId = clientId, Balance = 10000m });
 await db.SaveChangesAsync();
-var service = new CommissionService(db);
+var service = new CommissionService(db, new WalletService(db), new TestWatermark(), new TestStorage(), new VoucherCheckService(db));
 var checks = 0;
 
 void Equal<T>(T expected, T actual, string name)
@@ -38,11 +47,9 @@ async Task<(Guid Id, Guid[] Milestones)> Create(string title)
 {
     var created = await service.CreateCommissionAsync(new CreateCommissionRequest
     {
-        CreatorId = creatorId,
+        CreatorId = profile.Id,
         Title = title,
-        TotalPrice = 300,
-        Milestones = Enumerable.Range(1, 3)
-            .Select(i => new MilestoneCreateDto { Sequence = i, Title = $"Stage {i}", Price = 100 }).ToList()
+        PackageId = packageId
     }, clientId);
     var detail = await service.GetCommissionByIdAsync(created.Id, clientId);
     return (created.Id, detail!.Milestones.OrderBy(m => m.Sequence).Select(m => m.Id).ToArray());
@@ -51,16 +58,16 @@ async Task<(Guid Id, Guid[] Milestones)> Create(string title)
 var normal = await Create("normal");
 await Rejected(() => service.DepositEscrowAsync(normal.Id, clientId, "Wallet"), "deposit before accept");
 await Rejected(() => service.SubmitMilestoneWipAsync(normal.Id, normal.Milestones[0],
-    new SubmitMilestoneRequest { WipFileUrl = "https://example.test/wip" }, creatorId), "submit before accept");
+    null, new MemoryStream(new byte[] { 1, 2, 3 }), "image/png", creatorId), "submit before accept");
 await service.RespondCommissionAsync(normal.Id, new RespondCommissionRequest { Action = "Accept" }, creatorId);
 await Rejected(() => service.SubmitMilestoneWipAsync(normal.Id, normal.Milestones[0],
-    new SubmitMilestoneRequest { WipFileUrl = "https://example.test/wip" }, creatorId), "submit before deposit");
+    null, new MemoryStream(new byte[] { 1, 2, 3 }), "image/png", creatorId), "submit before deposit");
 await service.DepositEscrowAsync(normal.Id, clientId, "Wallet");
 await Rejected(() => service.DepositEscrowAsync(normal.Id, clientId, "Wallet"), "duplicate deposit");
 await Rejected(() => service.ApproveMilestoneAsync(normal.Id, normal.Milestones[0], clientId), "approve before submit");
 await Rejected(() => service.RequestMilestoneRevisionAsync(normal.Id, normal.Milestones[0],
     new RequestRevisionRequest { FeedbackComment = "early" }, clientId), "revision before submit");
-await Rejected(() => service.DeliverFinalWorkAsync(normal.Id, "https://example.test/final", creatorId), "deliver early");
+await Rejected(() => service.DeliverFinalWorkAsync(normal.Id, new MemoryStream(new byte[] { 1, 2, 3 }), "image/png", "final.png", creatorId), "deliver early");
 await Rejected(() => service.CompleteCommissionAsync(normal.Id, clientId), "complete early");
 await Rejected(() => service.CreateReviewAsync(normal.Id, new CreateReviewRequest { Rating = 5 }, clientId), "review early");
 
@@ -68,13 +75,13 @@ for (var i = 0; i < normal.Milestones.Length; i++)
 {
     var milestoneId = normal.Milestones[i];
     await service.SubmitMilestoneWipAsync(normal.Id, milestoneId,
-        new SubmitMilestoneRequest { WipFileUrl = $"https://example.test/wip-{i}" }, creatorId);
+        null, new MemoryStream(new byte[] { 1, 2, 3 }), "image/png", creatorId);
     if (i == 0)
     {
         await service.RequestMilestoneRevisionAsync(normal.Id, milestoneId,
             new RequestRevisionRequest { FeedbackComment = "revise" }, clientId);
         await service.SubmitMilestoneWipAsync(normal.Id, milestoneId,
-            new SubmitMilestoneRequest { WipFileUrl = "https://example.test/revised" }, creatorId);
+            null, new MemoryStream(new byte[] { 1, 2, 3 }), "image/png", creatorId);
     }
     await service.ApproveMilestoneAsync(normal.Id, milestoneId, clientId);
     await Rejected(() => service.ApproveMilestoneAsync(normal.Id, milestoneId, clientId), "duplicate approval");
@@ -84,14 +91,14 @@ for (var i = 0; i < normal.Milestones.Length; i++)
 var approved = await service.GetCommissionByIdAsync(normal.Id, clientId);
 Equal(0m, approved!.EscrowHeldAmount, "escrow exhausted");
 Equal(EscrowStatus.Released.ToString(), approved.EscrowStatus, "escrow released");
-await service.DeliverFinalWorkAsync(normal.Id, "https://example.test/final", creatorId);
+await service.DeliverFinalWorkAsync(normal.Id, new MemoryStream(new byte[] { 1, 2, 3 }), "image/png", "final.png", creatorId);
 await service.CompleteCommissionAsync(normal.Id, clientId);
 await service.CreateReviewAsync(normal.Id, new CreateReviewRequest { Rating = 5 }, clientId);
 await service.ReplyReviewAsync(normal.Id, "Thanks", creatorId);
 await Rejected(() => service.ReplyReviewAsync(normal.Id, "Again", creatorId), "duplicate reply");
 await Rejected(() => service.CompleteCommissionAsync(normal.Id, clientId), "duplicate complete");
 await Rejected(() => service.CreateReviewAsync(normal.Id, new CreateReviewRequest { Rating = 4 }, clientId), "duplicate review");
-await Rejected(() => service.CancelCommissionAsync(normal.Id, "late", clientId), "cancel completed");
+await Rejected(() => service.CancelCommissionAsync(normal.Id, new CancelWithPolicyRequest { CancellationReason = "late" }, clientId), "cancel completed");
 Equal(CommissionStatus.Completed.ToString(), (await service.GetCommissionByIdAsync(normal.Id, clientId))!.Status,
     "completed state unchanged");
 
@@ -105,7 +112,8 @@ await service.RespondCommissionAsync(negotiated.Id,
     new RespondCommissionRequest { Action = "Negotiate", NegotiatePrice = 450 }, creatorId);
 var repriced = await service.GetCommissionByIdAsync(negotiated.Id, clientId);
 Equal(450m, repriced!.Milestones.Sum(m => m.Price), "milestones match negotiated total");
-await service.RespondCommissionAsync(negotiated.Id, new RespondCommissionRequest { Action = "Accept" }, creatorId);
+await Rejected(() => service.RespondCommissionAsync(negotiated.Id, new RespondCommissionRequest { Action = "Accept" }, creatorId), "creator cannot accept their own counter-offer");
+await service.RespondToCounterofferAsync(negotiated.Id, true, clientId);
 await service.DepositEscrowAsync(negotiated.Id, clientId, "Wallet");
 Equal(450m, (await service.GetCommissionByIdAsync(negotiated.Id, clientId))!.EscrowHeldAmount,
     "negotiated deposit matches total");
@@ -117,18 +125,35 @@ await Rejected(() => service.CreateDisputeAsync(disputed.Id,
 await Rejected(() => service.CompleteCommissionAsync(disputed.Id, clientId), "complete disputed");
 
 var cancelled = await Create("cancelled");
-await service.CancelCommissionAsync(cancelled.Id, "changed mind", clientId);
+await service.CancelCommissionAsync(cancelled.Id, new CancelWithPolicyRequest { CancellationReason = "changed mind" }, clientId);
 var cancelledState = await service.GetCommissionByIdAsync(cancelled.Id, clientId);
 Equal(EscrowStatus.Pending.ToString(), cancelledState!.EscrowStatus, "no false refund");
 await Rejected(() => service.DepositEscrowAsync(cancelled.Id, clientId, "Wallet"), "deposit cancelled");
 
 await Rejected(() => service.CreateCommissionAsync(new CreateCommissionRequest
 {
-    CreatorId = creatorId,
+    CreatorId = profile.Id,
     Title = "bad total",
-    TotalPrice = 300,
-    Milestones = [new MilestoneCreateDto { Sequence = 1, Title = "Work", Price = 200 }]
-}, clientId), "mismatched milestone total");
+    PackageId = Guid.NewGuid()
+}, clientId), "unknown package cannot create fallback commission");
+
+var validRates = profile.RateCardJson;
+var countBeforeInvalid = await db.Commissions.CountAsync();
+foreach (var invalidRates in new[] {
+    "{invalid-json",
+    "[]",
+    JsonSerializer.Serialize(new[] { new RateCardPackageDto(packageId, "Mismatch", null, 300m, [new(1, "Work", 200m)]) }),
+    JsonSerializer.Serialize(new[] { new RateCardPackageDto(packageId, "Bad sequence", null, 300m, [new(2, "Work", 300m)]) }),
+    JsonSerializer.Serialize(new[] { new RateCardPackageDto(packageId, "Negative", null, -1m, [new(1, "Work", -1m)]) })
+})
+{
+    profile.RateCardJson = invalidRates;
+    await db.SaveChangesAsync();
+    await Rejected(() => service.CreateCommissionAsync(new CreateCommissionRequest { CreatorId = profile.Id, PackageId = packageId, Title = "invalid" }, clientId), "invalid rates never create a default-priced order");
+}
+Equal(countBeforeInvalid, await db.Commissions.CountAsync(), "invalid requests persist no commissions");
+profile.RateCardJson = validRates;
+await db.SaveChangesAsync();
 
 var raceOptions = new DbContextOptionsBuilder<AppDbContext>()
     .UseInMemoryDatabase("approval-race-" + Guid.NewGuid()).Options;
@@ -137,7 +162,7 @@ await using (var seed = new AppDbContext(raceOptions))
 {
     seed.Commissions.Add(new Commission
     {
-        Id = raceId, ClientId = clientId, CreatorId = creatorId, Title = "race",
+        Id = raceId, ClientId = clientId, CreatorId = profile.Id, Title = "race",
         Status = CommissionStatus.InProgress, EscrowStatus = EscrowStatus.Deposited,
         TotalPrice = 100, FinalPrice = 100, EscrowHeldAmount = 100,
         Milestones = [new Milestone { Sequence = 1, Title = "Stage", Price = 100, Status = MilestoneStatus.Submitted }]
@@ -167,3 +192,14 @@ await using (var second = new AppDbContext(raceOptions))
 }
 
 Console.WriteLine($"Passed {checks} commission workflow checks.");
+
+sealed class TestWatermark : IWatermarkService
+{
+    public Task<Stream> ApplyWatermarkAsync(Stream stream, string text, CancellationToken ct = default) => Task.FromResult<Stream>(new MemoryStream(new byte[] { 4, 5, 6 }));
+}
+sealed class TestStorage : IStorageService
+{
+    public Task<string> UploadPublicAsync(Stream stream, string key, string contentType, CancellationToken ct = default) => Task.FromResult(key);
+    public Task<string> UploadPrivateAsync(Stream stream, string key, string contentType, CancellationToken ct = default) => Task.FromResult(key);
+    public string GeneratePresignedDownloadUrl(string key, TimeSpan expiry) => "https://example.test/" + key;
+}
