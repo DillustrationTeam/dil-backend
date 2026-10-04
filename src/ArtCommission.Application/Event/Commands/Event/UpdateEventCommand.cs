@@ -23,7 +23,8 @@ public record UpdateEventCommand(
     DateTimeOffset VotingStartAt,
     DateTimeOffset VotingEndAt,
     DateTimeOffset ResultAnnouncementAt,
-    Guid AdminId
+    Guid AdminId,
+    bool? IsFeatured = null
 ) : IRequest<(bool Success, EventDetailDto? Data, string[] Errors)>;
 
 public class UpdateEventCommandHandler
@@ -79,6 +80,10 @@ public class UpdateEventCommandHandler
         platformEvent.VotingStartAt = request.VotingStartAt;
         platformEvent.VotingEndAt = request.VotingEndAt;
         platformEvent.ResultAnnouncementAt = request.ResultAnnouncementAt;
+        if (request.IsFeatured.HasValue)
+        {
+            platformEvent.IsFeatured = request.IsFeatured.Value;
+        }
         platformEvent.UpdatedAt = now;
 
         await _db.SaveChangesAsync(cancellationToken);
@@ -93,6 +98,7 @@ public class UpdateEventCommandHandler
             Prize = platformEvent.Prize,
             MaxVote = platformEvent.MaxVote,
             Status = platformEvent.Status.ToString(),
+            IsFeatured = platformEvent.IsFeatured,
             SubmissionStartAt = platformEvent.SubmissionStartAt,
             SubmissionEndAt = platformEvent.SubmissionEndAt,
             JudgingStartAt = platformEvent.JudgingStartAt,

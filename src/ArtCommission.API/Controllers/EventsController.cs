@@ -29,6 +29,7 @@ public class EventsController : ApiControllerBase
         [FromQuery] EventStatus? status = null,
         [FromQuery] int? minSubmissions = null,
         [FromQuery] int? maxSubmissions = null,
+        [FromQuery] bool? isFeatured = null,
         [FromQuery] string? sortBy = "latest",
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
@@ -40,6 +41,7 @@ public class EventsController : ApiControllerBase
             Status: status,
             MinSubmissions: minSubmissions,
             MaxSubmissions: maxSubmissions,
+            IsFeatured: isFeatured,
             SortBy: sortBy,
             Page: page,
             PageSize: pageSize
@@ -152,7 +154,8 @@ public class EventsController : ApiControllerBase
             VotingStartAt: dto.VotingStartAt,
             VotingEndAt: dto.VotingEndAt,
             ResultAnnouncementAt: dto.ResultAnnouncementAt,
-            AdminId: CurrentUserId
+            AdminId: CurrentUserId,
+            IsFeatured: dto.IsFeatured
         );
 
         var (success, data, errors) = await Mediator.Send(command, cancellationToken);
@@ -199,7 +202,8 @@ public class EventsController : ApiControllerBase
             VotingStartAt: dto.VotingStartAt,
             VotingEndAt: dto.VotingEndAt,
             ResultAnnouncementAt: dto.ResultAnnouncementAt,
-            AdminId: CurrentUserId
+            AdminId: CurrentUserId,
+            IsFeatured: dto.IsFeatured
         );
 
         var (success, data, errors) = await Mediator.Send(command, cancellationToken);

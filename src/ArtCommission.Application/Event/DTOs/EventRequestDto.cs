@@ -18,6 +18,8 @@ public sealed record EventRequestDto
 
     public EventStatus Status { get; set; } = EventStatus.Draft;
 
+    public bool IsFeatured { get; set; } = false;
+
     public DateTimeOffset SubmissionStartAt { get; set; }
 
     public DateTimeOffset SubmissionEndAt { get; set; }

@@ -41,6 +41,9 @@ public class PlatformEventConfiguration : IEntityTypeConfiguration<PlatformEvent
             .HasDefaultValue(EventStatus.Draft)
             .IsRequired();
 
+        builder.Property(e => e.IsFeatured)
+            .HasDefaultValue(false);
+
         builder.Property(e => e.SubmissionStartAt)
             .IsRequired();
 
