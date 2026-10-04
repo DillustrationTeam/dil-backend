@@ -35,8 +35,17 @@ public class CreateCreatorProfileCommandValidator : AbstractValidator<CreateCrea
 
         RuleFor(x => x.Specialties)
             .MaximumLength(500).WithMessage("Specialties must be 500 characters or fewer.");
+        RuleFor(x => x.Location).MaximumLength(200);
+        RuleFor(x => x.WebsiteUrl).MaximumLength(500)
+            .Must(BeOptionalHttpUrl).WithMessage("Website must be an absolute HTTP or HTTPS URL.");
+        RuleFor(x => x.BannerUrl).MaximumLength(500)
+            .Must(BeOptionalHttpUrl).WithMessage("Banner must be an absolute HTTP or HTTPS URL.");
+
         RuleFor(x => x.AvailableSlots).InclusiveBetween(0, 100);
     }
+    private static bool BeOptionalHttpUrl(string? value) => string.IsNullOrWhiteSpace(value)
+        || (Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps));
 }
 
 public class CreateCreatorProfileCommandHandler : IRequestHandler<CreateCreatorProfileCommand, (bool Success, CreatorProfileDto? Data, string[] Errors)>
