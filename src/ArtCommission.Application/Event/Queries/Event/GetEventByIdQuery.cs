@@ -39,6 +39,7 @@ public class GetEventByIdQueryHandler
                 Prize = e.Prize,
                 MaxVote = e.MaxVote,
                 Status = e.Status.ToString(),
+                IsFeatured = e.IsFeatured,
                 SubmissionStartAt = e.SubmissionStartAt,
                 SubmissionEndAt = e.SubmissionEndAt,
                 JudgingStartAt = e.JudgingStartAt,

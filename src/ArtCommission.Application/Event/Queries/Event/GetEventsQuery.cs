@@ -12,6 +12,7 @@ public record GetEventsQuery(
     EventStatus? Status = null,
     int? MinSubmissions = null,
     int? MaxSubmissions = null,
+    bool? IsFeatured = null,
     string? SortBy = "latest",
     int Page = 1,
     int PageSize = 10
@@ -64,6 +65,11 @@ public class GetEventsQueryHandler
             query = query.Where(e => e.Submissions.Count <= request.MaxSubmissions.Value);
         }
 
+        if (request.IsFeatured.HasValue)
+        {
+            query = query.Where(e => e.IsFeatured == request.IsFeatured.Value);
+        }
+
         var totalCount = await query.CountAsync(cancellationToken);
 
         query = request.SortBy?.Trim().ToLowerInvariant() switch
@@ -88,6 +94,7 @@ public class GetEventsQueryHandler
                 Prize = e.Prize,
                 MaxVote = e.MaxVote,
                 Status = e.Status,
+                IsFeatured = e.IsFeatured,
                 SubmissionStartAt = e.SubmissionStartAt,
                 SubmissionEndAt = e.SubmissionEndAt,
                 JudgingStartAt = e.JudgingStartAt,

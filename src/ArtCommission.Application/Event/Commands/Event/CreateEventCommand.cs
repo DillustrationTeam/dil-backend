@@ -23,7 +23,8 @@ public record CreateEventCommand(
     DateTimeOffset VotingStartAt,
     DateTimeOffset VotingEndAt,
     DateTimeOffset ResultAnnouncementAt,
-    Guid AdminId
+    Guid AdminId,
+    bool IsFeatured = false
 ) : IRequest<(bool Success, EventDetailDto? Data, string[] Errors)>;
 
 public class CreateEventCommandHandler
@@ -73,6 +74,7 @@ public class CreateEventCommandHandler
             VotingEndAt = request.VotingEndAt,
             ResultAnnouncementAt = request.ResultAnnouncementAt,
             CreatedByAdminId = request.AdminId,
+            IsFeatured = request.IsFeatured,
             CreatedAt = now,
             IsDeleted = false
         };
@@ -90,6 +92,7 @@ public class CreateEventCommandHandler
             Prize = platformEvent.Prize,
             MaxVote = platformEvent.MaxVote,
             Status = platformEvent.Status.ToString(),
+            IsFeatured = platformEvent.IsFeatured,
             SubmissionStartAt = platformEvent.SubmissionStartAt,
             SubmissionEndAt = platformEvent.SubmissionEndAt,
             JudgingStartAt = platformEvent.JudgingStartAt,
