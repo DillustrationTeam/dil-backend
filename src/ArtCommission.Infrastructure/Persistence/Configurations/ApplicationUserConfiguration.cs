@@ -36,7 +36,8 @@ public class ApplicationUserConfiguration : IEntityTypeConfiguration<Application
             .HasConversion(
                  v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
                  v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<string>()
-             );
+             )
+            .Metadata.SetValueComparer(StringListValueComparer.Instance);
 
         builder.HasMany(u => u.RefreshTokens)
             .WithOne(rt => rt.User)

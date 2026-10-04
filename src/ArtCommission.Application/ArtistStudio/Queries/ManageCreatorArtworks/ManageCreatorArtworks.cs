@@ -1,6 +1,7 @@
 using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Entities.ArtistStudio;
+using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -73,6 +74,27 @@ public record UpdateCreatorArtworkCommand(
     string? ImageUrl,
     string? ThumbnailUrl)
     : IRequest<(ArtworkDto? Data, string[] Errors)>;
+
+public sealed class UpdateCreatorArtworkCommandValidator : AbstractValidator<UpdateCreatorArtworkCommand>
+{
+    public UpdateCreatorArtworkCommandValidator()
+    {
+        RuleFor(x => x.Title).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.Description).MaximumLength(2000);
+        RuleFor(x => x.Tags).Must(tags => tags is null || tags.Count <= 10)
+            .WithMessage("Use up to 10 tags.");
+        RuleForEach(x => x.Tags).NotEmpty().MaximumLength(50);
+        RuleFor(x => x.ImageUrl).MaximumLength(500)
+            .Must(url => string.IsNullOrWhiteSpace(url) || IsHttpUrl(url))
+            .WithMessage("Image URL must be a valid HTTP(S) URL with 500 characters or fewer.");
+        RuleFor(x => x.ThumbnailUrl).MaximumLength(500)
+            .Must(url => string.IsNullOrWhiteSpace(url) || IsHttpUrl(url))
+            .WithMessage("Thumbnail URL must be a valid HTTP(S) URL with 500 characters or fewer.");
+    }
+
+    private static bool IsHttpUrl(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https";
+}
 
 public sealed class UpdateCreatorArtworkCommandHandler
     : IRequestHandler<UpdateCreatorArtworkCommand, (ArtworkDto? Data, string[] Errors)>

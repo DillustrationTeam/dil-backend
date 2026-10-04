@@ -3,6 +3,7 @@ using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Entities.ArtistStudio;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace ArtCommission.Application.ArtistStudio.Workstation;
 
@@ -54,28 +55,55 @@ public class CreatorWorkstationMutationHandler : IRequestHandler<CreatorWorkstat
         switch (c.Action)
         {
             case "terms":
-                if (c.Payload is not UpdateCreatorTermsRequest terms || terms.CommercialLicenseMultiplier is < 1m or > 10m) return (false, null, new[] { "Commercial license multiplier must be between 1 and 10." });
+                if (c.Payload is not UpdateCreatorTermsRequest terms
+                    || terms.CommercialLicenseMultiplier is < 1m or > 10m
+                    || terms.RevisionPolicy?.Length > 2000
+                    || terms.CancellationPolicy?.Length > 2000) return (false, null, new[] { "Creator terms are invalid or exceed 2000 characters." });
                 var entity = await _db.CreatorTerms.FirstOrDefaultAsync(x => x.CreatorProfileId == profile.Id && !x.IsDeleted, ct) ?? new CreatorTerms { CreatorProfileId = profile.Id };
                 entity.CommercialLicenseMultiplier = terms.CommercialLicenseMultiplier; entity.RevisionPolicy = terms.RevisionPolicy?.Trim(); entity.CancellationPolicy = terms.CancellationPolicy?.Trim(); if (entity.Id == Guid.Empty) _db.CreatorTerms.Add(entity); await _db.SaveChangesAsync(ct); return (true, new CreatorTermsDto(entity.CommercialLicenseMultiplier, entity.RevisionPolicy, entity.CancellationPolicy), Array.Empty<string>());
             case "auto-reply":
-                if (c.Payload is not UpdateAutoReplySettingRequest reply || reply.BriefTemplate.Length > 2000) return (false, null, new[] { "Auto-reply template is invalid." });
+                if (c.Payload is not UpdateAutoReplySettingRequest reply
+                    || reply.BriefTemplate.Length > 2000
+                    || (reply.IsEnabled && string.IsNullOrWhiteSpace(reply.BriefTemplate))) return (false, null, new[] { "Enabled auto-reply requires a template of at most 2000 characters." });
                 var setting = await _db.CreatorAutoReplySettings.FirstOrDefaultAsync(x => x.CreatorProfileId == profile.Id && !x.IsDeleted, ct) ?? new CreatorAutoReplySetting { CreatorProfileId = profile.Id };
                 setting.IsEnabled = reply.IsEnabled; setting.BriefTemplate = reply.BriefTemplate.Trim(); if (setting.Id == Guid.Empty) _db.CreatorAutoReplySettings.Add(setting); await _db.SaveChangesAsync(ct); return (true, new AutoReplySettingDto(setting.IsEnabled, setting.BriefTemplate), Array.Empty<string>());
             case "faq":
-                if (c.Payload is not UpsertCreatorFaqRequest faq || string.IsNullOrWhiteSpace(faq.Question) || string.IsNullOrWhiteSpace(faq.Answer)) return (false, null, new[] { "FAQ question and answer are required." });
+                if (c.Payload is not UpsertCreatorFaqRequest faq
+                    || string.IsNullOrWhiteSpace(faq.Question) || faq.Question.Length > 300
+                    || string.IsNullOrWhiteSpace(faq.Answer) || faq.Answer.Length > 2000
+                    || faq.DisplayOrder is < 0 or > 1000) return (false, null, new[] { "FAQ question, answer, or display order is invalid." });
                 var newFaq = new CreatorFaq { CreatorProfileId = profile.Id, Question = faq.Question.Trim(), Answer = faq.Answer.Trim(), DisplayOrder = faq.DisplayOrder }; _db.CreatorFaqs.Add(newFaq); await _db.SaveChangesAsync(ct); return (true, new CreatorFaqDto(newFaq.Id, newFaq.Question, newFaq.Answer, newFaq.DisplayOrder), Array.Empty<string>());
             case "work-item":
-                if (c.Payload is not CreateWorkItemRequest item || string.IsNullOrWhiteSpace(item.ClientName) || string.IsNullOrWhiteSpace(item.Title) || !Stages.Contains(item.Stage)) return (false, null, new[] { "Work item details or stage are invalid." });
+                if (c.Payload is not CreateWorkItemRequest item
+                    || string.IsNullOrWhiteSpace(item.ClientName) || item.ClientName.Length > 150
+                    || string.IsNullOrWhiteSpace(item.Title) || item.Title.Length > 200
+                    || !Stages.Contains(item.Stage)
+                    || (item.DueAt.HasValue && item.DueAt <= DateTimeOffset.UtcNow)) return (false, null, new[] { "Work item details, stage, or due date are invalid." });
                 var work = new CreatorWorkItem { CreatorProfileId = profile.Id, ClientName = item.ClientName.Trim(), Title = item.Title.Trim(), Stage = item.Stage, DueAt = item.DueAt }; _db.CreatorWorkItems.Add(work); await _db.SaveChangesAsync(ct); return (true, new CreatorWorkItemDto(work.Id, work.ClientName, work.Title, work.Stage, work.DueAt, work.CreatedAt), Array.Empty<string>());
             case "work-stage":
                 if (c.Payload is not UpdateWorkItemStageRequest stage || !Stages.Contains(stage.Stage)) return (false, null, new[] { "Work item stage is invalid." });
                 var existing = await _db.CreatorWorkItems.FirstOrDefaultAsync(x => x.Id == c.TargetId && x.CreatorProfileId == profile.Id && !x.IsDeleted, ct); if (existing is null) return (false, null, new[] { "Work item not found." }); existing.Stage = stage.Stage; existing.UpdatedAt = DateTimeOffset.UtcNow; await _db.SaveChangesAsync(ct); return (true, new CreatorWorkItemDto(existing.Id, existing.ClientName, existing.Title, existing.Stage, existing.DueAt, existing.CreatedAt), Array.Empty<string>());
             case "asset":
-                if (c.Payload is not CreateCreatorAssetRequest asset || string.IsNullOrWhiteSpace(asset.Name) || !new[] { "Pose", "Palette", "Preset" }.Contains(asset.AssetType)) return (false, null, new[] { "Asset type, name, or data is invalid." });
+                if (c.Payload is not CreateCreatorAssetRequest asset
+                    || string.IsNullOrWhiteSpace(asset.Name) || asset.Name.Length > 150
+                    || !new[] { "Pose", "Palette", "Preset" }.Contains(asset.AssetType)
+                    || (asset.AssetUrl is not null && (asset.AssetUrl.Length > 500 || !IsHttpUrl(asset.AssetUrl)))
+                    || asset.MetadataJson?.Length > 4000
+                    || !IsValidJson(asset.MetadataJson)) return (false, null, new[] { "Asset type, name, URL, or metadata is invalid." });
                 var newAsset = new CreatorAsset { CreatorProfileId = profile.Id, AssetType = asset.AssetType, Name = asset.Name.Trim(), AssetUrl = asset.AssetUrl, MetadataJson = asset.MetadataJson }; _db.CreatorAssets.Add(newAsset); await _db.SaveChangesAsync(ct); return (true, new CreatorAssetDto(newAsset.Id, newAsset.AssetType, newAsset.Name, newAsset.AssetUrl, newAsset.MetadataJson, newAsset.CreatedAt), Array.Empty<string>());
             case "delete-asset":
                 var delete = await _db.CreatorAssets.FirstOrDefaultAsync(x => x.Id == c.TargetId && x.CreatorProfileId == profile.Id && !x.IsDeleted, ct); if (delete is null) return (false, null, new[] { "Asset not found." }); delete.IsDeleted = true; delete.UpdatedAt = DateTimeOffset.UtcNow; await _db.SaveChangesAsync(ct); return (true, null, Array.Empty<string>());
             default: return (false, null, new[] { "Unsupported creator workstation action." });
         }
+    }
+
+    private static bool IsHttpUrl(string value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https";
+
+    private static bool IsValidJson(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return true;
+        try { JsonDocument.Parse(value).Dispose(); return true; }
+        catch (JsonException) { return false; }
     }
 }

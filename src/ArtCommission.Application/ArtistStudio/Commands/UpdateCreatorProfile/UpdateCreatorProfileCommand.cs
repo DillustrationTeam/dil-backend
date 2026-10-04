@@ -39,10 +39,27 @@ public class UpdateCreatorProfileCommandValidator : AbstractValidator<UpdateCrea
             .MaximumLength(500).WithMessage("Specialties must be 500 characters or fewer.")
             .When(x => !string.IsNullOrWhiteSpace(x.Specialties));
 
+        RuleFor(x => x.Location)
+            .MaximumLength(200).WithMessage("Location must be 200 characters or fewer.")
+            .When(x => !string.IsNullOrWhiteSpace(x.Location));
+
+        RuleFor(x => x.WebsiteUrl)
+            .MaximumLength(500).Must(IsHttpUrl)
+            .When(x => !string.IsNullOrWhiteSpace(x.WebsiteUrl))
+            .WithMessage("Website URL must be a valid HTTP(S) URL with 500 characters or fewer.");
+
+        RuleFor(x => x.BannerUrl)
+            .MaximumLength(500).Must(IsHttpUrl)
+            .When(x => !string.IsNullOrWhiteSpace(x.BannerUrl))
+            .WithMessage("Banner URL must be a valid HTTP(S) URL with 500 characters or fewer.");
+
         RuleFor(x => x.AvailableSlots)
             .InclusiveBetween(0, 100).WithMessage("Available slots must be between 0 and 100.")
             .When(x => x.AvailableSlots.HasValue);
     }
+
+    private static bool IsHttpUrl(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https";
 }
 
 public class UpdateCreatorProfileCommandHandler : IRequestHandler<UpdateCreatorProfileCommand, (bool Success, CreatorProfileDto? Data, string[] Errors)>

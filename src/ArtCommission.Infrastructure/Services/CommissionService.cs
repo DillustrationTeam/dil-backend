@@ -416,6 +416,9 @@ public class CommissionService : ICommissionService
 
     public async Task<MilestoneDto> RequestMilestoneRevisionAsync(Guid commissionId, Guid milestoneId, RequestRevisionRequest request, Guid clientId, CancellationToken cancellationToken = default)
     {
+        var validation = new RequestRevisionRequestValidator().Validate(request);
+        if (!validation.IsValid) throw new ArgumentException(string.Join(" ", validation.Errors.Select(e => e.ErrorMessage)));
+
         var commission = await OwnedCommissionAsync(commissionId, clientId, creator: false, cancellationToken);
         if (commission.Status != CommissionStatus.InProgress) throw new InvalidOperationException("Commission is not in progress.");
         var milestone = await _dbContext.Milestones.FirstOrDefaultAsync(m => m.Id == milestoneId && m.CommissionId == commissionId, cancellationToken);
@@ -523,6 +526,9 @@ public class CommissionService : ICommissionService
 
     public async Task<DisputeDto> CreateDisputeAsync(Guid id, CreateDisputeRequest request, Guid raisedById, CancellationToken cancellationToken = default)
     {
+        var validation = new CreateDisputeRequestValidator().Validate(request);
+        if (!validation.IsValid) throw new ArgumentException(string.Join(" ", validation.Errors.Select(e => e.ErrorMessage)));
+
         var commission = await PartyCommissionAsync(id, raisedById, cancellationToken);
         if (commission.Status is CommissionStatus.Completed or CommissionStatus.Cancelled or CommissionStatus.Disputed)
             throw new InvalidOperationException("Commission cannot be disputed in this state.");

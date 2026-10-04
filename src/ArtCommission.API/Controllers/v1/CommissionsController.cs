@@ -141,6 +141,7 @@ public class CommissionsController : ControllerBase
         CancellationToken ct)
     {
         ValidateUpload(file, MaxWipFileSize, WipContentTypes, "WIP");
+        if (creatorNote?.Length > 2000) throw new ArgumentException("Creator note must be 2000 characters or fewer.");
         var creatorId = GetCurrentUserId();
         var stream = file?.OpenReadStream();
         var contentType = file?.ContentType;

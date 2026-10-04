@@ -25,7 +25,7 @@ public class JwtTokenGenerator : IJwtTokenGenerator
 
     public async Task<TokenDto> GenerateTokensAsync(UserDto user, IEnumerable<string> roles, string? clientIp, string? userAgent = null, CancellationToken cancellationToken = default)
     {
-        var secretKey = _configuration["Jwt:SecretKey"] ?? "Default_Secret_Key_For_Development_Only_Must_Be_Long_256_Bits";
+        var secretKey = GetSecretKey();
         var issuer = _configuration["Jwt:Issuer"] ?? "ArtCommissionAPI";
         var audience = _configuration["Jwt:Audience"] ?? "ArtCommissionClient";
         var expiryMinutes = double.TryParse(_configuration["Jwt:ExpiryMinutes"], out var min) ? min : 15;
@@ -136,7 +136,7 @@ public class JwtTokenGenerator : IJwtTokenGenerator
             existingToken.User.SocialLinks
         );
 
-        var secretKey = _configuration["Jwt:SecretKey"] ?? "Default_Secret_Key_For_Development_Only_Must_Be_Long_256_Bits";
+        var secretKey = GetSecretKey();
         var issuer = _configuration["Jwt:Issuer"] ?? "ArtCommissionAPI";
         var audience = _configuration["Jwt:Audience"] ?? "ArtCommissionClient";
         var expiryMinutes = double.TryParse(_configuration["Jwt:ExpiryMinutes"], out var min) ? min : 15;
@@ -232,4 +232,8 @@ public class JwtTokenGenerator : IJwtTokenGenerator
         var hashBytes = SHA256.HashData(bytes);
         return Convert.ToHexString(hashBytes);
     }
+
+    private string GetSecretKey() =>
+        _configuration["Jwt:SecretKey"]
+        ?? throw new InvalidOperationException("Jwt:SecretKey is not configured.");
 }

@@ -78,7 +78,8 @@ public class EmailVerificationService : IEmailVerificationService
 
     private string Sign(string payload)
     {
-        var secretKey = _configuration["Jwt:SecretKey"] ?? "Default_Secret_Key_For_Development_Only_Must_Be_Long_256_Bits";
+        var secretKey = _configuration["Jwt:SecretKey"]
+            ?? throw new InvalidOperationException("Jwt:SecretKey is not configured.");
         using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secretKey));
         var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
         return Convert.ToHexString(hash).ToLowerInvariant();

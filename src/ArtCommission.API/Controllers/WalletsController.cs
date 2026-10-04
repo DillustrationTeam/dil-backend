@@ -15,11 +15,14 @@ public record DemoDepositRequest(decimal Amount = 1000000m);
 [Route("api/v1/wallets")]
 public class WalletsController : ApiControllerBase
 {
+    private const decimal MaximumDemoDeposit = 500_000_000m;
     private readonly IWalletService _walletService;
+    private readonly IWebHostEnvironment _environment;
 
-    public WalletsController(IWalletService walletService)
+    public WalletsController(IWalletService walletService, IWebHostEnvironment environment)
     {
         _walletService = walletService;
+        _environment = environment;
     }
 
     /// <summary>
@@ -53,13 +56,21 @@ public class WalletsController : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> DepositDemo([FromBody] DemoDepositRequest? request, CancellationToken cancellationToken)
     {
+        if (!_environment.IsDevelopment())
+        {
+            return NotFound();
+        }
+
         if (CurrentUserId == Guid.Empty)
         {
             return UnauthorizedEnvelope();
         }
 
         var amount = request?.Amount ?? 1000000m;
-        if (amount <= 0) amount = 1000000m;
+        if (amount <= 0 || amount > MaximumDemoDeposit)
+        {
+            return BadRequestEnvelope($"Số tiền demo phải từ 1 đến {MaximumDemoDeposit:N0} VND.");
+        }
 
         var wallet = await _walletService.GetOrCreateWalletAsync(CurrentUserId, cancellationToken);
         await _walletService.CreditAsync(

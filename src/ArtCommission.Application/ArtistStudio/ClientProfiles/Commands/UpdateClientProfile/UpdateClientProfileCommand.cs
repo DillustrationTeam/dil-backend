@@ -31,10 +31,12 @@ public class UpdateClientProfileCommandValidator : AbstractValidator<UpdateClien
         RuleFor(x => x.InterestTags)
             .Must(tags => tags == null || tags.Count <= 10)
             .WithMessage("You can select up to 10 interest tags.");
+        RuleForEach(x => x.InterestTags).NotEmpty().MaximumLength(50);
 
         RuleFor(x => x.PreferredLanguages)
             .Must(langs => langs == null || langs.Count <= 10)
             .WithMessage("You can select up to 10 languages.");
+        RuleForEach(x => x.PreferredLanguages).NotEmpty().MaximumLength(50);
 
         RuleFor(x => x.Country)
             .MaximumLength(100)
@@ -183,7 +185,8 @@ public class UpdateClientProfileCommandHandler : IRequestHandler<UpdateClientPro
     }
 
     private static List<string> NormalizeList(List<string>? values) =>
-        values?.Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim()).ToList() ?? new List<string>();
+        values?.Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new List<string>();
 
     /// <summary>
     /// EF Core không có cách chung chung để phân biệt loại DbUpdateException theo provider (chỉ SQL Server
