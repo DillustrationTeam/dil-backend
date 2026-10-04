@@ -10,6 +10,8 @@ public class RefreshToken : BaseEntity
     public DateTimeOffset? RevokedAt { get; set; }
     public string? CreatedByIp { get; set; }
     public string? ReplacedByTokenHash { get; set; }
+    public string? UserAgent { get; set; }
+    public DateTimeOffset? LastUsedAt { get; set; }
 
     public bool IsActive => RevokedAt == null && DateTimeOffset.UtcNow < ExpiresAt;
 

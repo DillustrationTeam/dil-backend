@@ -161,6 +161,95 @@ public static class DevDataSeeder
         logger.LogInformation(
             "Development sample data ready: 5 users, 5 wallets ({Balance:N0} VND each), 1 CreatorProfile, {NewArtworkCount} new / {TotalArtworkCount} total Artworks, {TagCount} tags.",
             InitialWalletBalance, newArtworkCount, artworks.Count, tags.Count);
+
+        // 7) Get-or-create thêm tài khoản mẫu bổ sung: 8 Client, 5 Creator (kèm CreatorProfile cơ bản), 3 Moderator.
+        var extraClientSeeds = new[]
+        {
+            ("client3@seed.dillustration.art", "Vũ Thị Hoa"),
+            ("client4@seed.dillustration.art", "Đặng Văn Khôi"),
+            ("client5@seed.dillustration.art", "Bùi Thị Lan"),
+            ("client6@seed.dillustration.art", "Ngô Văn Minh"),
+            ("client7@seed.dillustration.art", "Đỗ Thị Ngọc"),
+            ("client8@seed.dillustration.art", "Phan Thị Oanh"),
+            ("client9@seed.dillustration.art", "Lý Văn Phúc"),
+            ("client10@seed.dillustration.art", "Trịnh Thị Quỳnh"),
+        };
+
+        var extraArtistSeeds = new[]
+        {
+            ("artist2@seed.dillustration.art", "Đinh Thị Thu", "Thu Dinh Art", "Minh hoạ nhân vật & bìa sách", "Portrait, Book Cover, Digital Painting", "Hà Nội, Vietnam"),
+            ("artist3@seed.dillustration.art", "Hồ Văn Tùng", "Tung Ho Illustration", "Concept art & game asset", "Concept Art, Game Asset, Environment", "Đà Nẵng, Vietnam"),
+            ("artist4@seed.dillustration.art", "Mai Thị Uyên", "Uyên Mai Studio", "Chibi & sticker nghệ sĩ", "Chibi, Sticker, Cute Art", "Hồ Chí Minh City, Vietnam"),
+            ("artist5@seed.dillustration.art", "Dương Văn Vinh", "Vinh Duong Arts", "Tranh fantasy & key visual", "Fantasy, Key Visual, Digital Art", "Huế, Vietnam"),
+            ("artist6@seed.dillustration.art", "Lương Thị Yến", "Yến Lương Creative", "Thiết kế nhân vật VTuber", "VTuber Design, Character Design", "Cần Thơ, Vietnam"),
+        };
+
+        var extraModeratorSeeds = new[]
+        {
+            ("moderator2@seed.dillustration.art", "Tô Văn Bảo"),
+            ("moderator3@seed.dillustration.art", "Chu Thị Cẩm"),
+            ("moderator4@seed.dillustration.art", "Vương Văn Đạt"),
+        };
+
+        var extraUsers = new List<ApplicationUser>();
+
+        foreach (var (email, fullName) in extraClientSeeds)
+        {
+            var created = await GetOrCreateUserAsync(userManager, logger, email, fullName, [UserRoleNames.Client]);
+            if (created is not null) extraUsers.Add(created);
+        }
+
+        foreach (var (email, fullName, displayName, headline, specialties, location) in extraArtistSeeds)
+        {
+            var created = await GetOrCreateUserAsync(userManager, logger, email, fullName, [UserRoleNames.Client, UserRoleNames.Creator]);
+            if (created is null) continue;
+            extraUsers.Add(created);
+
+            var hasProfile = await db.CreatorProfiles.AnyAsync(cp => cp.UserId == created.Id, cancellationToken);
+            if (!hasProfile)
+            {
+                db.CreatorProfiles.Add(new CreatorProfile
+                {
+                    UserId = created.Id,
+                    DisplayName = displayName,
+                    Headline = headline,
+                    Bio = $"Hoạ sĩ {displayName} — {headline.ToLowerInvariant()}.",
+                    Specialties = specialties,
+                    Location = location,
+                    IsAcceptingOrders = true,
+                    CommissionSlots = 3,
+                    CompletedOrdersCount = 0,
+                    IsApproved = true,
+                    IsAiVerified = false,
+                    RatingAverage = 0,
+                    RatingCount = 0,
+                    FollowerCount = 0
+                });
+            }
+        }
+
+        foreach (var (email, fullName) in extraModeratorSeeds)
+        {
+            var created = await GetOrCreateUserAsync(userManager, logger, email, fullName, [UserRoleNames.Moderator]);
+            if (created is not null) extraUsers.Add(created);
+        }
+
+        await db.SaveChangesAsync(cancellationToken); // lưu CreatorProfile mới trước khi tạo ví
+
+        foreach (var user in extraUsers)
+        {
+            var wallet = await walletService.GetOrCreateWalletAsync(user.Id, cancellationToken);
+            if (wallet.Balance == 0m)
+            {
+                await walletService.CreditAsync(
+                    wallet, WalletTransactionType.Deposit, InitialWalletBalance,
+                    refType: "Seed", refId: null, note: "Seed data initial balance", cancellationToken);
+            }
+        }
+
+        logger.LogInformation(
+            "Extra development sample accounts ready: {ClientCount} clients, {ArtistCount} artists (+CreatorProfile), {ModeratorCount} moderators.",
+            extraClientSeeds.Length, extraArtistSeeds.Length, extraModeratorSeeds.Length);
     }
 
     private static async Task<ApplicationUser?> GetOrCreateUserAsync(

@@ -6,6 +6,7 @@ using ArtCommission.Domain.Entities.Commission;
 using ArtCommission.Domain.Entities.Auction;
 using ArtCommission.Domain.Entities.Chat;
 using ArtCommission.Domain.Entities.CreatorApplication;
+using ArtCommission.Domain.Entities.Event;
 using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Domain.Entities.Notifications;
 using ArtCommission.Domain.Entities.Payment;
@@ -24,6 +25,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
 
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<EmailVerificationCode> EmailVerificationCodes => Set<EmailVerificationCode>();
+    public DbSet<TwoFactorRecoveryCode> TwoFactorRecoveryCodes => Set<TwoFactorRecoveryCode>();
 
     // Module Artist Studio
     public DbSet<CreatorProfile> CreatorProfiles => Set<CreatorProfile>();
@@ -37,6 +39,8 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<CollectionArtwork> CollectionArtworks => Set<CollectionArtwork>();
     public DbSet<CommissionService> CommissionServices => Set<CommissionService>();
     public DbSet<CreatorReview> CreatorReviews => Set<CreatorReview>();
+    public DbSet<ClientProfile> ClientProfiles => Set<ClientProfile>();
+    public DbSet<ClientReview> ClientReviews => Set<ClientReview>();
     public DbSet<CreatorTerms> CreatorTerms => Set<CreatorTerms>();
     public DbSet<CreatorAutoReplySetting> CreatorAutoReplySettings => Set<CreatorAutoReplySetting>();
     public DbSet<CreatorFaq> CreatorFaqs => Set<CreatorFaq>();
@@ -103,6 +107,15 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
 
     // Module Identity & User Sanctions (SCR-23 / UC31)
     public DbSet<UserSanction> UserSanctions => Set<UserSanction>();
+
+    // Module Event & Contest (Module 10)
+    public DbSet<PlatformEvent> PlatformEvents => Set<PlatformEvent>();
+    public DbSet<EventSubmission> EventSubmissions => Set<EventSubmission>();
+    public DbSet<EventVote> EventVotes => Set<EventVote>();
+    public DbSet<EventCriteria> EventCriteria => Set<EventCriteria>();
+    public DbSet<CriteriaScore> CriteriaScores => Set<CriteriaScore>();
+    public DbSet<Jury> Juries => Set<Jury>();
+    public DbSet<Invitation> Invitations => Set<Invitation>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

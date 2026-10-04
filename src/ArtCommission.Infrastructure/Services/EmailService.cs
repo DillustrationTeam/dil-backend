@@ -35,6 +35,24 @@ public class EmailService : IEmailService
         return SendAsync(toEmail, "Mã đặt lại mật khẩu - Dillustration", body, cancellationToken);
     }
 
+    public Task SendChangeEmailCodeEmailAsync(string toEmail, string code, CancellationToken cancellationToken = default)
+    {
+        var body = $"<p>Mã xác minh để đổi sang email này là:</p><p style=\"font-size:28px;font-weight:bold;letter-spacing:4px;\">{code}</p><p>Mã có hiệu lực trong 10 phút. Nếu bạn không yêu cầu đổi email, hãy bỏ qua email này.</p>";
+        return SendAsync(toEmail, "Mã xác minh đổi email - Dillustration", body, cancellationToken);
+    }
+
+    public Task SendEmailChangedNoticeAsync(string oldEmail, string newEmail, CancellationToken cancellationToken = default)
+    {
+        var body = $"<p>Email đăng nhập của tài khoản bạn vừa được đổi sang <b>{newEmail}</b>.</p><p>Nếu đây không phải là bạn, vui lòng liên hệ hỗ trợ ngay lập tức.</p>";
+        return SendAsync(oldEmail, "Email tài khoản của bạn vừa được thay đổi - Dillustration", body, cancellationToken);
+    }
+
+    public Task SendReauthCodeEmailAsync(string toEmail, string code, CancellationToken cancellationToken = default)
+    {
+        var body = $"<p>Mã xác thực lại danh tính của bạn là:</p><p style=\"font-size:28px;font-weight:bold;letter-spacing:4px;\">{code}</p><p>Dùng mã này để xác nhận chính bạn đang yêu cầu đổi email đăng nhập. Mã có hiệu lực trong 10 phút. Nếu bạn không yêu cầu, hãy bỏ qua email này.</p>";
+        return SendAsync(toEmail, "Mã xác thực lại danh tính - Dillustration", body, cancellationToken);
+    }
+
     private async Task SendAsync(string toEmail, string subject, string htmlBody, CancellationToken cancellationToken)
     {
         var smtpHost = _configuration["Email:SmtpHost"];

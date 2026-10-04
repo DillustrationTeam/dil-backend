@@ -5,5 +5,9 @@ public record UserDto(
     string Email,
     string FullName,
     bool IsVerified,
-    DateTimeOffset CreatedAt
+    DateTimeOffset CreatedAt,
+    string? AvatarUrl = null,
+    string? CoverUrl = null,
+    string? Bio = null,
+    IReadOnlyList<string>? SocialLinks = null
 );
