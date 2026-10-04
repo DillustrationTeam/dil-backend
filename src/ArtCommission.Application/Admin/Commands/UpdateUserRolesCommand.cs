@@ -1,3 +1,4 @@
+using ArtCommission.Application.Admin.Validators;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Enums;
 using FluentValidation;
@@ -7,32 +8,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ArtCommission.Application.Admin.Commands;
 
-/// <summary>
-/// Command cập nhật phân quyền Roles cho tài khoản người dùng (SCR-23 / UC31).
-/// </summary>
 public record UpdateUserRolesCommand(
     Guid UserId,
     List<string> Roles,
     Guid AdminId
 ) : IRequest<(bool Success, string Message, string[] Errors)>;
-
-public class UpdateUserRolesCommandValidator : AbstractValidator<UpdateUserRolesCommand>
-{
-    public UpdateUserRolesCommandValidator()
-    {
-        RuleFor(x => x.UserId)
-            .NotEmpty().WithMessage("Mã người dùng (UserId) không được để trống.");
-
-        RuleFor(x => x.AdminId)
-            .NotEmpty().WithMessage("Mã quản trị viên (AdminId) không được để trống.");
-
-        RuleFor(x => x.Roles)
-            .NotNull().WithMessage("Danh sách vai trò không được null.")
-            .Must(r => r != null && r.Count > 0).WithMessage("Phải chọn ít nhất 1 vai trò cho người dùng.")
-            .Must(roles => roles.All(r => UserRoleNames.All.Contains(r.Trim())))
-            .WithMessage($"Các vai trò chỉ được thuộc: {string.Join(", ", UserRoleNames.All)}.");
-    }
-}
 
 public class UpdateUserRolesCommandHandler
     : IRequestHandler<UpdateUserRolesCommand, (bool Success, string Message, string[] Errors)>

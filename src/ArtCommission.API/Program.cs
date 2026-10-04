@@ -112,6 +112,11 @@ builder.Services.Configure<PaymentReconciliationSettings>(
     builder.Configuration.GetSection(PaymentReconciliationSettings.SectionName));
 builder.Services.AddHostedService<PaymentReconciliationWorker>();
 
+// 3d-2. Job nền quét lời mời giám khảo đã hết hạn
+builder.Services.Configure<InvitationExpirationSettings>(
+    builder.Configuration.GetSection(InvitationExpirationSettings.SectionName));
+builder.Services.AddHostedService<InvitationExpirationWorker>();
+
 // 3c. Cổng thanh toán payOS
 // Secret lấy từ User Secrets (dev) hoặc biến môi trường PayOS__ClientId / PayOS__ApiKey / PayOS__ChecksumKey.
 builder.Services.Configure<PayOsOptions>(builder.Configuration.GetSection(PayOsOptions.SectionName));

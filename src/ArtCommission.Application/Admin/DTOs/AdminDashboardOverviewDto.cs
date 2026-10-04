@@ -1,83 +1,111 @@
 namespace ArtCommission.Application.Admin.DTOs;
 
-/// <summary>
-/// DTO chứa tổng quan số liệu phân tích, KPIs tài chính và hàng đợi vận hành (SCR-24 / UC32).
-/// </summary>
-public record AdminDashboardOverviewDto
+public sealed record AdminDashboardOverviewDto
 {
-    public AdminFinancialKpiDto FinancialKpis { get; init; } = null!;
-    public AdminUserMetricsDto UserMetrics { get; init; } = null!;
-    public AdminCommissionMetricsDto CommissionMetrics { get; init; } = null!;
-    public AdminActionRequiredQueueDto ActionRequiredQueue { get; init; } = null!;
-    public List<AdminDailyRevenueDto> RevenueTrend { get; init; } = new();
-    public List<AdminRecentTransactionDto> RecentTransactions { get; init; } = new();
+    public AdminFinancialKpiDto FinancialKpis { get; set; } = null!;
+
+    public AdminUserMetricsDto UserMetrics { get; set; } = null!;
+
+    public AdminCommissionMetricsDto CommissionMetrics { get; set; } = null!;
+
+    public AdminActionRequiredQueueDto ActionRequiredQueue { get; set; } = null!;
+
+    public List<AdminDailyRevenueDto> RevenueTrend { get; set; } = new();
+
+    public List<AdminRecentTransactionDto> RecentTransactions { get; set; } = new();
 }
 
-public record AdminFinancialKpiDto
+public sealed record AdminFinancialKpiDto
 {
     /// <summary>Tổng giá trị giao dịch đơn vẽ (Gross Merchandise Value - VND).</summary>
-    public decimal TotalGmv { get; init; }
+    public decimal TotalGmv { get; set; }
 
     /// <summary>Tổng tiền cọc Escrow đang bị khóa trong hệ thống (VND).</summary>
-    public decimal ActiveEscrowLocked { get; init; }
+    public decimal ActiveEscrowLocked { get; set; }
 
     /// <summary>Doanh thu ròng của nền tảng từ phí sàn (VND).</summary>
-    public decimal NetPlatformRevenue { get; init; }
+    public decimal NetPlatformRevenue { get; set; }
 
     /// <summary>Tổng số dư tiền trong ví người dùng (VND).</summary>
-    public decimal TotalPlatformBalance { get; init; }
+    public decimal TotalPlatformBalance { get; set; }
 
     /// <summary>Tổng số tiền đã rút về ngân hàng thành công (VND).</summary>
-    public decimal TotalPayoutsProcessed { get; init; }
+    public decimal TotalPayoutsProcessed { get; set; }
 }
 
-public record AdminUserMetricsDto
+public sealed record AdminUserMetricsDto
 {
-    public int TotalUsers { get; init; }
-    public int NewUsersToday { get; init; }
-    public int NewUsersLast7Days { get; init; }
-    public int NewUsersLast30Days { get; init; }
-    public int TotalClients { get; init; }
-    public int TotalCreators { get; init; }
-    public int TotalModerators { get; init; }
+    public int TotalUsers { get; set; }
+
+    public int NewUsersToday { get; set; }
+
+    public int NewUsersLast7Days { get; set; }
+
+    public int NewUsersLast30Days { get; set; }
+
+    public int TotalClients { get; set; }
+
+    public int TotalCreators { get; set; }
+
+    public int TotalModerators { get; set; }
 }
 
-public record AdminCommissionMetricsDto
+public sealed record AdminCommissionMetricsDto
 {
-    public int TotalCommissions { get; init; }
-    public int PendingAcceptanceCount { get; init; }
-    public int InProgressCount { get; init; }
-    public int CompletedCount { get; init; }
-    public int CancelledCount { get; init; }
-    public int DisputedCount { get; init; }
+    public int TotalCommissions { get; set; }
+
+    public int PendingAcceptanceCount { get; set; }
+
+    public int InProgressCount { get; set; }
+
+    public int CompletedCount { get; set; }
+
+    public int CancelledCount { get; set; }
+
+    public int DisputedCount { get; set; }
 }
 
-public record AdminActionRequiredQueueDto
+public sealed record AdminActionRequiredQueueDto
 {
-    public int PendingDisputesCount { get; init; }
-    public int PendingCreatorApplicationsCount { get; init; }
-    public int PendingPayoutsCount { get; init; }
-    public int FlaggedArtworksCount { get; init; }
+    public int PendingDisputesCount { get; set; }
+
+    public int PendingCreatorApplicationsCount { get; set; }
+
+    public int PendingPayoutsCount { get; set; }
+
+    public int FlaggedArtworksCount { get; set; }
 }
 
-public record AdminDailyRevenueDto
+public sealed record AdminDailyRevenueDto
 {
-    public string Date { get; init; } = string.Empty; // "yyyy-MM-dd"
-    public decimal Gmv { get; init; }
-    public decimal PlatformRevenue { get; init; }
-    public decimal EscrowDeposited { get; init; }
+    public string Date { get; set; } = string.Empty; // "yyyy-MM-dd"
+
+    public decimal Gmv { get; set; }
+
+    public decimal PlatformRevenue { get; set; }
+
+    public decimal EscrowDeposited { get; set; }
 }
 
-public record AdminRecentTransactionDto
+public sealed record AdminRecentTransactionDto
 {
-    public Guid Id { get; init; }
-    public Guid WalletId { get; init; }
-    public string UserName { get; init; } = string.Empty;
-    public string UserEmail { get; init; } = string.Empty;
-    public string Type { get; init; } = string.Empty;
-    public string Direction { get; init; } = string.Empty;
-    public decimal Amount { get; init; }
-    public decimal BalanceAfter { get; init; }
-    public string? Note { get; init; }
-    public DateTimeOffset CreatedAt { get; init; }
+    public Guid Id { get; set; }
+
+    public Guid WalletId { get; set; }
+
+    public string UserName { get; set; } = string.Empty;
+
+    public string UserEmail { get; set; } = string.Empty;
+
+    public string Type { get; set; } = string.Empty;
+
+    public string Direction { get; set; } = string.Empty;
+
+    public decimal Amount { get; set; }
+
+    public decimal BalanceAfter { get; set; }
+
+    public string? Note { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
 }

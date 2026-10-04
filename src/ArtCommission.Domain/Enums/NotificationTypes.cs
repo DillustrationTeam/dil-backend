@@ -38,6 +38,21 @@ public enum NotificationType
     /// Chưa có worker tự phát; Admin phát khi mở chiến dịch ưu đãi.
     /// </summary>
     PromotionAnnouncement,
+    
+    /// <summary>Creator nhận được lời mời tham gia Ban giám khảo sự kiện.</summary>
+    InvitationReceived,
+
+    /// <summary>Creator đã chấp nhận lời mời tham gia Ban giám khảo sự kiện.</summary>
+    InvitationAccepted,
+
+    /// <summary>Creator đã từ chối lời mời tham gia Ban giám khảo sự kiện.</summary>
+    InvitationDeclined,
+
+    /// <summary>Lời mời tham gia Ban giám khảo sự kiện đã bị hủy.</summary>
+    InvitationCanceled,
+
+    /// <summary>Lời mời tham gia Ban giám khảo sự kiện đã hết hạn.</summary>
+    InvitationExpired,
 
     /// <summary>Phiên đấu giá bắt đầu, kết thúc hoặc được gia hạn.</summary>
     AuctionLifecycle
@@ -54,9 +69,29 @@ public static class NotificationTypeNames
     public const string UserSanctionAlert = nameof(NotificationType.UserSanctionAlert);
     public const string CreatorApplicationStatusChanged = nameof(NotificationType.CreatorApplicationStatusChanged);
     public const string PromotionAnnouncement = nameof(NotificationType.PromotionAnnouncement);
+    public const string InvitationReceived = nameof(NotificationType.InvitationReceived);
+    public const string InvitationAccepted = nameof(NotificationType.InvitationAccepted);
+    public const string InvitationDeclined = nameof(NotificationType.InvitationDeclined);
+    public const string InvitationCanceled = nameof(NotificationType.InvitationCanceled);
+    public const string InvitationExpired = nameof(NotificationType.InvitationExpired);
 
     public static readonly string[] All =
-        [OutbidAlert, AuctionEndingSoon, AuctionWon, DeadlineRiskWarning, PaymentSucceeded, PayoutStatusChanged, UserSanctionAlert, CreatorApplicationStatusChanged, PromotionAnnouncement];
+    [
+        OutbidAlert,
+        AuctionEndingSoon,
+        AuctionWon,
+        DeadlineRiskWarning,
+        PaymentSucceeded,
+        PayoutStatusChanged,
+        UserSanctionAlert,
+        CreatorApplicationStatusChanged,
+        PromotionAnnouncement,
+        InvitationReceived,
+        InvitationAccepted,
+        InvitationDeclined,
+        InvitationCanceled,
+        InvitationExpired
+    ];
 }
 
 /// <summary>
@@ -75,7 +110,7 @@ public enum NotificationCategory
     /// <summary>Đơn hàng: đấu giá, nguy cơ trễ hạn của đơn đặt vẽ.</summary>
     Order,
 
-    /// <summary>Hệ thống: chế tài, thay đổi quy định.</summary>
+    /// <summary>Hệ thống: chế tài, thay đổi quy định, sự kiện & lời mời.</summary>
     System,
 
     /// <summary>Khuyến mãi, ưu đãi.</summary>
@@ -108,7 +143,16 @@ public static class NotificationCategoryMap
             NotificationType.DeadlineRiskWarning
         ],
 
-        NotificationCategory.System => [NotificationType.UserSanctionAlert, NotificationType.CreatorApplicationStatusChanged],
+        NotificationCategory.System =>
+        [
+            NotificationType.UserSanctionAlert,
+            NotificationType.CreatorApplicationStatusChanged,
+            NotificationType.InvitationReceived,
+            NotificationType.InvitationAccepted,
+            NotificationType.InvitationDeclined,
+            NotificationType.InvitationCanceled,
+            NotificationType.InvitationExpired
+        ],
 
         NotificationCategory.Promotion => [NotificationType.PromotionAnnouncement],
 
