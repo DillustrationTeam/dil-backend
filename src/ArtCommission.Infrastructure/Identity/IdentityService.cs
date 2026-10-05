@@ -448,7 +448,7 @@ public class IdentityService : IIdentityService
             var (isLockedOut, lockoutMessage) = CheckUserLockout(linkedUser);
             if (isLockedOut)
             {
-                return (false, null, Array.Empty<string>(), new[] { lockoutMessage });
+                return (false, null, Array.Empty<string>(), null, new[] { lockoutMessage });
             }
 
             var linkedRoles = await _userManager.GetRolesAsync(linkedUser);
@@ -467,7 +467,7 @@ public class IdentityService : IIdentityService
             var (isLockedOut, lockoutMessage) = CheckUserLockout(existingUser);
             if (isLockedOut)
             {
-                return (false, null, Array.Empty<string>(), new[] { lockoutMessage });
+                return (false, null, Array.Empty<string>(), null, new[] { lockoutMessage });
             }
 
             if (!emailVerified)

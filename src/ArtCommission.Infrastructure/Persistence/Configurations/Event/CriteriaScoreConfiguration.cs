@@ -27,7 +27,7 @@ public class CriteriaScoreConfiguration : IEntityTypeConfiguration<CriteriaScore
         builder.HasOne(cs => cs.Submission)
             .WithMany()
             .HasForeignKey(cs => cs.SubmissionId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(cs => cs.GradedByJury)
             .WithMany(j => j.CriteriaScores)

@@ -4033,7 +4033,7 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.HasOne("ArtCommission.Domain.Entities.Event.EventSubmission", "Submission")
                         .WithMany()
                         .HasForeignKey("SubmissionId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("EventCriteria");
