@@ -36,14 +36,34 @@ public interface IIdentityService
     Task<(bool Success, string[] Errors)> DeactivateAccountAsync(Guid userId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Đăng nhập hoặc tự động tạo tài khoản qua external login (vd Google OAuth).
+    /// Đăng nhập hoặc link tài khoản qua external login (vd Google OAuth).
     /// Ưu tiên tìm theo (provider, providerKey) đã link trước đó; nếu chưa có,
     /// tìm theo email — nếu email đã xác thực (emailVerified) thì merge/link vào
-    /// tài khoản có sẵn; nếu chưa từng có tài khoản nào thì tạo mới (không mật khẩu).
+    /// tài khoản có sẵn. Nếu chưa từng có tài khoản nào, KHÔNG tự tạo nữa —
+    /// trả về PendingRegistration để FE hoàn tất form username + password trước
+    /// (xem <see cref="RegisterExternalUserAsync"/>).
     /// </summary>
-    Task<(bool Success, UserDto? User, string[] Roles, string[] Errors)> AuthenticateOrRegisterExternalAsync(
+    Task<(bool Success, UserDto? User, string[] Roles, ExternalRegistrationPendingDto? PendingRegistration, string[] Errors)> AuthenticateOrRegisterExternalAsync(
         string provider, string providerKey, string email, bool emailVerified, string? fullName,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Kiểm tra username (chosen login handle) đã được dùng chưa (so khớp NormalizedUsername).</summary>
+    Task<bool> IsUsernameUniqueAsync(string username, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Hoàn tất đăng ký tài khoản mới qua external login sau khi FE đã thu thập username + password —
+    /// đây là bước DUY NHẤT thực sự tạo user cho luồng Google đăng ký mới (không còn tạo ngầm không mật khẩu).
+    /// </summary>
+    Task<(bool Success, UserDto? User, string[] Roles, string[] Errors)> RegisterExternalUserAsync(
+        string provider, string providerKey, string email, bool emailVerified, string? fullName,
+        string username, string password, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Thêm username + password lần đầu cho một tài khoản ĐÃ TỒN TẠI nhưng chưa có mật khẩu
+    /// (vd tài khoản Google tạo trước khi tính năng bắt buộc username+password ra đời).
+    /// Thất bại nếu tài khoản đã có password rồi (gọi AddPasswordAsync/ChangePasswordAsync thay) hoặc username đã bị chiếm.
+    /// </summary>
+    Task<(bool Success, string[] Errors)> CompleteAccountSetupAsync(Guid userId, string username, string password, CancellationToken cancellationToken = default);
 
     /// <summary>Sinh (hoặc tái sử dụng nếu đã có nhưng chưa bật) authenticator key TOTP, trả về secret key + otpauth:// URI để FE vẽ QR.</summary>
     Task<(bool Success, string SharedKey, string AuthenticatorUri, string[] Errors)> Setup2FAAsync(Guid userId, CancellationToken cancellationToken = default);
