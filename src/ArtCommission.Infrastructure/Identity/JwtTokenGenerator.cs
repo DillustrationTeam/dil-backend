@@ -110,6 +110,27 @@ public class JwtTokenGenerator : IJwtTokenGenerator
             return (false, null, new[] { "Invalid or expired refresh token." });
         }
 
+        if (existingToken.User.LockoutEnd.HasValue && existingToken.User.LockoutEnd.Value > DateTimeOffset.UtcNow)
+        {
+            var isBanned = existingToken.User.LockoutEnd.Value >= DateTimeOffset.MaxValue.AddDays(-365);
+            var lockoutMsg = isBanned
+                ? "Tài khoản của bạn đã bị khóa vĩnh viễn do vi phạm chính sách."
+                : $"Tài khoản của bạn đã bị đình chỉ hoạt động đến {existingToken.User.LockoutEnd.Value.ToLocalTime():dd/MM/yyyy HH:mm}.";
+
+            var activeTokens = await _dbContext.RefreshTokens
+                .Where(rt => rt.UserId == existingToken.UserId && rt.RevokedAt == null)
+                .ToListAsync(cancellationToken);
+
+            foreach (var activeToken in activeTokens)
+            {
+                activeToken.RevokedAt = DateTimeOffset.UtcNow;
+            }
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            return (false, null, new[] { lockoutMsg });
+        }
+
         // Revoke current token (Rotation)
         var newRawRefreshToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
         var newRefreshTokenHash = HashToken(newRawRefreshToken);
