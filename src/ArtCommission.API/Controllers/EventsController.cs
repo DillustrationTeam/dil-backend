@@ -410,6 +410,48 @@ public class EventsController : ApiControllerBase
     }
 
     /// <summary>
+    /// Chỉnh sửa bài dự thi sự kiện (Dành cho Creator cập nhật bài thi của mình).
+    /// </summary>
+    [HttpPut("{id:guid}/submissions/{submissionId:guid}")]
+    [HttpPut("submissions/{submissionId:guid}")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> UpdateEventSubmission(
+        Guid? id,
+        Guid submissionId,
+        [FromBody] UpdateSubmissionDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var command = new UpdateSubmissionCommand(
+            SubmissionId: submissionId,
+            UserId: CurrentUserId,
+            Title: dto.Title,
+            Description: dto.Description,
+            ArtworkId: dto.ArtworkId,
+            ImageUrl: dto.ImageUrl,
+            ThumbnailUrl: dto.ThumbnailUrl,
+            IsAiGenerated: dto.IsAiGenerated,
+            AiDetectionScore: dto.AiDetectionScore,
+            Tags: dto.Tags
+        );
+
+        var (success, data, errors) = await Mediator.Send(command, cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(data);
+    }
+
+    /// <summary>
     /// Lấy danh sách bài nộp sự kiện trên toàn hệ thống (Công khai).
     /// </summary>
     [HttpGet("submissions")]
