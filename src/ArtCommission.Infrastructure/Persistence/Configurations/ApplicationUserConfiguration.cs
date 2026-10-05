@@ -23,6 +23,18 @@ public class ApplicationUserConfiguration : IEntityTypeConfiguration<Application
         builder.Property(u => u.IsDeleted)
             .HasDefaultValue(false);
 
+        builder.Property(u => u.LoginUsername)
+            .HasMaxLength(30);
+
+        builder.Property(u => u.NormalizedLoginUsername)
+            .HasMaxLength(30);
+
+        // Filtered unique index: SQL Server coi NULL là duy nhất trong unique index thường,
+        // nhưng filter rõ ràng để tránh phụ thuộc vào hành vi ngầm định đó.
+        builder.HasIndex(u => u.NormalizedLoginUsername)
+            .IsUnique()
+            .HasFilter("[NormalizedLoginUsername] IS NOT NULL");
+
         builder.Property(u => u.AvatarUrl)
             .HasMaxLength(500);
 

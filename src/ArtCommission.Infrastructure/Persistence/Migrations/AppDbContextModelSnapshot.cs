@@ -2431,9 +2431,17 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("LockoutEnd")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("LoginUsername")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.Property<string>("NormalizedEmail")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("NormalizedLoginUsername")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
                     b.Property<string>("NormalizedUserName")
                         .HasMaxLength(256)
@@ -2469,6 +2477,10 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("NormalizedEmail")
                         .HasDatabaseName("EmailIndex");
+
+                    b.HasIndex("NormalizedLoginUsername")
+                        .IsUnique()
+                        .HasFilter("[NormalizedLoginUsername] IS NOT NULL");
 
                     b.HasIndex("NormalizedUserName")
                         .IsUnique()
@@ -4030,7 +4042,7 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.HasOne("ArtCommission.Domain.Entities.Event.EventSubmission", "Submission")
                         .WithMany()
                         .HasForeignKey("SubmissionId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("EventCriteria");

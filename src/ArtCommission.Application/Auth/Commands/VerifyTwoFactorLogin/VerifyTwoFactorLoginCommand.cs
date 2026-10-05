@@ -11,7 +11,7 @@ public record VerifyTwoFactorLoginCommand(
     string Code,
     string? ClientIp = null,
     string? UserAgent = null
-) : IRequest<(bool Success, AuthResponseDto? AuthResponse, string[] Errors)>;
+) : IRequest<(bool Success, AuthResponseDto? AuthResponse, bool RequiresPasswordSetup, string? PasswordSetupTicket, string? SuggestedFullName, string[] Errors)>;
 
 public class VerifyTwoFactorLoginCommandValidator : AbstractValidator<VerifyTwoFactorLoginCommand>
 {
@@ -23,7 +23,7 @@ public class VerifyTwoFactorLoginCommandValidator : AbstractValidator<VerifyTwoF
     }
 }
 
-public class VerifyTwoFactorLoginCommandHandler : IRequestHandler<VerifyTwoFactorLoginCommand, (bool Success, AuthResponseDto? AuthResponse, string[] Errors)>
+public class VerifyTwoFactorLoginCommandHandler : IRequestHandler<VerifyTwoFactorLoginCommand, (bool Success, AuthResponseDto? AuthResponse, bool RequiresPasswordSetup, string? PasswordSetupTicket, string? SuggestedFullName, string[] Errors)>
 {
     private readonly IIdentityService _identityService;
     private readonly IJwtTokenGenerator _jwtTokenGenerator;
@@ -39,34 +39,43 @@ public class VerifyTwoFactorLoginCommandHandler : IRequestHandler<VerifyTwoFacto
         _emailVerificationService = emailVerificationService;
     }
 
-    public async Task<(bool Success, AuthResponseDto? AuthResponse, string[] Errors)> Handle(VerifyTwoFactorLoginCommand request, CancellationToken cancellationToken)
+    public async Task<(bool Success, AuthResponseDto? AuthResponse, bool RequiresPasswordSetup, string? PasswordSetupTicket, string? SuggestedFullName, string[] Errors)> Handle(VerifyTwoFactorLoginCommand request, CancellationToken cancellationToken)
     {
         var validation = new VerifyTwoFactorLoginCommandValidator().Validate(request);
         if (!validation.IsValid)
         {
-            return (false, null, validation.Errors.Select(e => e.ErrorMessage).ToArray());
+            return (false, null, false, null, null, validation.Errors.Select(e => e.ErrorMessage).ToArray());
         }
 
         if (!_emailVerificationService.ValidateTicket(request.Email, request.TwoFactorTicket))
         {
-            return (false, null, new[] { "Two-factor session expired, please log in again." });
+            return (false, null, false, null, null, new[] { "Two-factor session expired, please log in again." });
         }
 
         var (findSuccess, user, roles, findErrors) = await _identityService.GetUserByEmailAsync(request.Email, cancellationToken);
         if (!findSuccess || user == null)
         {
-            return (false, null, findErrors);
+            return (false, null, false, null, null, findErrors);
         }
 
         var (codeValid, _, codeAlreadyUsed) = await _identityService.VerifyTwoFactorCodeAsync(user.Id, request.Code, cancellationToken);
         if (!codeValid)
         {
-            return (false, null, new[] { codeAlreadyUsed ? "This recovery code has already been used." : "Invalid verification code." });
+            return (false, null, false, null, null, new[] { codeAlreadyUsed ? "This recovery code has already been used." : "Invalid verification code." });
+        }
+
+        var hasPassword = await _identityService.HasPasswordAsync(user.Id, cancellationToken);
+        if (!hasPassword)
+        {
+            // Tài khoản Google có sẵn, đã bật 2FA, nhưng chưa có mật khẩu — vẫn phải hoàn tất
+            // form username + password trước khi phát token (giống luồng Google login không-2FA).
+            var setupTicket = _emailVerificationService.GenerateTicket(user.Email);
+            return (true, null, true, setupTicket, user.FullName, Array.Empty<string>());
         }
 
         var tokens = await _jwtTokenGenerator.GenerateTokensAsync(user, roles, request.ClientIp, request.UserAgent, cancellationToken);
         var authResponse = new AuthResponseDto(user, roles, tokens);
 
-        return (true, authResponse, Array.Empty<string>());
+        return (true, authResponse, false, null, null, Array.Empty<string>());
     }
 }

@@ -1,4 +1,6 @@
 using ArtCommission.Application.Auth.Commands.ChangeEmail;
+using ArtCommission.Application.Auth.Commands.CompleteAccountPasswordSetup;
+using ArtCommission.Application.Auth.Commands.CompleteGoogleRegistration;
 using ArtCommission.Application.Auth.Commands.ChangeMyPassword;
 using ArtCommission.Application.Auth.Commands.ConfirmVerificationCode;
 using ArtCommission.Application.Auth.Commands.DeactivateAccount;
@@ -117,7 +119,8 @@ public class AuthController : ApiControllerBase
     }
 
     /// <summary>
-    /// Authenticate or auto-register via Google OAuth access token (custom button + implicit flow)
+    /// Authenticate via Google OAuth access token, or signal that this is a new account needing
+    /// username + password before it can be created (custom button + implicit flow)
     /// </summary>
     [HttpPost("google")]
     [AllowAnonymous]
@@ -128,7 +131,7 @@ public class AuthController : ApiControllerBase
         var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
         var commandWithIp = command with { ClientIp = clientIp, UserAgent = HttpContext.Request.Headers.UserAgent.ToString() };
 
-        var (success, authResponse, requiresTwoFactor, twoFactorTicket, twoFactorEmail, errors) = await Mediator.Send(commandWithIp, cancellationToken);
+        var (success, authResponse, requiresTwoFactor, twoFactorTicket, twoFactorEmail, requiresRegistration, registrationTicket, requiresPasswordSetup, passwordSetupTicket, suggestedEmail, suggestedFullName, errors) = await Mediator.Send(commandWithIp, cancellationToken);
         if (!success)
         {
             return BadRequestEnvelope(errors);
@@ -139,7 +142,70 @@ public class AuthController : ApiControllerBase
             return OkEnvelope(new { requiresTwoFactor = true, twoFactorTicket, email = twoFactorEmail });
         }
 
+        if (requiresRegistration)
+        {
+            return OkEnvelope(new
+            {
+                requiresRegistration = true,
+                registrationTicket,
+                suggestedEmail,
+                suggestedFullName
+            });
+        }
+
+        if (requiresPasswordSetup)
+        {
+            return OkEnvelope(new
+            {
+                requiresPasswordSetup = true,
+                passwordSetupTicket,
+                email = suggestedEmail,
+                fullName = suggestedFullName
+            });
+        }
+
         if (authResponse == null)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(authResponse);
+    }
+
+    /// <summary>
+    /// Hoàn tất đăng ký tài khoản mới qua Google: nhận registrationTicket từ /auth/google kèm
+    /// username + password user vừa điền, chỉ lúc này tài khoản mới thực sự được tạo.
+    /// </summary>
+    [HttpPost("google/complete-registration")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> CompleteGoogleRegistration([FromBody] CompleteGoogleRegistrationCommand command, CancellationToken cancellationToken)
+    {
+        var commandWithUserAgent = command with { UserAgent = HttpContext.Request.Headers.UserAgent.ToString() };
+        var (success, authResponse, errors) = await Mediator.Send(commandWithUserAgent, cancellationToken);
+        if (!success || authResponse == null)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(authResponse);
+    }
+
+    /// <summary>
+    /// Thêm username + password lần đầu cho một tài khoản ĐÃ TỒN TẠI nhưng chưa có mật khẩu (vd tài khoản
+    /// Google tạo trước khi tính năng này ra đời) — nhận passwordSetupTicket từ /auth/google hoặc
+    /// /login/verify-2fa, chỉ sau khi form này submit thành công mới phát JWT (mới được vào home).
+    /// </summary>
+    [HttpPost("complete-account-setup")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> CompleteAccountPasswordSetup([FromBody] CompleteAccountPasswordSetupCommand command, CancellationToken cancellationToken)
+    {
+        var commandWithUserAgent = command with { UserAgent = HttpContext.Request.Headers.UserAgent.ToString() };
+        var (success, authResponse, errors) = await Mediator.Send(commandWithUserAgent, cancellationToken);
+        if (!success || authResponse == null)
         {
             return BadRequestEnvelope(errors);
         }
@@ -612,8 +678,24 @@ public class AuthController : ApiControllerBase
         var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
         var commandWithIp = command with { ClientIp = clientIp, UserAgent = HttpContext.Request.Headers.UserAgent.ToString() };
 
-        var (success, authResponse, errors) = await Mediator.Send(commandWithIp, cancellationToken);
-        if (!success || authResponse == null)
+        var (success, authResponse, requiresPasswordSetup, passwordSetupTicket, suggestedFullName, errors) = await Mediator.Send(commandWithIp, cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        if (requiresPasswordSetup)
+        {
+            return OkEnvelope(new
+            {
+                requiresPasswordSetup = true,
+                passwordSetupTicket,
+                email = command.Email,
+                fullName = suggestedFullName
+            });
+        }
+
+        if (authResponse == null)
         {
             return BadRequestEnvelope(errors);
         }

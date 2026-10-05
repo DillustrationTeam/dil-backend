@@ -114,8 +114,9 @@ public class IdentityService : IIdentityService
     }
 
     /// <summary>
-    /// Thử tìm theo email trước (đa số trường hợp). Nếu không khớp, coi input là username công khai
-    /// (ClientProfile.Username — hiện chỉ Client mới có field này) và tra ngược ra user qua UserId.
+    /// Thử tìm theo email trước (đa số trường hợp). Nếu không khớp, thử theo ApplicationUser.LoginUsername
+    /// (vd tài khoản hoàn tất đăng ký qua Google chọn username lúc đó). Nếu vẫn không khớp, coi input
+    /// là username công khai (ClientProfile.Username — hiện chỉ Client mới có field này).
     /// </summary>
     private async Task<ApplicationUser?> ResolveUserByEmailOrUsernameAsync(string identifier, CancellationToken cancellationToken)
     {
@@ -126,9 +127,17 @@ public class IdentityService : IIdentityService
             return byEmail;
         }
 
-        var normalizedUsername = trimmed.ToLowerInvariant();
+        var normalizedUsername = NormalizeUsername(trimmed);
+        var byUsername = await _db.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.NormalizedLoginUsername == normalizedUsername, cancellationToken);
+        if (byUsername is not null)
+        {
+            return await _userManager.FindByIdAsync(byUsername.Id.ToString());
+        }
+
+        var normalizedClientUsername = trimmed.ToLowerInvariant();
         var profile = await _db.ClientProfiles.AsNoTracking()
-            .FirstOrDefaultAsync(p => p.Username == normalizedUsername && !p.IsDeleted, cancellationToken);
+            .FirstOrDefaultAsync(p => p.Username == normalizedClientUsername && !p.IsDeleted, cancellationToken);
         if (profile is null)
         {
             return null;
@@ -428,7 +437,7 @@ public class IdentityService : IIdentityService
         return (true, Array.Empty<string>());
     }
 
-    public async Task<(bool Success, UserDto? User, string[] Roles, string[] Errors)> AuthenticateOrRegisterExternalAsync(
+    public async Task<(bool Success, UserDto? User, string[] Roles, ExternalRegistrationPendingDto? PendingRegistration, string[] Errors)> AuthenticateOrRegisterExternalAsync(
         string provider, string providerKey, string email, bool emailVerified, string? fullName,
         CancellationToken cancellationToken = default)
     {
@@ -439,12 +448,12 @@ public class IdentityService : IIdentityService
             var (isLockedOut, lockoutMessage) = CheckUserLockout(linkedUser);
             if (isLockedOut)
             {
-                return (false, null, Array.Empty<string>(), new[] { lockoutMessage });
+                return (false, null, Array.Empty<string>(), null, new[] { lockoutMessage });
             }
 
             var linkedRoles = await _userManager.GetRolesAsync(linkedUser);
             var linkedUserDto = new UserDto(linkedUser.Id, linkedUser.Email!, linkedUser.FullName, linkedUser.IsVerified, linkedUser.CreatedAt, linkedUser.AvatarUrl, linkedUser.CoverUrl, linkedUser.Bio, linkedUser.SocialLinks);
-            return (true, linkedUserDto, linkedRoles.ToArray(), Array.Empty<string>());
+            return (true, linkedUserDto, linkedRoles.ToArray(), null, Array.Empty<string>());
         }
 
         var existingUser = await _userManager.FindByEmailAsync(email);
@@ -452,18 +461,18 @@ public class IdentityService : IIdentityService
         {
             if (existingUser.IsDeleted)
             {
-                return (false, null, Array.Empty<string>(), new[] { "This account is no longer active." });
+                return (false, null, Array.Empty<string>(), null, new[] { "This account is no longer active." });
             }
 
             var (isLockedOut, lockoutMessage) = CheckUserLockout(existingUser);
             if (isLockedOut)
             {
-                return (false, null, Array.Empty<string>(), new[] { lockoutMessage });
+                return (false, null, Array.Empty<string>(), null, new[] { lockoutMessage });
             }
 
             if (!emailVerified)
             {
-                return (false, null, Array.Empty<string>(), new[] { "This email is already registered. Please sign in with your password." });
+                return (false, null, Array.Empty<string>(), null, new[] { "This email is already registered. Please sign in with your password." });
             }
 
             // 2. Email đã xác thực từ provider khớp một tài khoản có sẵn -> merge (link thêm login).
@@ -471,21 +480,58 @@ public class IdentityService : IIdentityService
 
             var existingRoles = await _userManager.GetRolesAsync(existingUser);
             var existingUserDto = new UserDto(existingUser.Id, existingUser.Email!, existingUser.FullName, existingUser.IsVerified, existingUser.CreatedAt, existingUser.AvatarUrl, existingUser.CoverUrl, existingUser.Bio, existingUser.SocialLinks);
-            return (true, existingUserDto, existingRoles.ToArray(), Array.Empty<string>());
+            return (true, existingUserDto, existingRoles.ToArray(), null, Array.Empty<string>());
         }
 
-        // 3. Chưa từng có tài khoản nào -> tạo mới, không mật khẩu (PasswordHash để null).
+        // 3. Chưa từng có tài khoản nào -> KHÔNG tạo ngay (tránh tài khoản không mật khẩu).
+        // Trả về pending để FE hiển thị form username + password, hoàn tất ở RegisterExternalUserAsync.
+        var pending = new ExternalRegistrationPendingDto(provider, providerKey, email, emailVerified, fullName);
+        return (true, null, Array.Empty<string>(), pending, Array.Empty<string>());
+    }
+
+    public async Task<bool> IsUsernameUniqueAsync(string username, CancellationToken cancellationToken = default)
+    {
+        var normalized = NormalizeUsername(username);
+        return !await _db.Users.AsNoTracking().AnyAsync(u => u.NormalizedLoginUsername == normalized, cancellationToken);
+    }
+
+    public async Task<(bool Success, UserDto? User, string[] Roles, string[] Errors)> RegisterExternalUserAsync(
+        string provider, string providerKey, string email, bool emailVerified, string? fullName,
+        string username, string password, CancellationToken cancellationToken = default)
+    {
+        // Re-check tại thời điểm hoàn tất (không chỉ lúc GenerateTicket) để tránh race condition:
+        // provider login hoặc email đã được tài khoản khác chiếm trong lúc user điền form.
+        var linkedUser = await _userManager.FindByLoginAsync(provider, providerKey);
+        if (linkedUser != null && !linkedUser.IsDeleted)
+        {
+            return (false, null, Array.Empty<string>(), new[] { "This Google account is already linked. Please sign in instead." });
+        }
+
+        var existingByEmail = await _userManager.FindByEmailAsync(email);
+        if (existingByEmail != null)
+        {
+            return (false, null, Array.Empty<string>(), new[] { "This email is already registered. Please sign in instead." });
+        }
+
+        var normalizedUsername = NormalizeUsername(username);
+        if (await _db.Users.AsNoTracking().AnyAsync(u => u.NormalizedLoginUsername == normalizedUsername, cancellationToken))
+        {
+            return (false, null, Array.Empty<string>(), new[] { "This username is already taken." });
+        }
+
         var newUser = new ApplicationUser
         {
             Id = Guid.NewGuid(),
             Email = email,
             UserName = email,
-            FullName = fullName ?? email,
+            LoginUsername = username.Trim(),
+            NormalizedLoginUsername = normalizedUsername,
+            FullName = fullName ?? username.Trim(),
             IsVerified = emailVerified,
             CreatedAt = DateTimeOffset.UtcNow
         };
 
-        var createResult = await _userManager.CreateAsync(newUser);
+        var createResult = await _userManager.CreateAsync(newUser, password);
         if (!createResult.Succeeded)
         {
             return (false, null, Array.Empty<string>(), createResult.Errors.Select(e => e.Description).ToArray());
@@ -502,6 +548,48 @@ public class IdentityService : IIdentityService
         var newUserDto = new UserDto(newUser.Id, newUser.Email!, newUser.FullName, newUser.IsVerified, newUser.CreatedAt, newUser.AvatarUrl, newUser.CoverUrl, newUser.Bio, newUser.SocialLinks);
         return (true, newUserDto, new[] { UserRoleNames.Client }, Array.Empty<string>());
     }
+
+    public async Task<(bool Success, string[] Errors)> CompleteAccountSetupAsync(Guid userId, string username, string password, CancellationToken cancellationToken = default)
+    {
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user == null || user.IsDeleted)
+        {
+            return (false, new[] { "User not found." });
+        }
+
+        if (await _userManager.HasPasswordAsync(user))
+        {
+            return (false, new[] { "This account already has a password." });
+        }
+
+        var normalizedUsername = NormalizeUsername(username);
+        var usernameTaken = await _db.Users.AsNoTracking()
+            .AnyAsync(u => u.Id != userId && u.NormalizedLoginUsername == normalizedUsername, cancellationToken);
+        if (usernameTaken)
+        {
+            return (false, new[] { "This username is already taken." });
+        }
+
+        var addPasswordResult = await _userManager.AddPasswordAsync(user, password);
+        if (!addPasswordResult.Succeeded)
+        {
+            return (false, addPasswordResult.Errors.Select(e => e.Description).ToArray());
+        }
+
+        user.LoginUsername = username.Trim();
+        user.NormalizedLoginUsername = normalizedUsername;
+        user.UpdatedAt = DateTimeOffset.UtcNow;
+
+        var updateResult = await _userManager.UpdateAsync(user);
+        if (!updateResult.Succeeded)
+        {
+            return (false, updateResult.Errors.Select(e => e.Description).ToArray());
+        }
+
+        return (true, Array.Empty<string>());
+    }
+
+    private static string NormalizeUsername(string username) => username.Trim().ToUpperInvariant();
 
     public async Task<(bool Success, string SharedKey, string AuthenticatorUri, string[] Errors)> Setup2FAAsync(Guid userId, CancellationToken cancellationToken = default)
     {
