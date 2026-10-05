@@ -17,6 +17,29 @@ public class PayOsOptions
     /// <summary>Khoá dùng để tạo/kiểm tra chữ ký HMAC-SHA256 của webhook.</summary>
     public string ChecksumKey { get; set; } = string.Empty;
 
+    /// <summary>Client ID riêng cho Kênh chi (Payout/Disbursement) từ my.payos.vn.</summary>
+    public string? PayoutClientId { get; set; }
+
+    /// <summary>API Key riêng cho Kênh chi (Payout/Disbursement) từ my.payos.vn.</summary>
+    public string? PayoutApiKey { get; set; }
+
+    /// <summary>Checksum Key riêng cho Kênh chi (Payout/Disbursement) từ my.payos.vn.</summary>
+    public string? PayoutChecksumKey { get; set; }
+
+    public string EffectivePayoutClientId =>
+        !string.IsNullOrWhiteSpace(PayoutClientId) ? PayoutClientId : ClientId;
+
+    public string EffectivePayoutApiKey =>
+        !string.IsNullOrWhiteSpace(PayoutApiKey) ? PayoutApiKey : ApiKey;
+
+    public string EffectivePayoutChecksumKey =>
+        !string.IsNullOrWhiteSpace(PayoutChecksumKey) ? PayoutChecksumKey : ChecksumKey;
+
+    public bool IsPayoutConfigured =>
+        !string.IsNullOrWhiteSpace(EffectivePayoutClientId) &&
+        !string.IsNullOrWhiteSpace(EffectivePayoutApiKey) &&
+        !string.IsNullOrWhiteSpace(EffectivePayoutChecksumKey);
+
     /// <summary>Thời gian chờ mỗi request tới payOS (ms).</summary>
     public int TimeoutMs { get; set; } = 30_000;
 

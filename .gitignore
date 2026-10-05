@@ -449,3 +449,4 @@ scalar-site/openapi.json
 # theo từng lần test và có thể đẩy dữ liệu riêng tư của người dùng lên GitHub.
 uploads/
 
+src/ArtCommission.Infrastructure/Persistence/Seed/DevDataSeeder.cs

@@ -141,6 +141,7 @@ builder.Services.AddSingleton<PayOSClient>(sp =>
 });
 
 builder.Services.AddScoped<IPaymentGateway, PayOsPaymentGateway>();
+builder.Services.AddScoped<IPayOsPayoutService, PayOsPayoutService>();
 
 // 3d-2. Cloudinary Signed Upload — client tự upload file thẳng lên Cloudinary, server chỉ ký.
 // Secret lấy từ User Secrets (dev) hoặc biến môi trường Cloudinary__ApiSecret.
