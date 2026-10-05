@@ -42,6 +42,8 @@ public sealed record EventDto
 
     public int SubmissionCount { get; set; }
 
+    public int TotalVoteCount { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset? UpdatedAt { get; set; }
