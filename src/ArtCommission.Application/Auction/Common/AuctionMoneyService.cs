@@ -78,17 +78,26 @@ public class AuctionMoneyService : IAuctionMoneyService
         var wallet = await _walletService.FindWalletAsync(bid.BidderId, cancellationToken);
         if (wallet is null)
         {
+            bid.HoldStatus = HoldStatus.Refunded;
             return null;
         }
 
-        var ledger = await _walletService.RefundHeldFundsAsync(
-            wallet,
-            WalletTransactionType.RefundFromHold,
-            bid.HoldAmount,
-            AuctionRefTypes.BidDeposit,
-            bid.Id,
-            reason,
-            cancellationToken);
+        // Phòng thủ chống lệch dữ liệu ví (ví dụ số dư bị sửa trực tiếp làm LockedBalance < HoldAmount).
+        // Chỉ hoàn tối đa phần thực tế đang nằm trong LockedBalance để không làm tê liệt phiên đấu giá.
+        var effectiveAmount = Math.Min(Math.Max(0m, wallet.LockedBalance), bid.HoldAmount);
+        WalletTransaction? ledger = null;
+
+        if (effectiveAmount > 0m)
+        {
+            ledger = await _walletService.RefundHeldFundsAsync(
+                wallet,
+                WalletTransactionType.RefundFromHold,
+                effectiveAmount,
+                AuctionRefTypes.BidDeposit,
+                bid.Id,
+                reason,
+                cancellationToken);
+        }
 
         bid.HoldStatus = HoldStatus.Refunded;
         return ledger;
@@ -107,18 +116,25 @@ public class AuctionMoneyService : IAuctionMoneyService
         var wallet = await _walletService.FindWalletAsync(bid.BidderId, cancellationToken);
         if (wallet is null)
         {
+            bid.HoldStatus = HoldStatus.Released;
             return null;
         }
 
         // Tiền cọc RỜI khỏi ví để trả cho người bán (không quay lại số dư khả dụng).
-        var ledger = await _walletService.ReleaseFundsAsync(
-            wallet,
-            WalletTransactionType.EscrowRelease,
-            bid.HoldAmount,
-            AuctionRefTypes.BidDeposit,
-            bid.Id,
-            reason,
-            cancellationToken);
+        var effectiveAmount = Math.Min(Math.Max(0m, wallet.LockedBalance), bid.HoldAmount);
+        WalletTransaction? ledger = null;
+
+        if (effectiveAmount > 0m)
+        {
+            ledger = await _walletService.ReleaseFundsAsync(
+                wallet,
+                WalletTransactionType.EscrowRelease,
+                effectiveAmount,
+                AuctionRefTypes.BidDeposit,
+                bid.Id,
+                reason,
+                cancellationToken);
+        }
 
         bid.HoldStatus = HoldStatus.Released;
         return ledger;
