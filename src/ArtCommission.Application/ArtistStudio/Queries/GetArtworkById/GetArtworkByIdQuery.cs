@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ArtCommission.Application.ArtistStudio.Queries.GetArtworkById;
 
-public record GetArtworkByIdQuery(Guid ArtworkId) : IRequest<(bool Success, ArtworkDto? Data, string[] Errors)>;
+public record GetArtworkByIdQuery(Guid ArtworkId, Guid? ViewerUserId = null) : IRequest<(bool Success, ArtworkDto? Data, string[] Errors)>;
 
 public class GetArtworkByIdQueryHandler : IRequestHandler<GetArtworkByIdQuery, (bool Success, ArtworkDto? Data, string[] Errors)>
 {
@@ -18,11 +18,19 @@ public class GetArtworkByIdQueryHandler : IRequestHandler<GetArtworkByIdQuery, (
 
     public async Task<(bool Success, ArtworkDto? Data, string[] Errors)> Handle(GetArtworkByIdQuery request, CancellationToken cancellationToken)
     {
+        var isSubmittedToEvent = await _db.EventSubmissions
+            .AnyAsync(s => s.ArtworkId == request.ArtworkId, cancellationToken);
+
         var artwork = await _db.Set<ArtCommission.Domain.Entities.ArtistStudio.Artwork>()
             .AsNoTracking()
             .Include(x => x.ArtworkTags)
             .ThenInclude(x => x.Tag)
-            .FirstOrDefaultAsync(x => x.Id == request.ArtworkId && !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted, cancellationToken);
+            .Include(x => x.CreatorProfile)
+            .FirstOrDefaultAsync(x => x.Id == request.ArtworkId && !x.IsDeleted && 
+                (x.ModerationStatus == "Approved" || 
+                 isSubmittedToEvent || 
+                 (request.ViewerUserId.HasValue && request.ViewerUserId.Value != Guid.Empty && x.CreatorProfile != null && x.CreatorProfile.UserId == request.ViewerUserId.Value)), 
+                cancellationToken);
 
         if (artwork is null)
         {

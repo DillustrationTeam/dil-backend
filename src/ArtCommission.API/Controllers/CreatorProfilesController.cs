@@ -274,7 +274,7 @@ public class CreatorProfilesController : ApiControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> GetArtworkById(Guid id, CancellationToken cancellationToken)
     {
-        var (success, data, errors) = await Mediator.Send(new GetArtworkByIdQuery(id), cancellationToken);
+        var (success, data, errors) = await Mediator.Send(new GetArtworkByIdQuery(id, CurrentUserId), cancellationToken);
         if (!success || data == null)
         {
             return BadRequestEnvelope(errors);

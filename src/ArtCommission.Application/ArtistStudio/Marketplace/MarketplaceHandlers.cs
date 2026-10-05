@@ -55,7 +55,17 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
     }
     public async Task<ArtworkDetailDto?> Handle(GetArtworkDetailQuery q, CancellationToken ct)
     {
-        var artwork = await _db.Artworks.Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).Include(x => x.CreatorProfile).FirstOrDefaultAsync(x => x.Id == q.ArtworkId && !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted, ct);
+        var isSubmittedToEvent = await _db.EventSubmissions
+            .AnyAsync(s => s.ArtworkId == q.ArtworkId, ct);
+
+        var artwork = await _db.Artworks
+            .Include(x => x.ArtworkTags).ThenInclude(x => x.Tag)
+            .Include(x => x.CreatorProfile)
+            .FirstOrDefaultAsync(x => x.Id == q.ArtworkId && !x.IsDeleted && 
+                (x.ModerationStatus == "Approved" || 
+                 isSubmittedToEvent || 
+                 (q.ViewerUserId != Guid.Empty && x.CreatorProfile != null && x.CreatorProfile.UserId == q.ViewerUserId)) && 
+                !x.CreatorProfile!.IsDeleted, ct);
         if (artwork is null) return null;
         artwork.ViewCount++; await _db.SaveChangesAsync(ct);
         var favorites = await _db.ArtworkFavorites.CountAsync(x => x.ArtworkId == q.ArtworkId, ct);

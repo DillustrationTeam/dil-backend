@@ -107,6 +107,13 @@ public class UpdateSubmissionCommandHandler
             submission.ArtworkId = artData.Id;
             submission.Artwork = null; // Reset để load lại theo Id mới
             submission.AiScanPassed = !request.IsAiGenerated && (request.AiDetectionScore == null || request.AiDetectionScore < 0.5m);
+
+            // Cập nhật trạng thái duyệt cho tác phẩm mới thành Approved để hiển thị công khai trên trang tranh
+            var newArt = await _db.Artworks.FirstOrDefaultAsync(a => a.Id == artData.Id, cancellationToken);
+            if (newArt != null && newArt.ModerationStatus != "Approved")
+            {
+                newArt.ModerationStatus = "Approved";
+            }
         }
         
         // Trường hợp 5B: Thí sinh chọn đổi sang một tác phẩm khác đã có sẵn trong kho của mình
