@@ -77,12 +77,21 @@ public class UploadSubmissionCommandHandler
             return (false, null, [$"Thời gian nhận bài thi đã kết thúc (Kết thúc lúc: {platformEvent.SubmissionEndAt:u})."]);
         }
 
+        // 4. Kiểm tra quyền Creator (Chỉ Creator mới có thể tham gia nộp bài dự thi sự kiện)
+        var isCreator = await _db.CreatorProfiles
+            .AnyAsync(cp => cp.UserId == request.SubmitterId && !cp.IsDeleted, cancellationToken);
+
+        if (!isCreator)
+        {
+            return (false, null, ["Chỉ Creator (Họa sĩ) mới có thể tham gia nộp bài dự thi sự kiện. Vui lòng thiết lập hồ sơ Creator để tham gia."]);
+        }
+
         Guid targetArtworkId;
         string submissionTitle;
         string? submissionDesc = request.Description;
         bool aiScanPassed;
 
-        // 4. Xử lý tác phẩm (Artwork)
+        // 5. Xử lý tác phẩm (Artwork)
         if (request.ArtworkId.HasValue)
         {
             // Case A: Chọn tranh có sẵn trong kho
