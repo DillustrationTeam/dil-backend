@@ -12,115 +12,119 @@ public class AddCreatorWorkstationTables : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.CreateTable(
-            name: "CreatorAssets",
-            columns: table => new
-            {
-                Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                CreatorProfileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                AssetType = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                Name = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                AssetUrl = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                MetadataJson = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                UpdatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                IsDeleted = table.Column<bool>(type: "bit", nullable: false)
-            },
-            constraints: table =>
-            {
-                table.PrimaryKey("PK_CreatorAssets", x => x.Id);
-                table.ForeignKey("FK_CreatorAssets_CreatorProfiles_CreatorProfileId", x => x.CreatorProfileId, "CreatorProfiles", "Id", onDelete: ReferentialAction.Cascade);
-            });
+        // Some databases already have these tables from SyncLocalRuntimeSchema.
+        // Create only missing objects, preserving their data and migration history.
+        migrationBuilder.Sql("""
+IF OBJECT_ID(N'[dbo].[CreatorAssets]', N'U') IS NULL
+BEGIN
+CREATE TABLE [CreatorAssets] (
+    [Id] uniqueidentifier NOT NULL,
+    [CreatorProfileId] uniqueidentifier NOT NULL,
+    [AssetType] nvarchar(max) NOT NULL,
+    [Name] nvarchar(max) NOT NULL,
+    [AssetUrl] nvarchar(max) NULL,
+    [MetadataJson] nvarchar(max) NULL,
+    [CreatedAt] datetimeoffset NOT NULL,
+    [UpdatedAt] datetimeoffset NULL,
+    [IsDeleted] bit NOT NULL,
+    CONSTRAINT [PK_CreatorAssets] PRIMARY KEY ([Id]),
+    CONSTRAINT [FK_CreatorAssets_CreatorProfiles_CreatorProfileId] FOREIGN KEY ([CreatorProfileId]) REFERENCES [CreatorProfiles] ([Id]) ON DELETE CASCADE
+);
+END;
 
-        migrationBuilder.CreateTable(
-            name: "CreatorAutoReplySettings",
-            columns: table => new
-            {
-                Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                CreatorProfileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                IsEnabled = table.Column<bool>(type: "bit", nullable: false),
-                BriefTemplate = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                UpdatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                IsDeleted = table.Column<bool>(type: "bit", nullable: false)
-            },
-            constraints: table =>
-            {
-                table.PrimaryKey("PK_CreatorAutoReplySettings", x => x.Id);
-                table.ForeignKey("FK_CreatorAutoReplySettings_CreatorProfiles_CreatorProfileId", x => x.CreatorProfileId, "CreatorProfiles", "Id", onDelete: ReferentialAction.Cascade);
-            });
+IF OBJECT_ID(N'[dbo].[CreatorAutoReplySettings]', N'U') IS NULL
+BEGIN
+CREATE TABLE [CreatorAutoReplySettings] (
+    [Id] uniqueidentifier NOT NULL,
+    [CreatorProfileId] uniqueidentifier NOT NULL,
+    [IsEnabled] bit NOT NULL,
+    [BriefTemplate] nvarchar(max) NOT NULL,
+    [CreatedAt] datetimeoffset NOT NULL,
+    [UpdatedAt] datetimeoffset NULL,
+    [IsDeleted] bit NOT NULL,
+    CONSTRAINT [PK_CreatorAutoReplySettings] PRIMARY KEY ([Id]),
+    CONSTRAINT [FK_CreatorAutoReplySettings_CreatorProfiles_CreatorProfileId] FOREIGN KEY ([CreatorProfileId]) REFERENCES [CreatorProfiles] ([Id]) ON DELETE CASCADE
+);
+END;
 
-        migrationBuilder.CreateTable(
-            name: "CreatorFaqs",
-            columns: table => new
-            {
-                Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                CreatorProfileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                Question = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                Answer = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                DisplayOrder = table.Column<int>(type: "int", nullable: false),
-                CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                UpdatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                IsDeleted = table.Column<bool>(type: "bit", nullable: false)
-            },
-            constraints: table =>
-            {
-                table.PrimaryKey("PK_CreatorFaqs", x => x.Id);
-                table.ForeignKey("FK_CreatorFaqs_CreatorProfiles_CreatorProfileId", x => x.CreatorProfileId, "CreatorProfiles", "Id", onDelete: ReferentialAction.Cascade);
-            });
+IF OBJECT_ID(N'[dbo].[CreatorFaqs]', N'U') IS NULL
+BEGIN
+CREATE TABLE [CreatorFaqs] (
+    [Id] uniqueidentifier NOT NULL,
+    [CreatorProfileId] uniqueidentifier NOT NULL,
+    [Question] nvarchar(max) NOT NULL,
+    [Answer] nvarchar(max) NOT NULL,
+    [DisplayOrder] int NOT NULL,
+    [CreatedAt] datetimeoffset NOT NULL,
+    [UpdatedAt] datetimeoffset NULL,
+    [IsDeleted] bit NOT NULL,
+    CONSTRAINT [PK_CreatorFaqs] PRIMARY KEY ([Id]),
+    CONSTRAINT [FK_CreatorFaqs_CreatorProfiles_CreatorProfileId] FOREIGN KEY ([CreatorProfileId]) REFERENCES [CreatorProfiles] ([Id]) ON DELETE CASCADE
+);
+END;
 
-        migrationBuilder.CreateTable(
-            name: "CreatorTerms",
-            columns: table => new
-            {
-                Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                CreatorProfileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                CommercialLicenseMultiplier = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                RevisionPolicy = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                CancellationPolicy = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                UpdatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                IsDeleted = table.Column<bool>(type: "bit", nullable: false)
-            },
-            constraints: table =>
-            {
-                table.PrimaryKey("PK_CreatorTerms", x => x.Id);
-                table.ForeignKey("FK_CreatorTerms_CreatorProfiles_CreatorProfileId", x => x.CreatorProfileId, "CreatorProfiles", "Id", onDelete: ReferentialAction.Cascade);
-            });
+IF OBJECT_ID(N'[dbo].[CreatorTerms]', N'U') IS NULL
+BEGIN
+CREATE TABLE [CreatorTerms] (
+    [Id] uniqueidentifier NOT NULL,
+    [CreatorProfileId] uniqueidentifier NOT NULL,
+    [CommercialLicenseMultiplier] decimal(18,2) NOT NULL,
+    [RevisionPolicy] nvarchar(max) NULL,
+    [CancellationPolicy] nvarchar(max) NULL,
+    [CreatedAt] datetimeoffset NOT NULL,
+    [UpdatedAt] datetimeoffset NULL,
+    [IsDeleted] bit NOT NULL,
+    CONSTRAINT [PK_CreatorTerms] PRIMARY KEY ([Id]),
+    CONSTRAINT [FK_CreatorTerms_CreatorProfiles_CreatorProfileId] FOREIGN KEY ([CreatorProfileId]) REFERENCES [CreatorProfiles] ([Id]) ON DELETE CASCADE
+);
+END;
 
-        migrationBuilder.CreateTable(
-            name: "CreatorWorkItems",
-            columns: table => new
-            {
-                Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                CreatorProfileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                ClientName = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                Title = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                Stage = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                DueAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                UpdatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                IsDeleted = table.Column<bool>(type: "bit", nullable: false)
-            },
-            constraints: table =>
-            {
-                table.PrimaryKey("PK_CreatorWorkItems", x => x.Id);
-                table.ForeignKey("FK_CreatorWorkItems_CreatorProfiles_CreatorProfileId", x => x.CreatorProfileId, "CreatorProfiles", "Id", onDelete: ReferentialAction.Cascade);
-            });
+IF OBJECT_ID(N'[dbo].[CreatorWorkItems]', N'U') IS NULL
+BEGIN
+CREATE TABLE [CreatorWorkItems] (
+    [Id] uniqueidentifier NOT NULL,
+    [CreatorProfileId] uniqueidentifier NOT NULL,
+    [ClientName] nvarchar(max) NOT NULL,
+    [Title] nvarchar(max) NOT NULL,
+    [Stage] nvarchar(max) NOT NULL,
+    [DueAt] datetimeoffset NULL,
+    [CreatedAt] datetimeoffset NOT NULL,
+    [UpdatedAt] datetimeoffset NULL,
+    [IsDeleted] bit NOT NULL,
+    CONSTRAINT [PK_CreatorWorkItems] PRIMARY KEY ([Id]),
+    CONSTRAINT [FK_CreatorWorkItems_CreatorProfiles_CreatorProfileId] FOREIGN KEY ([CreatorProfileId]) REFERENCES [CreatorProfiles] ([Id]) ON DELETE CASCADE
+);
+END;
 
-        migrationBuilder.CreateIndex("IX_CreatorAssets_CreatorProfileId", "CreatorAssets", "CreatorProfileId");
-        migrationBuilder.CreateIndex("IX_CreatorAutoReplySettings_CreatorProfileId", "CreatorAutoReplySettings", "CreatorProfileId");
-        migrationBuilder.CreateIndex("IX_CreatorFaqs_CreatorProfileId", "CreatorFaqs", "CreatorProfileId");
-        migrationBuilder.CreateIndex("IX_CreatorTerms_CreatorProfileId", "CreatorTerms", "CreatorProfileId");
-        migrationBuilder.CreateIndex("IX_CreatorWorkItems_CreatorProfileId", "CreatorWorkItems", "CreatorProfileId");
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'[dbo].[CreatorAssets]') AND name = N'IX_CreatorAssets_CreatorProfileId')
+BEGIN
+CREATE INDEX [IX_CreatorAssets_CreatorProfileId] ON [CreatorAssets] ([CreatorProfileId]);
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'[dbo].[CreatorAutoReplySettings]') AND name = N'IX_CreatorAutoReplySettings_CreatorProfileId')
+BEGIN
+CREATE INDEX [IX_CreatorAutoReplySettings_CreatorProfileId] ON [CreatorAutoReplySettings] ([CreatorProfileId]);
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'[dbo].[CreatorFaqs]') AND name = N'IX_CreatorFaqs_CreatorProfileId')
+BEGIN
+CREATE INDEX [IX_CreatorFaqs_CreatorProfileId] ON [CreatorFaqs] ([CreatorProfileId]);
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'[dbo].[CreatorTerms]') AND name = N'IX_CreatorTerms_CreatorProfileId')
+BEGIN
+CREATE INDEX [IX_CreatorTerms_CreatorProfileId] ON [CreatorTerms] ([CreatorProfileId]);
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'[dbo].[CreatorWorkItems]') AND name = N'IX_CreatorWorkItems_CreatorProfileId')
+BEGIN
+CREATE INDEX [IX_CreatorWorkItems_CreatorProfileId] ON [CreatorWorkItems] ([CreatorProfileId]);
+END;
+""");
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.DropTable("CreatorAssets");
-        migrationBuilder.DropTable("CreatorAutoReplySettings");
-        migrationBuilder.DropTable("CreatorFaqs");
-        migrationBuilder.DropTable("CreatorTerms");
-        migrationBuilder.DropTable("CreatorWorkItems");
+        // Do not drop tables shared with the older schema-repair migration.
     }
 }

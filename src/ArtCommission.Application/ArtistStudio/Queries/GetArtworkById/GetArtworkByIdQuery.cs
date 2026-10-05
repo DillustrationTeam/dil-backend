@@ -22,7 +22,7 @@ public class GetArtworkByIdQueryHandler : IRequestHandler<GetArtworkByIdQuery, (
             .AsNoTracking()
             .Include(x => x.ArtworkTags)
             .ThenInclude(x => x.Tag)
-            .FirstOrDefaultAsync(x => x.Id == request.ArtworkId && !x.IsDeleted, cancellationToken);
+            .FirstOrDefaultAsync(x => x.Id == request.ArtworkId && !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted, cancellationToken);
 
         if (artwork is null)
         {

@@ -449,4 +449,5 @@ scalar-site/openapi.json
 # theo từng lần test và có thể đẩy dữ liệu riêng tư của người dùng lên GitHub.
 uploads/
 
-src/ArtCommission.Infrastructure/Persistence/Seed/DevDataSeeder.cs
+# Runtime uploads under the local demo storage root (keep existing tracked fixtures).
+src/ArtCommission.API/wwwroot/demo-uploads/

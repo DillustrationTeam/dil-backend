@@ -1,7 +1,7 @@
 -- ============================================================================
 -- DATABASE SCHEMA CREATION SCRIPT — ArtCommission (Dillustration)
 -- Target DBMS: Microsoft SQL Server 2019+ / Azure SQL Database
--- Total Tables: 35 Tables (22 Core Entities + 13 Feature Entities)
+-- Total Tables: 39 Tables (24 Core Entities + 15 Feature Entities)
 -- Compatible with: EF Core 8 Code-First & Direct T-SQL Execution
 -- NOTE: Auth module (AspNetUsers, RefreshTokens) is UNCHANGED as requested.
 -- ============================================================================
@@ -562,15 +562,104 @@ BEGIN
         Description NVARCHAR(MAX) NOT NULL,
         Rules NVARCHAR(MAX) NULL,
         Prize NVARCHAR(1000) NULL,
+        MaxVote INT NOT NULL DEFAULT 1,               -- ⚡ Số lượt bình chọn tối đa của mỗi người dùng
         Status NVARCHAR(50) NOT NULL DEFAULT 'Draft', -- Draft, Open, Judging, Ended
-        StartAt DATETIMEOFFSET NOT NULL,
-        EndsAt DATETIMEOFFSET NOT NULL,
+        SubmissionStartAt DATETIMEOFFSET NOT NULL,
+        SubmissionEndAt DATETIMEOFFSET NOT NULL,
+        JudgingStartAt DATETIMEOFFSET NOT NULL,
+        JudgingEndAt DATETIMEOFFSET NOT NULL,
+        VotingStartAt DATETIMEOFFSET NOT NULL,
+        VotingEndAt DATETIMEOFFSET NOT NULL,
+        ResultAnnouncementAt DATETIMEOFFSET NOT NULL,
         CreatedByAdminId UNIQUEIDENTIFIER NOT NULL,
         CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
         UpdatedAt DATETIMEOFFSET NULL,
         IsDeleted BIT NOT NULL DEFAULT 0,
-        CONSTRAINT FK_PlatformEvents_Admin FOREIGN KEY (CreatedByAdminId) REFERENCES dbo.AspNetUsers(Id)
+        CONSTRAINT FK_PlatformEvents_Admin FOREIGN KEY (CreatedByAdminId) REFERENCES dbo.AspNetUsers(Id),
+        CONSTRAINT CK_PlatformEvents_Timeline CHECK (
+            SubmissionStartAt < SubmissionEndAt
+            AND SubmissionEndAt < JudgingStartAt
+            AND JudgingStartAt < JudgingEndAt
+            AND JudgingEndAt < VotingStartAt
+            AND VotingStartAt < VotingEndAt
+            AND VotingEndAt < ResultAnnouncementAt
+        )
     );
+
+    CREATE INDEX IX_PlatformEvents_Status_SubmissionTimeline ON dbo.PlatformEvents(Status, SubmissionStartAt, SubmissionEndAt);
+END
+GO
+
+-- Bảng Lời mời Ban giám khảo / Sự kiện (Invitation)
+IF OBJECT_ID(N'dbo.Invitations', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.Invitations (
+        Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_Invitations PRIMARY KEY DEFAULT NEWID(),
+        EventId UNIQUEIDENTIFIER NOT NULL,
+        SentFromAdminId UNIQUEIDENTIFIER NOT NULL,
+        SentToCreatorId UNIQUEIDENTIFIER NOT NULL,
+        IsHeadJury BIT NOT NULL DEFAULT 0,
+        CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        RespondedAt DATETIMEOFFSET NULL,
+        Status NVARCHAR(50) NOT NULL DEFAULT 'Pending', 
+        CONSTRAINT FK_Invitations_Event FOREIGN KEY (EventId) REFERENCES dbo.PlatformEvents(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_Invitations_SentFromAdmin FOREIGN KEY (SentFromAdminId) REFERENCES dbo.AspNetUsers(Id),
+        CONSTRAINT FK_Invitations_SentToCreator FOREIGN KEY (SentToCreatorId) REFERENCES dbo.CreatorProfiles(Id),
+        CONSTRAINT CK_Invitations_Status CHECK (Status IN ('Pending', 'Accepted', 'Declined', 'Canceled', 'Expired')),
+        CONSTRAINT CK_Invitations_RespondedAt CHECK (RespondedAt IS NULL OR RespondedAt >= CreatedAt)
+    );
+
+    CREATE INDEX IX_Invitations_Event_Status ON dbo.Invitations(EventId, Status);
+    CREATE INDEX IX_Invitations_SentToCreator_Status ON dbo.Invitations(SentToCreatorId, Status);
+    CREATE INDEX IX_Invitations_SentFromAdmin ON dbo.Invitations(SentFromAdminId);
+    CREATE UNIQUE INDEX UX_Invitations_Event_Creator_Pending ON dbo.Invitations(EventId, SentToCreatorId) WHERE Status = 'Pending';
+END
+GO
+
+-- Bảng Ban giám khảo Sự kiện (Jury)
+IF OBJECT_ID(N'dbo.Juries', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.Juries (
+        Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_Juries PRIMARY KEY DEFAULT NEWID(),
+        EventId UNIQUEIDENTIFIER NOT NULL,
+        CreatorId UNIQUEIDENTIFIER NOT NULL,
+        IsHeadJury BIT NOT NULL DEFAULT 0,
+        CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        CONSTRAINT FK_Juries_Event FOREIGN KEY (EventId) REFERENCES dbo.PlatformEvents(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_Juries_Creator FOREIGN KEY (CreatorId) REFERENCES dbo.CreatorProfiles(Id),
+        CONSTRAINT UX_Juries_Event_Creator UNIQUE (EventId, CreatorId)
+    );
+
+    CREATE INDEX IX_Juries_Creator ON dbo.Juries(CreatorId);
+    CREATE UNIQUE INDEX UX_Juries_Event_HeadJury ON dbo.Juries(EventId) WHERE IsHeadJury = 1;
+END
+GO
+
+-- Hỗ trợ truy vấn linh hoạt theo tên số ít (dbo.Invitation & dbo.Jury)
+IF NOT EXISTS (SELECT * FROM sys.synonyms WHERE name = N'Invitation' AND schema_id = SCHEMA_ID(N'dbo'))
+    CREATE SYNONYM dbo.Invitation FOR dbo.Invitations;
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.synonyms WHERE name = N'Jury' AND schema_id = SCHEMA_ID(N'dbo'))
+    CREATE SYNONYM dbo.Jury FOR dbo.Juries;
+GO
+
+-- Bảng Tiêu chí Chấm điểm Sự kiện (EventCriteria)
+IF OBJECT_ID(N'dbo.EventCriteria', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.EventCriteria (
+        Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_EventCriteria PRIMARY KEY DEFAULT NEWID(),
+        EventId UNIQUEIDENTIFIER NOT NULL,
+        Name NVARCHAR(150) NOT NULL,            -- Tên tiêu chí (VD: Bố cục, Màu sắc)
+        Description NVARCHAR(500) NULL,
+        MaxScore DECIMAL(5, 2) NOT NULL DEFAULT 10.00, -- Thang điểm tối đa (VD: 10)
+        Weight DECIMAL(5, 2) NOT NULL,          -- Trọng số (VD: 0.4 tương ứng 40%)
+        DisplayOrder INT NOT NULL DEFAULT 0,    -- Thứ tự hiển thị
+        CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        CONSTRAINT FK_EventCriteria_Event FOREIGN KEY (EventId) REFERENCES dbo.PlatformEvents(Id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IX_EventCriteria_EventId ON dbo.EventCriteria(EventId);
 END
 GO
 
@@ -582,6 +671,8 @@ BEGIN
         EventId UNIQUEIDENTIFIER NOT NULL,
         SubmitterId UNIQUEIDENTIFIER NOT NULL,
         ArtworkId UNIQUEIDENTIFIER NOT NULL,
+        Title NVARCHAR(200) NOT NULL DEFAULT '',
+        Description NVARCHAR(2000) NULL,
         AiScanPassed BIT NOT NULL DEFAULT 0,
         VoteCount INT NOT NULL DEFAULT 0,              -- ⚡ [CẢI TIẾN] Đếm tổng lượt vote (Leaderboard O(1))
         Score DECIMAL(5, 2) NULL,                     -- Điểm BGK chấm
@@ -593,6 +684,26 @@ BEGIN
     );
 
     CREATE INDEX IX_EventSubmissions_Event_Score ON dbo.EventSubmissions(EventId, Score DESC, VoteCount DESC);
+END
+GO
+
+-- Bảng Điểm Giám khảo theo Tiêu chí (CriteriaScores)
+IF OBJECT_ID(N'dbo.CriteriaScores', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.CriteriaScores (
+        EventCriteriaId UNIQUEIDENTIFIER NOT NULL,
+        SubmissionId UNIQUEIDENTIFIER NOT NULL,
+        GradedByJuryId UNIQUEIDENTIFIER NOT NULL,   -- ID của giám khảo trong bảng Juries
+        Score DECIMAL(5, 2) NOT NULL,               -- Điểm giám khảo cho tiêu chí này
+        UpdatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        CONSTRAINT PK_CriteriaScores PRIMARY KEY (EventCriteriaId, SubmissionId, GradedByJuryId),
+        CONSTRAINT FK_CriteriaScores_Criteria FOREIGN KEY (EventCriteriaId) REFERENCES dbo.EventCriteria(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_CriteriaScores_Submission FOREIGN KEY (SubmissionId) REFERENCES dbo.EventSubmissions(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_CriteriaScores_Jury FOREIGN KEY (GradedByJuryId) REFERENCES dbo.Juries(Id)
+    );
+
+    CREATE INDEX IX_CriteriaScores_SubmissionId ON dbo.CriteriaScores(SubmissionId);
+    CREATE INDEX IX_CriteriaScores_GradedByJuryId ON dbo.CriteriaScores(GradedByJuryId);
 END
 GO
 

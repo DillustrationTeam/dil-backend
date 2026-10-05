@@ -71,7 +71,7 @@ public static class PlatformKnowledge
         - Ví có hai loại số dư: "số dư khả dụng" (dùng để đặt giá, rút tiền) và "tiền đang
           giữ" (tiền cọc đấu giá hoặc tiền ký quỹ đơn đặt vẽ — không rút được).
         - Nạp tiền: vào mục Ví, nhập số tiền, chọn cổng thanh toán. Hiện nền tảng hỗ trợ
-          payOS (chuyển khoản ngân hàng / quét mã QR). Tiền vào ví ngay khi cổng xác nhận.
+          SePay (chuyển khoản ngân hàng / quét mã QR). Tiền vào ví ngay khi cổng xác nhận.
         - Nếu đã chuyển khoản mà ví chưa cộng, chờ vài phút rồi tải lại trang; nếu vẫn
           chưa có, liên hệ hỗ trợ kèm mã đơn nạp tiền.
         - Ví có thể bị tạm khoá khi đang điều tra; ví bị khoá thì không đặt giá hay rút

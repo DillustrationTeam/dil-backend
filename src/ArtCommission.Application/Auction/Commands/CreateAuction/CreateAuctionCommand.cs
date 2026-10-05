@@ -28,6 +28,8 @@ public record CreateAuctionCommand(
 
 public class CreateAuctionCommandValidator : AbstractValidator<CreateAuctionCommand>
 {
+    public const decimal MinimumStartPrice = 10_000m;
+    public const decimal MinimumBidStep = 1_000m;
     /// <summary>Thời lượng tối thiểu của một phiên — ngắn hơn thì không ai kịp đặt giá.</summary>
     public const int MinimumDurationHours = 1;
 
@@ -39,10 +41,10 @@ public class CreateAuctionCommandValidator : AbstractValidator<CreateAuctionComm
         RuleFor(x => x.ArtworkId).NotEmpty().WithMessage("Thiếu tranh cần đấu giá.");
 
         RuleFor(x => x.StartPrice)
-            .GreaterThan(0).WithMessage("Giá khởi điểm phải lớn hơn 0.");
+            .GreaterThanOrEqualTo(MinimumStartPrice).WithMessage($"Giá khởi điểm tối thiểu {MinimumStartPrice:N0} VND.");
 
         RuleFor(x => x.BidStep)
-            .GreaterThan(0).WithMessage("Bước giá phải lớn hơn 0.");
+            .GreaterThanOrEqualTo(MinimumBidStep).WithMessage($"Bước giá tối thiểu {MinimumBidStep:N0} VND.");
 
         RuleFor(x => x.ReservePrice)
             .GreaterThanOrEqualTo(x => x.StartPrice)

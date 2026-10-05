@@ -64,12 +64,14 @@ public class CreateReviewRequest
 
 public class ReplyReviewRequest
 {
-    [Required, MinLength(1)]
+    [Required, MinLength(1), MaxLength(1000)]
     public string ReplyComment { get; set; } = string.Empty;
 }
 
 public class CancelWithPolicyRequest
 {
+    [Required, MinLength(1), MaxLength(500)]
     public string CancellationReason { get; set; } = string.Empty;
+    [MaxLength(2000)]
     public string? Details { get; set; }
 }

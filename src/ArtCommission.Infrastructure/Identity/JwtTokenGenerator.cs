@@ -23,9 +23,9 @@ public class JwtTokenGenerator : IJwtTokenGenerator
         _dbContext = dbContext;
     }
 
-    public async Task<TokenDto> GenerateTokensAsync(UserDto user, IEnumerable<string> roles, string? clientIp, CancellationToken cancellationToken = default)
+    public async Task<TokenDto> GenerateTokensAsync(UserDto user, IEnumerable<string> roles, string? clientIp, string? userAgent = null, CancellationToken cancellationToken = default)
     {
-        var secretKey = _configuration["Jwt:SecretKey"] ?? "Default_Secret_Key_For_Development_Only_Must_Be_Long_256_Bits";
+        var secretKey = GetSecretKey();
         var issuer = _configuration["Jwt:Issuer"] ?? "ArtCommissionAPI";
         var audience = _configuration["Jwt:Audience"] ?? "ArtCommissionClient";
         var expiryMinutes = double.TryParse(_configuration["Jwt:ExpiryMinutes"], out var min) ? min : 15;
@@ -71,16 +71,18 @@ public class JwtTokenGenerator : IJwtTokenGenerator
             UserId = user.Id,
             TokenHash = refreshTokenHash,
             ExpiresAt = refreshTokenExpiresAt,
-            CreatedByIp = clientIp
+            CreatedByIp = clientIp,
+            UserAgent = userAgent,
+            LastUsedAt = DateTimeOffset.UtcNow
         };
 
         _dbContext.RefreshTokens.Add(refreshTokenEntity);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return new TokenDto(accessToken, rawRefreshToken, accessTokenExpiresAt, refreshTokenExpiresAt);
+        return new TokenDto(accessToken, rawRefreshToken, accessTokenExpiresAt, refreshTokenExpiresAt, refreshTokenEntity.Id);
     }
 
-    public async Task<(bool Success, AuthResponseDto? AuthResponse, string[] Errors)> RefreshTokenAsync(string refreshToken, string? clientIp, CancellationToken cancellationToken = default)
+    public async Task<(bool Success, AuthResponseDto? AuthResponse, string[] Errors)> RefreshTokenAsync(string refreshToken, string? clientIp, string? userAgent = null, CancellationToken cancellationToken = default)
     {
         var inputHash = HashToken(refreshToken);
 
@@ -114,6 +116,7 @@ public class JwtTokenGenerator : IJwtTokenGenerator
 
         existingToken.RevokedAt = DateTimeOffset.UtcNow;
         existingToken.ReplacedByTokenHash = newRefreshTokenHash;
+        existingToken.LastUsedAt = DateTimeOffset.UtcNow;
 
         // Get User Roles
         var userRoles = await _dbContext.UserRoles
@@ -126,10 +129,14 @@ public class JwtTokenGenerator : IJwtTokenGenerator
             existingToken.User.Email!,
             existingToken.User.FullName,
             existingToken.User.IsVerified,
-            existingToken.User.CreatedAt
+            existingToken.User.CreatedAt,
+            existingToken.User.AvatarUrl,
+            existingToken.User.CoverUrl,
+            existingToken.User.Bio,
+            existingToken.User.SocialLinks
         );
 
-        var secretKey = _configuration["Jwt:SecretKey"] ?? "Default_Secret_Key_For_Development_Only_Must_Be_Long_256_Bits";
+        var secretKey = GetSecretKey();
         var issuer = _configuration["Jwt:Issuer"] ?? "ArtCommissionAPI";
         var audience = _configuration["Jwt:Audience"] ?? "ArtCommissionClient";
         var expiryMinutes = double.TryParse(_configuration["Jwt:ExpiryMinutes"], out var min) ? min : 15;
@@ -172,13 +179,15 @@ public class JwtTokenGenerator : IJwtTokenGenerator
             UserId = userDto.Id,
             TokenHash = newRefreshTokenHash,
             ExpiresAt = refreshTokenExpiresAt,
-            CreatedByIp = clientIp
+            CreatedByIp = clientIp,
+            UserAgent = userAgent ?? existingToken.UserAgent,
+            LastUsedAt = DateTimeOffset.UtcNow
         };
 
         _dbContext.RefreshTokens.Add(newRefreshTokenEntity);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        var tokenDto = new TokenDto(accessToken, newRawRefreshToken, accessTokenExpiresAt, refreshTokenExpiresAt);
+        var tokenDto = new TokenDto(accessToken, newRawRefreshToken, accessTokenExpiresAt, refreshTokenExpiresAt, newRefreshTokenEntity.Id);
         var authResponse = new AuthResponseDto(userDto, userRoles, tokenDto);
 
         return (true, authResponse, Array.Empty<string>());
@@ -202,10 +211,29 @@ public class JwtTokenGenerator : IJwtTokenGenerator
         return true;
     }
 
+    public async Task<int> RevokeAllTokensExceptAsync(Guid userId, Guid? exceptSessionId, CancellationToken cancellationToken = default)
+    {
+        var activeTokens = await _dbContext.RefreshTokens
+            .Where(rt => rt.UserId == userId && rt.RevokedAt == null && (exceptSessionId == null || rt.Id != exceptSessionId))
+            .ToListAsync(cancellationToken);
+
+        foreach (var token in activeTokens)
+        {
+            token.RevokedAt = DateTimeOffset.UtcNow;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return activeTokens.Count;
+    }
+
     private static string HashToken(string token)
     {
         var bytes = Encoding.UTF8.GetBytes(token);
         var hashBytes = SHA256.HashData(bytes);
         return Convert.ToHexString(hashBytes);
     }
+
+    private string GetSecretKey() =>
+        _configuration["Jwt:SecretKey"]
+        ?? throw new InvalidOperationException("Jwt:SecretKey is not configured.");
 }

@@ -21,6 +21,17 @@ var options = new DbContextOptionsBuilder<AppDbContext>()
     .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
     .Options;
 await using var db = new AppDbContext(options);
+
+var sqlConnectionString = Environment.GetEnvironmentVariable("AUCTION_TEST_SQL_CONNECTION_STRING");
+if (string.IsNullOrWhiteSpace(sqlConnectionString))
+{
+    Console.WriteLine("SQL Server race check skipped; set AUCTION_TEST_SQL_CONNECTION_STRING to a dedicated test database.");
+}
+else
+{
+    await RunSqlServerRaceCheckAsync(sqlConnectionString);
+}
+
 var sellerId = Guid.NewGuid();
 var creatorProfile = new CreatorProfile
 {
@@ -56,12 +67,14 @@ db.Auctions.Add(auction);
 await db.SaveChangesAsync();
 
 var money = new TestAuctionMoneyService();
+var realtime = new TestAuctionRealtimePublisher();
+var lifecycle = new TestAuctionLifecycleNotifier();
 var handler = new PlaceBidCommandHandler(
     db,
     money,
     new TestNotificationPublisher(),
-    new TestAuctionRealtimePublisher(),
-    new TestAuctionLifecycleNotifier(),
+    realtime,
+    lifecycle,
     NullLogger<PlaceBidCommandHandler>.Instance);
 
 var firstBidder = Guid.NewGuid();
@@ -94,6 +107,11 @@ var oldEndAt = auction.EndAt;
 var extended = await handler.Handle(
     new PlaceBidCommand(bidderInSnipeWindow, auction.Id, auction.CurrentPrice + auction.BidStep), default);
 Ensure(extended.Success && auction.EndAt == oldEndAt.AddMinutes(3), "Bid trong 3 phút cuối không gia hạn đúng 3 phút.");
+Ensure(lifecycle.Events.Count(x => x == (auction.Id, AuctionLifecycleEvent.Extended)) == 1,
+    "Anti-snipe không gửi đúng một lifecycle notification sau commit.");
+Ensure(realtime.Extensions.Count == 1 && realtime.Extensions[0].OldEndAt == oldEndAt
+       && realtime.Extensions[0].NewEndAt == auction.EndAt,
+    "Anti-snipe không broadcast đúng thời gian gia hạn sau commit.");
 
 var endAfterExtension = auction.EndAt;
 var failed = await handler.Handle(new PlaceBidCommand(Guid.NewGuid(), auction.Id, auction.CurrentPrice, false), default);
@@ -123,12 +141,27 @@ var eligibleArtwork = new Artwork
     Title = "Eligible artwork",
     ImageUrl = "https://example.test/eligible.png"
 };
-db.Artworks.Add(eligibleArtwork);
+var transferredArtwork = new Artwork
+{
+    Id = Guid.NewGuid(),
+    CreatorProfileId = creatorProfile.Id,
+    Title = "Transferred artwork",
+    ImageUrl = "https://example.test/transferred.png"
+};
+db.Artworks.AddRange(eligibleArtwork, transferredArtwork);
+db.ArtworkOwnerships.Add(new ArtworkOwnership
+{
+    ArtworkId = transferredArtwork.Id,
+    OwnerId = Guid.NewGuid(),
+    IsCurrent = true,
+    AcquiredAt = DateTimeOffset.UtcNow,
+    TransferReason = OwnershipTransferReason.AuctionWin
+});
 await db.SaveChangesAsync();
 var (eligibleSuccess, eligibleData, _, _) = await new EligibleArtworksQueryHandler(db).Handle(
     new EligibleArtworksQuery(sellerId, null, 20), default);
 Ensure(eligibleSuccess && eligibleData!.Count == 1 && eligibleData[0].ArtworkId == eligibleArtwork.Id,
-    "Eligible Artworks không loại tranh đang thuộc phiên đấu giá còn hiệu lực.");
+    "Eligible Artworks không loại tranh đang đấu giá hoặc đã chuyển cho chủ sở hữu khác.");
 
 var (statisticsSuccess, statisticsData, _) = await new GetCreatorStatisticsQueryHandler(db).Handle(
     new GetCreatorStatisticsQuery(creatorProfile.Id), default);
@@ -137,16 +170,6 @@ Ensure(statisticsSuccess && statisticsData!.CommissionCompletionRate == 0m
     "Seller statistics xử lý sai trường hợp chưa có commission hoặc dữ liệu rating.");
 
 Console.WriteLine("Auction workflow checks passed (proxy caps, tie order, anti-snipe, active bids, eligible artworks, seller statistics).");
-
-var sqlConnectionString = Environment.GetEnvironmentVariable("AUCTION_TEST_SQL_CONNECTION_STRING");
-if (string.IsNullOrWhiteSpace(sqlConnectionString))
-{
-    Console.WriteLine("SQL Server race check skipped; set AUCTION_TEST_SQL_CONNECTION_STRING to a dedicated test database.");
-}
-else
-{
-    await RunSqlServerRaceCheckAsync(sqlConnectionString);
-}
 
 static void Ensure(bool condition, string message)
 {
@@ -227,6 +250,11 @@ static async Task RunSqlServerRaceCheckAsync(string connectionString)
         "409 không trả CurrentPrice mới từ SQL Server.");
 
     Console.WriteLine("SQL Server race check passed (one leading bid, loser receives 409/current price).");
+
+    await contextA.DisposeAsync();
+    await contextB.DisposeAsync();
+    await verification.DisposeAsync();
+    await setup.Database.EnsureDeletedAsync();
 }
 
 sealed class TestAuctionMoneyService : IAuctionMoneyService
@@ -296,12 +324,24 @@ sealed class TestNotificationPublisher : INotificationPublisher
 
 sealed class TestAuctionRealtimePublisher : IAuctionRealtimePublisher
 {
+    public List<(Guid AuctionId, DateTimeOffset OldEndAt, DateTimeOffset NewEndAt)> Extensions { get; } = [];
+
     public Task PublishBidPlacedAsync(Guid auctionId, PlaceBidResultDto bid, decimal currentPrice, decimal minimumNextBid, DateTimeOffset endAt, CancellationToken cancellationToken) => Task.CompletedTask;
-    public Task PublishAuctionExtendedAsync(Guid auctionId, Guid bidId, DateTimeOffset oldEndAt, DateTimeOffset newEndAt, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task PublishAuctionExtendedAsync(Guid auctionId, Guid bidId, DateTimeOffset oldEndAt, DateTimeOffset newEndAt, CancellationToken cancellationToken)
+    {
+        Extensions.Add((auctionId, oldEndAt, newEndAt));
+        return Task.CompletedTask;
+    }
     public Task PublishAuctionStatusChangedAsync(Guid auctionId, string status, decimal currentPrice, DateTimeOffset endAt, CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 sealed class TestAuctionLifecycleNotifier : IAuctionLifecycleNotifier
 {
-    public Task NotifyParticipantsAsync(Guid auctionId, AuctionLifecycleEvent lifecycleEvent, Guid? operationId = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public List<(Guid AuctionId, AuctionLifecycleEvent Event)> Events { get; } = [];
+
+    public Task NotifyParticipantsAsync(Guid auctionId, AuctionLifecycleEvent lifecycleEvent, Guid? operationId = null, CancellationToken cancellationToken = default)
+    {
+        Events.Add((auctionId, lifecycleEvent));
+        return Task.CompletedTask;
+    }
 }

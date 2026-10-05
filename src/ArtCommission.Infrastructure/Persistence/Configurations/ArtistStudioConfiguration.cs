@@ -25,6 +25,7 @@ public class CreatorProfileConfiguration : IEntityTypeConfiguration<CreatorProfi
         builder.Property(x => x.CommissionSlots).HasDefaultValue(0);
         builder.Property(x => x.CompletedOrdersCount).HasDefaultValue(0);
         builder.Property(x => x.RateCardJson);
+        builder.Property(x => x.RatingAverage).HasPrecision(18, 2);
     }
 }
 
@@ -54,6 +55,8 @@ public class ArtworkConfiguration : IEntityTypeConfiguration<Artwork>
         builder.Property(x => x.FlagReason).HasMaxLength(200);
         builder.Property(x => x.Resolution).HasMaxLength(50);
         builder.Property(x => x.ModerationNote).HasMaxLength(1000);
+        builder.Property(x => x.AiDetectionScore).HasPrecision(18, 2);
+        builder.Property(x => x.StartingPrice).HasPrecision(18, 2);
 
         builder.Ignore(x => x.AutoWatermarkEnabled);
         builder.Ignore(x => x.AutoTaggingEnabled);
@@ -194,5 +197,13 @@ public class CreatorReviewConfiguration : IEntityTypeConfiguration<CreatorReview
             .WithMany()
             .HasForeignKey(x => x.CreatorProfileId)
             .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class CreatorTermsConfiguration : IEntityTypeConfiguration<CreatorTerms>
+{
+    public void Configure(EntityTypeBuilder<CreatorTerms> builder)
+    {
+        builder.Property(x => x.CommercialLicenseMultiplier).HasPrecision(18, 2);
     }
 }

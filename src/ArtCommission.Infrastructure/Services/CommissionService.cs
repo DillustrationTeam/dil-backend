@@ -4,6 +4,7 @@ using ArtCommission.Application.Commission.Interfaces;
 using ArtCommission.Application.Commission.Validators;
 using ArtCommission.Application.Payment.Common;
 using ArtCommission.Domain.Entities.Commission;
+using ArtCommission.Domain.Entities.Payment;
 using ArtCommission.Domain.Enums;
 using ArtCommission.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -17,13 +18,16 @@ public class CommissionService : ICommissionService
     private readonly IWalletService _walletService;
     private readonly IWatermarkService _watermarkService;
     private readonly IStorageService _storageService;
+    private readonly IVoucherCheckService _voucherCheckService;
 
-    public CommissionService(AppDbContext dbContext, IWalletService walletService, IWatermarkService watermarkService, IStorageService storageService)
+    public CommissionService(AppDbContext dbContext, IWalletService walletService, IWatermarkService watermarkService,
+        IStorageService storageService, IVoucherCheckService voucherCheckService)
     {
         _dbContext = dbContext;
         _walletService = walletService;
         _watermarkService = watermarkService;
         _storageService = storageService;
+        _voucherCheckService = voucherCheckService;
     }
 
     private static void RequireClient(Commission commission, Guid userId)
@@ -69,45 +73,32 @@ public class CommissionService : ICommissionService
         if (creator is null || !creator.IsAcceptingOrders)
             throw new ArgumentException("Creator hiện không nhận đơn.");
 
-        var totalPrice = 0.00m;
-        var milestones = new List<Milestone>();
-        ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardPackageDto? selectedPackage = null;
-
-        if (!string.IsNullOrWhiteSpace(creator.RateCardJson))
+        if (string.IsNullOrWhiteSpace(creator.RateCardJson))
+            throw new ArgumentException("Creator chưa cấu hình bảng giá.");
+        ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardPackageDto? selectedPackage;
+        try
         {
-            try
-            {
-                var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var packages = System.Text.Json.JsonSerializer.Deserialize<List<ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardPackageDto>>(creator.RateCardJson, options);
-                selectedPackage = packages?.FirstOrDefault(p => p.Id == request.PackageId);
-                if (selectedPackage != null)
-                {
-                    totalPrice = selectedPackage.Price;
-                    if (selectedPackage.Milestones != null && selectedPackage.Milestones.Count > 0)
-                    {
-                        foreach (var stage in selectedPackage.Milestones)
-                        {
-                            milestones.Add(new Milestone
-                            {
-                                Sequence = stage.Sequence,
-                                Title = stage.Title,
-                                Price = stage.Price,
-                                Status = MilestoneStatus.Pending
-                            });
-                        }
-                        var milestoneTotal = selectedPackage.Milestones.Sum(m => m.Price);
-                        if (milestoneTotal > 0) totalPrice = milestoneTotal;
-                    }
-                }
-            }
-            catch (System.Text.Json.JsonException) { }
+            var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardIdConverter() } };
+            var packages = System.Text.Json.JsonSerializer.Deserialize<List<ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardPackageDto>>(creator.RateCardJson, options);
+            selectedPackage = packages?.FirstOrDefault(p => p != null && p.Id == request.PackageId);
         }
-
-        if (selectedPackage is null || totalPrice <= 0) throw new ArgumentException("Gói giá không tồn tại hoặc không còn khả dụng.");
-
-        if (milestones.Count == 0)
-            milestones.Add(new Milestone { Sequence = 1, Title = selectedPackage.Name, Price = totalPrice, Status = MilestoneStatus.Pending });
-
+        catch (System.Text.Json.JsonException)
+        {
+            throw new ArgumentException("Bảng giá Creator không hợp lệ. Vui lòng liên hệ Creator cập nhật.");
+        }
+        if (selectedPackage is null)
+            throw new ArgumentException("Gói giá không tồn tại hoặc đã bị thay đổi. Vui lòng chọn lại.");
+        var stages = selectedPackage.Milestones;
+        if (selectedPackage.Price <= 0 || stages is null || stages.Count == 0
+            || stages.Any(stage => stage is null || stage.Price <= 0 || string.IsNullOrWhiteSpace(stage.Title))
+            || !stages.OrderBy(stage => stage.Sequence).Select(stage => stage.Sequence).SequenceEqual(Enumerable.Range(1, stages.Count))
+            || stages.Sum(stage => stage.Price) != selectedPackage.Price)
+            throw new ArgumentException("Giá và milestone của gói không hợp lệ. Vui lòng liên hệ Creator cập nhật.");
+        var totalPrice = selectedPackage.Price;
+        var milestones = stages.OrderBy(stage => stage.Sequence).Select(stage => new Milestone
+        {
+            Sequence = stage.Sequence, Title = stage.Title, Price = stage.Price, Status = MilestoneStatus.Pending
+        }).ToList();
         var multiplier = request.LicenseType == "Commercial"
             ? await _dbContext.CreatorTerms.AsNoTracking()
                 .Where(x => x.CreatorProfileId == creator.Id && !x.IsDeleted)
@@ -120,6 +111,18 @@ public class CommissionService : ICommissionService
         milestones[^1].Price += totalPrice - milestones.Sum(x => x.Price);
 
         var discountAmount = 0.00m;
+        Guid? voucherId = null;
+        if (!string.IsNullOrWhiteSpace(request.VoucherCode))
+        {
+            var voucherCheck = await _voucherCheckService.CheckAsync(
+                clientId, request.VoucherCode, totalPrice, nameof(Commission), null, cancellationToken);
+            if (!voucherCheck.Success || voucherCheck.Voucher is null)
+                throw new ArgumentException(voucherCheck.Errors.FirstOrDefault() ?? "Mã giảm giá không hợp lệ.");
+            if (voucherCheck.FinalAmount <= 0)
+                throw new ArgumentException("Mã giảm giá phải để lại số tiền thanh toán lớn hơn 0.");
+            voucherId = voucherCheck.Voucher.Id;
+            discountAmount = voucherCheck.DiscountAmount;
+        }
         var finalPrice = totalPrice - discountAmount;
 
         var commission = new Commission
@@ -128,6 +131,7 @@ public class CommissionService : ICommissionService
             Description = request.Description,
             ClientId = clientId,
             CreatorId = creator.Id,
+            VoucherId = voucherId,
             LicenseType = request.LicenseType,
             LicenseMultiplierApplied = multiplier,
             TotalPrice = totalPrice,
@@ -171,8 +175,10 @@ public class CommissionService : ICommissionService
             query = query.Where(c => c.ClientId == userId || c.CreatorId == creatorProfileId);
         else throw new ArgumentException("Invalid role filter.");
 
-        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<CommissionStatus>(status, true, out var parsedStatus))
+        if (!string.IsNullOrWhiteSpace(status))
         {
+            if (!Enum.TryParse<CommissionStatus>(status, true, out var parsedStatus))
+                throw new ArgumentException("Invalid commission status filter.");
             query = query.Where(c => c.Status == parsedStatus);
         }
 
@@ -183,6 +189,18 @@ public class CommissionService : ICommissionService
             .ToListAsync(cancellationToken);
 
         var items = commissionEntities.Select(c => MapToDto(c)).ToList();
+        var clientIds = items.Select(item => item.ClientId).Distinct().ToArray();
+        var clientNames = await _dbContext.Users.AsNoTracking()
+            .Where(user => clientIds.Contains(user.Id))
+            .ToDictionaryAsync(user => user.Id, user => user.FullName, cancellationToken);
+
+        foreach (var item in items)
+        {
+            if (clientNames.TryGetValue(item.ClientId, out var clientName))
+            {
+                item.ClientName = clientName;
+            }
+        }
 
         return (items, totalItems);
     }
@@ -231,7 +249,16 @@ public class CommissionService : ICommissionService
                     throw new ArgumentException("Negotiated price cannot produce an invalid milestone.");
                 milestones[^1].Price += request.NegotiatePrice.Value - commission.TotalPrice;
                 commission.TotalPrice = request.NegotiatePrice.Value;
+                if (commission.VoucherId.HasValue)
+                {
+                    var voucher = await _dbContext.Vouchers.AsNoTracking()
+                        .SingleAsync(v => v.Id == commission.VoucherId.Value, cancellationToken);
+                    commission.DiscountAmount = VoucherCheckService.CalculateDiscount(
+                        voucher.DiscountType, voucher.DiscountValue, voucher.MaxDiscountAmount, commission.TotalPrice);
+                }
                 commission.FinalPrice = request.NegotiatePrice.Value - commission.DiscountAmount;
+                if (commission.FinalPrice <= 0)
+                    throw new ArgumentException("Negotiated price must remain positive after discount.");
             }
         }
 
@@ -261,6 +288,43 @@ public class CommissionService : ICommissionService
         var commission = await OwnedCommissionAsync(id, clientId, creator: false, cancellationToken);
         if (commission.Status != CommissionStatus.InProgress || commission.EscrowStatus != EscrowStatus.Pending)
             throw new InvalidOperationException("Commission is not ready for escrow deposit.");
+        if (commission.VoucherId.HasValue)
+        {
+            var voucher = await _dbContext.Vouchers.SingleAsync(v => v.Id == commission.VoucherId.Value, cancellationToken);
+            var voucherCheck = await _voucherCheckService.CheckAsync(
+                clientId, voucher.VoucherCode, commission.TotalPrice, nameof(Commission), commission.Id, cancellationToken);
+            if (!voucherCheck.Success)
+                throw new InvalidOperationException(voucherCheck.Errors.FirstOrDefault() ?? "Mã giảm giá không còn hợp lệ.");
+
+            if (_dbContext.Database.IsRelational())
+            {
+                var affected = await _dbContext.Vouchers
+                    .Where(v => v.Id == voucher.Id && v.IsActive
+                        && (v.UsageLimit == null || v.UsedCount < v.UsageLimit.Value))
+                    .ExecuteUpdateAsync(update => update
+                        .SetProperty(v => v.UsedCount, v => v.UsedCount + 1)
+                        .SetProperty(v => v.UpdatedAt, DateTimeOffset.UtcNow), cancellationToken);
+                if (affected == 0) throw new InvalidOperationException("Mã giảm giá đã hết lượt sử dụng.");
+            }
+            else
+            {
+                voucher.UsedCount++;
+                voucher.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+
+            commission.DiscountAmount = voucherCheck.DiscountAmount;
+            commission.FinalPrice = voucherCheck.FinalAmount;
+            _dbContext.VoucherRedemptions.Add(new VoucherRedemption
+            {
+                VoucherId = voucher.Id,
+                UserId = clientId,
+                RefType = nameof(Commission),
+                RefId = commission.Id,
+                DiscountAmount = voucherCheck.DiscountAmount,
+                OrderAmount = commission.TotalPrice,
+                FinalAmount = voucherCheck.FinalAmount
+            });
+        }
         var wallet = await _walletService.GetOrCreateWalletAsync(clientId, cancellationToken);
         if (wallet.Status != WalletStatus.Active) throw new InvalidOperationException("Wallet is inactive.");
         await _walletService.HoldFundsAsync(wallet, WalletTransactionType.EscrowHold, commission.FinalPrice,
@@ -291,11 +355,11 @@ public class CommissionService : ICommissionService
         // Upload original
         var originalKey = $"commissions/{commissionId}/milestone-{milestone.Sequence}-original-{Guid.NewGuid()}.jpg";
         var originalUrl = await _storageService.UploadPrivateAsync(fileStream, originalKey, contentType, cancellationToken);
-        
+
         // Reset stream for watermark
         fileStream.Position = 0;
         using var watermarkedStream = await _watermarkService.ApplyWatermarkAsync(fileStream, "PROTECTED DEMO · DO NOT COPY", cancellationToken);
-        
+
         var watermarkedKey = $"commissions/{commissionId}/milestone-{milestone.Sequence}-watermarked-{Guid.NewGuid()}.jpg";
         var watermarkedUrl = await _storageService.UploadPublicAsync(watermarkedStream, watermarkedKey, "image/jpeg", cancellationToken);
 
@@ -352,13 +416,16 @@ public class CommissionService : ICommissionService
 
     public async Task<MilestoneDto> RequestMilestoneRevisionAsync(Guid commissionId, Guid milestoneId, RequestRevisionRequest request, Guid clientId, CancellationToken cancellationToken = default)
     {
+        var validation = new RequestRevisionRequestValidator().Validate(request);
+        if (!validation.IsValid) throw new ArgumentException(string.Join(" ", validation.Errors.Select(e => e.ErrorMessage)));
+
         var commission = await OwnedCommissionAsync(commissionId, clientId, creator: false, cancellationToken);
         if (commission.Status != CommissionStatus.InProgress) throw new InvalidOperationException("Commission is not in progress.");
         var milestone = await _dbContext.Milestones.FirstOrDefaultAsync(m => m.Id == milestoneId && m.CommissionId == commissionId, cancellationToken);
         if (milestone == null) throw new KeyNotFoundException("Không tìm thấy cột mốc milestone.");
         if (milestone.Status != MilestoneStatus.Submitted || milestone.Sequence != commission.CurrentStage)
             throw new InvalidOperationException("Milestone cannot be revised in this state.");
-            
+
         if (milestone.RevisionCount >= milestone.MaxRevisions)
             throw new InvalidOperationException("Đã vượt quá số lần sửa tối đa cho cột mốc này.");
 
@@ -414,7 +481,7 @@ public class CommissionService : ICommissionService
 
         return MapToDto(commission);
     }
-    
+
     public async Task<string> GetFinalDownloadUrlAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
         var commission = await PartyCommissionAsync(id, userId, cancellationToken);
@@ -434,7 +501,7 @@ public class CommissionService : ICommissionService
         await PartyCommissionAsync(commissionId, userId, cancellationToken);
         var milestone = await _dbContext.Milestones.FirstOrDefaultAsync(m => m.Id == milestoneId && m.CommissionId == commissionId, cancellationToken);
         if (milestone == null) throw new KeyNotFoundException("Milestone not found.");
-        
+
         return milestone.WatermarkedUrl ?? string.Empty;
     }
 
@@ -444,15 +511,8 @@ public class CommissionService : ICommissionService
         var commission = await PartyCommissionAsync(id, userId, cancellationToken);
         if (commission.Status is CommissionStatus.Completed or CommissionStatus.Cancelled or CommissionStatus.Disputed)
             throw new InvalidOperationException("Commission cannot be cancelled in this state.");
-        
-        if (commission.EscrowHeldAmount > 0)
-        {
-            var wallet = await _walletService.GetOrCreateWalletAsync(commission.ClientId, cancellationToken);
-            await _walletService.RefundHeldFundsAsync(wallet, WalletTransactionType.RefundFromHold,
-                commission.EscrowHeldAmount, nameof(Commission), commission.Id, request.CancellationReason, cancellationToken);
-            commission.EscrowHeldAmount = 0;
-            commission.EscrowStatus = EscrowStatus.Refunded;
-        }
+        if (commission.EscrowHeldAmount > 0 || commission.Status == CommissionStatus.Delivered)
+            throw new InvalidOperationException("Funded commissions must be resolved through a dispute.");
 
         commission.Status = CommissionStatus.Cancelled;
         commission.UpdatedAt = DateTimeOffset.UtcNow;
@@ -466,6 +526,9 @@ public class CommissionService : ICommissionService
 
     public async Task<DisputeDto> CreateDisputeAsync(Guid id, CreateDisputeRequest request, Guid raisedById, CancellationToken cancellationToken = default)
     {
+        var validation = new CreateDisputeRequestValidator().Validate(request);
+        if (!validation.IsValid) throw new ArgumentException(string.Join(" ", validation.Errors.Select(e => e.ErrorMessage)));
+
         var commission = await PartyCommissionAsync(id, raisedById, cancellationToken);
         if (commission.Status is CommissionStatus.Completed or CommissionStatus.Cancelled or CommissionStatus.Disputed)
             throw new InvalidOperationException("Commission cannot be disputed in this state.");

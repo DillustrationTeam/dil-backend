@@ -1,6 +1,6 @@
 namespace ArtCommission.Application.CreatorApplication.DTOs;
 
-public class SubmitCreatorApplicationDto
+public sealed record SubmitCreatorApplicationDto
 {
     public string? PrimaryStyle { get; set; }
     public List<string> PortfolioLinks { get; set; } = new List<string>();

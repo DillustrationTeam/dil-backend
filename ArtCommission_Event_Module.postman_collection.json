@@ -1,0 +1,505 @@
+{
+	"info": {
+		"_postman_id": "9b12a84c-359f-4bc2-8f19-a1b7e4efc391",
+		"name": "ArtCommission - Event & Contest Module",
+		"description": "Bộ sưu tập kiểm thử toàn diện cho Module Quản lý Cuộc thi / Sự kiện vẽ (Events, Submissions, Votes, Juries, Invitations).",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:5075",
+			"type": "string"
+		},
+		{
+			"key": "adminToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "creatorToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "userToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "eventId",
+			"value": "00000000-0000-0000-0000-000000000000",
+			"type": "string"
+		},
+		{
+			"key": "submissionId",
+			"value": "00000000-0000-0000-0000-000000000000",
+			"type": "string"
+		},
+		{
+			"key": "creatorId",
+			"value": "00000000-0000-0000-0000-000000000000",
+			"type": "string"
+		},
+		{
+			"key": "invitationId",
+			"value": "00000000-0000-0000-0000-000000000000",
+			"type": "string"
+		},
+		{
+			"key": "artworkId",
+			"value": "00000000-0000-0000-0000-000000000000",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "1. Events (Sự kiện)",
+			"item": [
+				{
+					"name": "1.1 Lấy danh sách sự kiện (Công khai)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/events?page=1&pageSize=10&sortBy=latest",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "events"],
+							"query": [
+								{ "key": "page", "value": "1" },
+								{ "key": "pageSize", "value": "10" },
+								{ "key": "sortBy", "value": "latest" }
+							]
+						}
+					}
+				},
+				{
+					"name": "1.2 Lấy chi tiết sự kiện theo ID (Công khai)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/events/{{eventId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "events", "{{eventId}}"]
+						}
+					}
+				},
+				{
+					"name": "1.3 Lấy bảng xếp hạng (Leaderboard) theo Votes",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/events/{{eventId}}/leaderboard?sortBy=votes&page=1&pageSize=10",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "events", "{{eventId}}", "leaderboard"],
+							"query": [
+								{ "key": "sortBy", "value": "votes" },
+								{ "key": "page", "value": "1" },
+								{ "key": "pageSize", "value": "10" }
+							]
+						}
+					}
+				},
+				{
+					"name": "1.4 Lấy bảng xếp hạng (Leaderboard) theo Giám khảo (Score)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/events/{{eventId}}/leaderboard?sortBy=score&page=1&pageSize=10",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "events", "{{eventId}}", "leaderboard"],
+							"query": [
+								{ "key": "sortBy", "value": "score" },
+								{ "key": "page", "value": "1" },
+								{ "key": "pageSize", "value": "10" }
+							]
+						}
+					}
+				},
+				{
+					"name": "1.5 Tạo sự kiện mới (Admin/Mod)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Cuộc thi vẽ minh họa: Ánh Sáng Mùa Hè 2026\",\n  \"description\": \"Sân chơi sáng tạo nghệ thuật dành cho Artist.\",\n  \"bannerUrl\": \"https://picsum.photos/seed/event-banner/1200/400\",\n  \"rules\": \"Tác phẩm chính chủ, không vi phạm bản quyền.\",\n  \"prize\": \"Giải nhất: 10.000.000 VNĐ; Giải nhì: 5.000.000 VNĐ.\",\n  \"maxVote\": 3,\n  \"status\": \"Draft\",\n  \"submissionStartAt\": \"2026-10-05T00:00:00+07:00\",\n  \"submissionEndAt\": \"2026-10-15T23:59:59+07:00\",\n  \"judgingStartAt\": \"2026-10-16T00:00:00+07:00\",\n  \"judgingEndAt\": \"2026-10-20T23:59:59+07:00\",\n  \"votingStartAt\": \"2026-10-21T00:00:00+07:00\",\n  \"votingEndAt\": \"2026-10-25T23:59:59+07:00\",\n  \"resultAnnouncementAt\": \"2026-10-28T19:00:00+07:00\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/events",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "events"]
+						}
+					}
+				},
+				{
+					"name": "1.6 Cập nhật sự kiện (Admin/Mod)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Cuộc thi vẽ minh họa: Ánh Sáng Mùa Hè 2026 (Đã mở)\",\n  \"description\": \"Cập nhật mô tả và giải thưởng.\",\n  \"bannerUrl\": \"https://picsum.photos/seed/event-banner-v2/1200/400\",\n  \"rules\": \"Quy định chuẩn kích thước tối thiểu 1920x1080.\",\n  \"prize\": \"Tổng giải thưởng 25.000.000 VNĐ.\",\n  \"maxVote\": 5,\n  \"status\": \"Open\",\n  \"submissionStartAt\": \"2026-10-05T00:00:00+07:00\",\n  \"submissionEndAt\": \"2026-10-15T23:59:59+07:00\",\n  \"judgingStartAt\": \"2026-10-16T00:00:00+07:00\",\n  \"judgingEndAt\": \"2026-10-20T23:59:59+07:00\",\n  \"votingStartAt\": \"2026-10-21T00:00:00+07:00\",\n  \"votingEndAt\": \"2026-10-25T23:59:59+07:00\",\n  \"resultAnnouncementAt\": \"2026-10-28T19:00:00+07:00\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/events/{{eventId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "events", "{{eventId}}"]
+						}
+					}
+				},
+				{
+					"name": "1.7 Xóa sự kiện (Draft & Chưa tới giờ nhận bài)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/events/{{eventId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "events", "{{eventId}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "2. Submissions (Bài dự thi)",
+			"item": [
+				{
+					"name": "2.1 Lấy bài thi của một sự kiện (Giảm dần)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/events/{{eventId}}/submissions?page=1&pageSize=10&sortBy=date",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "events", "{{eventId}}", "submissions"],
+							"query": [
+								{ "key": "page", "value": "1" },
+								{ "key": "pageSize", "value": "10" },
+								{ "key": "sortBy", "value": "date" }
+							]
+						}
+					}
+				},
+				{
+					"name": "2.2 Lấy bài thi toàn hệ thống (Công khai)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/event-submissions?page=1&pageSize=10&sortBy=date",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "event-submissions"],
+							"query": [
+								{ "key": "page", "value": "1" },
+								{ "key": "pageSize", "value": "10" },
+								{ "key": "sortBy", "value": "date" }
+							]
+						}
+					}
+				},
+				{
+					"name": "2.3 Nộp bài: Chọn tranh CÓ SẴN trong kho",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{creatorToken}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"eventId\": \"{{eventId}}\",\n  \"artworkId\": \"{{artworkId}}\",\n  \"title\": \"Bình Minh Trên Biển (Tranh kho cá nhân)\",\n  \"description\": \"Tác phẩm vẽ phong cảnh rạng đông.\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/event-submissions",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "event-submissions"]
+						}
+					}
+				},
+				{
+					"name": "2.4 Nộp bài: Upload tranh MỚI từ máy tính",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{creatorToken}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"eventId\": \"{{eventId}}\",\n  \"title\": \"Mùa Hè Rực Rỡ (Upload mới từ máy)\",\n  \"description\": \"Bức vẽ vẽ riêng cho cuộc thi.\",\n  \"imageUrl\": \"https://picsum.photos/seed/art-new/1920/1080\",\n  \"thumbnailUrl\": \"https://picsum.photos/seed/art-new-thumb/400/400\",\n  \"isAiGenerated\": false,\n  \"tags\": [\"summer\", \"sea\", \"digital-art\"]\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/event-submissions",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "event-submissions"]
+						}
+					}
+				},
+				{
+					"name": "2.5 Sửa bài thi (Creator-only, dọn dẹp tranh cũ tự động)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{creatorToken}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Mùa Hè Rực Rỡ (Bản cập nhật v2)\",\n  \"description\": \"Đã chỉnh sửa ánh sáng.\",\n  \"imageUrl\": \"https://picsum.photos/seed/art-new-v2/1920/1080\",\n  \"thumbnailUrl\": \"https://picsum.photos/seed/art-new-v2-thumb/400/400\",\n  \"isAiGenerated\": false,\n  \"tags\": [\"summer\", \"v2\"]\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/event-submissions/{{submissionId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "event-submissions", "{{submissionId}}"]
+						}
+					}
+				},
+				{
+					"name": "2.6 Rút bài thi (Creator-only, dọn dẹp tranh upload tự động)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{creatorToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/event-submissions/{{submissionId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "event-submissions", "{{submissionId}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "3. Votes (Bình chọn)",
+			"item": [
+				{
+					"name": "3.1 Bình chọn bài thi (Body JSON)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userToken}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"submissionId\": \"{{submissionId}}\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/event-votes",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "event-votes"]
+						}
+					}
+				},
+				{
+					"name": "3.2 Bình chọn bài thi (Path URL)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/event-votes/{{submissionId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "event-votes", "{{submissionId}}"]
+						}
+					}
+				},
+				{
+					"name": "3.3 Hủy bình chọn",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/event-votes/{{submissionId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "event-votes", "{{submissionId}}"]
+						}
+					}
+				},
+				{
+					"name": "3.4 Xem danh sách bài tôi đã vote",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/event-votes/my-votes?eventId={{eventId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "event-votes", "my-votes"],
+							"query": [
+								{ "key": "eventId", "value": "{{eventId}}" }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "4. Juries (Ban giám khảo)",
+			"item": [
+				{
+					"name": "4.1 Lấy danh sách giám khảo của sự kiện (Kèm lọc Role & Tìm tên)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/events/{{eventId}}/juries?role=CREATOR&search=Minh&page=1&pageSize=20",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "events", "{{eventId}}", "juries"],
+							"query": [
+								{ "key": "role", "value": "CREATOR" },
+								{ "key": "search", "value": "Minh" },
+								{ "key": "page", "value": "1" },
+								{ "key": "pageSize", "value": "20" }
+							]
+						}
+					}
+				},
+				{
+					"name": "4.2 Thêm giám khảo (Admin/Mod, Role CREATOR, trước JudgingStartAt)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"creatorId\": \"{{creatorId}}\",\n  \"isHeadJury\": true\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/events/{{eventId}}/juries",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "events", "{{eventId}}", "juries"]
+						}
+					}
+				},
+				{
+					"name": "4.3 Xóa giám khảo (Admin/Mod, trước JudgingStartAt)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/events/{{eventId}}/juries/{{creatorId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "events", "{{eventId}}", "juries", "{{creatorId}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "5. Invitations (Lời mời giám khảo)",
+			"item": [
+				{
+					"name": "5.1 Gửi lời mời làm giám khảo (Admin/Mod)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"eventId\": \"{{eventId}}\",\n  \"sentToCreatorId\": \"{{creatorId}}\",\n  \"isHeadJury\": true,\n  \"message\": \"Kính mời bạn tham gia làm Trưởng ban giám khảo cuộc thi.\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/invitations",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "invitations"]
+						}
+					}
+				},
+				{
+					"name": "5.2 Xem danh sách lời mời gửi tới tôi (Creator)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{creatorToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/invitations/me?status=Pending&page=1&pageSize=10",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "invitations", "me"],
+							"query": [
+								{ "key": "status", "value": "Pending" },
+								{ "key": "page", "value": "1" },
+								{ "key": "pageSize", "value": "10" }
+							]
+						}
+					}
+				},
+				{
+					"name": "5.3 Chấp nhận lời mời (Creator, trước JudgingStartAt)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{creatorToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/invitations/{{invitationId}}/accept",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "invitations", "{{invitationId}}", "accept"]
+						}
+					}
+				},
+				{
+					"name": "5.4 Từ chối lời mời (Creator)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{creatorToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/invitations/{{invitationId}}/decline",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "invitations", "{{invitationId}}", "decline"]
+						}
+					}
+				},
+				{
+					"name": "5.5 Hủy lời mời đã gửi (Admin/Mod)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/invitations/{{invitationId}}/cancel",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "invitations", "{{invitationId}}", "cancel"]
+						}
+					}
+				}
+			]
+		}
+	]
+}

@@ -30,8 +30,11 @@ public sealed class EligibleArtworksQueryHandler
 
         var limit = request.Limit <= 0 ? DefaultLimit : Math.Min(request.Limit, MaxLimit);
         var query = _db.Artworks.AsNoTracking().Where(artwork => !artwork.IsDeleted
-            && ((artwork.CreatorProfile != null && !artwork.CreatorProfile.IsDeleted && artwork.CreatorProfile.UserId == request.UserId)
-                || _db.ArtworkOwnerships.Any(o => o.ArtworkId == artwork.Id && o.OwnerId == request.UserId && o.IsCurrent && !o.IsDeleted))
+            && (_db.ArtworkOwnerships.Any(o => o.ArtworkId == artwork.Id && o.OwnerId == request.UserId && o.IsCurrent && !o.IsDeleted)
+                || (!_db.ArtworkOwnerships.Any(o => o.ArtworkId == artwork.Id && o.IsCurrent && !o.IsDeleted)
+                    && artwork.CreatorProfile != null
+                    && !artwork.CreatorProfile.IsDeleted
+                    && artwork.CreatorProfile.UserId == request.UserId))
             && !_db.Auctions.Any(auction => auction.ArtworkId == artwork.Id && !auction.IsDeleted
                 && (auction.Status == AuctionStatus.Scheduled || auction.Status == AuctionStatus.Active || auction.Status == AuctionStatus.Ended)));
 

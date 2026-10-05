@@ -62,6 +62,10 @@ public class GetAuctionByIdQueryHandler
             .AsNoTracking()
             .CountAsync(w => w.AuctionId == auction.Id && !w.IsDeleted, cancellationToken);
 
+        var deliverableCount = await _db.Deliverables
+            .AsNoTracking()
+            .CountAsync(d => d.AuctionId == auction.Id && !d.IsDeleted, cancellationToken);
+
         var isWatching = request.CurrentUserId.HasValue
                          && await _db.AuctionWatches
                              .AsNoTracking()
@@ -103,6 +107,39 @@ public class GetAuctionByIdQueryHandler
             .Select(u => new { u.Id, u.FullName })
             .ToDictionaryAsync(u => u.Id, u => u.FullName, cancellationToken);
 
+        var topBidderRows = await _db.Bids
+            .AsNoTracking()
+            .Where(b => b.AuctionId == auction.Id && !b.IsDeleted)
+            .GroupBy(b => b.BidderId)
+            .Select(group => new
+            {
+                UserId = group.Key,
+                HighestBid = group.Max(b => b.Amount),
+                BidCount = group.Count()
+            })
+            .OrderByDescending(row => row.HighestBid)
+            .Take(7)
+            .ToListAsync(cancellationToken);
+
+        var participantIds = topBidderRows.Select(row => row.UserId).ToList();
+        var participantNames = await _db.Users
+            .AsNoTracking()
+            .Where(user => participantIds.Contains(user.Id))
+            .Select(user => new { user.Id, user.FullName })
+            .ToDictionaryAsync(user => user.Id, user => user.FullName, cancellationToken);
+
+        var participants = new List<AuctionParticipantDto>();
+        if (seller is not null)
+        {
+            participants.Add(new AuctionParticipantDto(seller.Id, seller.FullName, "Seller", null, 0));
+        }
+        participants.AddRange(topBidderRows.Select(row => new AuctionParticipantDto(
+            row.UserId,
+            participantNames.GetValueOrDefault(row.UserId),
+            "Bidder",
+            row.HighestBid,
+            row.BidCount)));
+
         var recentBids = rawBids
             .Select(b => AuctionMapper.ToDto(
                 b,
@@ -111,7 +148,9 @@ public class GetAuctionByIdQueryHandler
 
         var detail = new AuctionDetailDto(
             AuctionId: auction.Id,
-            Artwork: AuctionMapper.ToArtworkDto(auction.Artwork),
+            Artwork: AuctionMapper.ToArtworkDto(auction.Artwork) is { } artwork
+                ? artwork with { DeliverableCount = deliverableCount }
+                : null,
             Seller: seller is null ? null : new AuctionSellerDto(seller.Id, seller.FullName),
             AuctionType: auction.AuctionType.ToString(),
             StartPrice: auction.StartPrice,
@@ -127,7 +166,8 @@ public class GetAuctionByIdQueryHandler
             AuctionStatus: auction.Status.ToString(),
             PaymentDeadline: auction.PaymentDeadline,
             IsWatching: isWatching,
-            LeadingBidderId: leading?.BidderId);
+            LeadingBidderId: leading?.BidderId,
+            Participants: participants);
 
         return (true, detail, recentBids, []);
     }

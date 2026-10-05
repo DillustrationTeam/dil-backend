@@ -20,7 +20,22 @@ public static class AuctionMapper
                 artwork.Title,
                 artwork.ThumbnailUrl ?? artwork.ImageUrl,
                 artwork.ImageUrl,
-                artwork.Style);
+                artwork.Style,
+                artwork.CreatedAt,
+                artwork.Resolution,
+                artwork.FileSizeBytes,
+                GetFileFormat(artwork.ImageUrl));
+
+    private static string? GetFileFormat(string? fileUrl)
+    {
+        if (string.IsNullOrWhiteSpace(fileUrl)) return null;
+
+        var path = Uri.TryCreate(fileUrl, UriKind.Absolute, out var uri)
+            ? uri.AbsolutePath
+            : fileUrl.Split('?', '#')[0];
+        var extension = Path.GetExtension(path);
+        return string.IsNullOrWhiteSpace(extension) ? null : extension.TrimStart('.').ToUpperInvariant();
+    }
 
     public static AuctionSellerDto? ToSellerDto(ApplicationUser? user) =>
         user is null
@@ -62,6 +77,7 @@ public static class AuctionMapper
         Artwork: ToArtworkDto(artwork),
         CurrentPrice: auction.CurrentPrice,
         BidCount: auction.BidCount,
+        StartAt: auction.StartAt,
         EndAt: auction.EndAt,
         AuctionStatus: auction.Status.ToString(),
         WatchCount: watchCount);

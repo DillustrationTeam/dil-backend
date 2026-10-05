@@ -110,6 +110,7 @@ public class GetAuctionsQueryHandler
                 a.ArtworkId,
                 a.CurrentPrice,
                 a.BidCount,
+                a.StartAt,
                 a.EndAt,
                 a.Status,
                 a.CreatedAt,
@@ -133,6 +134,7 @@ public class GetAuctionsQueryHandler
                 r.Style),
             CurrentPrice: r.CurrentPrice,
             BidCount: r.BidCount,
+            StartAt: r.StartAt,
             EndAt: r.EndAt,
             AuctionStatus: r.Status.ToString(),
             WatchCount: r.WatchCount)).ToList();
@@ -144,7 +146,7 @@ public class GetAuctionsQueryHandler
 
         // Đặc tả API yêu cầu meta: { cursor, total }. Trả thêm nextCursor (tên tường minh
         // hơn) để FE dùng được ngay, nhưng total là trường BẮT BUỘC phải có.
-        return (true, items, new { cursor = nextCursor, nextCursor, total }, []);
+        return (true, items, new { cursor = nextCursor, nextCursor, total }, Array.Empty<string>());
     }
 
     /// <summary>
@@ -204,6 +206,7 @@ public class GetAuctionsQueryHandler
         Guid ArtworkId,
         decimal CurrentPrice,
         int BidCount,
+        DateTimeOffset StartAt,
         DateTimeOffset EndAt,
         AuctionStatus Status,
         DateTimeOffset CreatedAt,

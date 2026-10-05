@@ -26,11 +26,29 @@ public class UploadArtworkCommandValidator : AbstractValidator<UploadArtworkComm
             .MaximumLength(200).WithMessage("Artwork title must be 200 characters or fewer.");
 
         RuleFor(x => x.ImageUrl)
-            .NotEmpty().WithMessage("Image URL is required.");
+            .NotEmpty().WithMessage("Image URL is required.")
+            .Must(IsHttpUrl).WithMessage("Image URL must be a valid HTTP(S) URL. Upload the image file first.")
+            .MaximumLength(500).WithMessage("Image URL must be 500 characters or fewer. Upload the image file first.");
+
+        RuleFor(x => x.ThumbnailUrl)
+            .Must(url => string.IsNullOrWhiteSpace(url) || IsHttpUrl(url))
+            .WithMessage("Thumbnail URL must be a valid HTTP(S) URL. Upload the thumbnail file first.")
+            .MaximumLength(500).WithMessage("Thumbnail URL must be 500 characters or fewer. Upload the image file first.");
+
+        RuleFor(x => x.Description)
+            .MaximumLength(2000).WithMessage("Artwork description must be 2000 characters or fewer.");
+
+        RuleFor(x => x.AiDetectionScore)
+            .InclusiveBetween(0m, 1m).When(x => x.AiDetectionScore.HasValue)
+            .WithMessage("AI detection score must be between 0 and 1.");
 
         RuleFor(x => x.Tags)
             .Must(tags => tags is null || tags.Count <= 10).WithMessage("You can assign up to 10 tags.");
+        RuleForEach(x => x.Tags).NotEmpty().MaximumLength(50);
     }
+
+    private static bool IsHttpUrl(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https";
 }
 
 public class UploadArtworkCommandHandler : IRequestHandler<UploadArtworkCommand, (bool Success, ArtworkDto? Data, string[] Errors)>
@@ -89,7 +107,7 @@ public class UploadArtworkCommandHandler : IRequestHandler<UploadArtworkCommand,
 
         if (request.Tags is { Count: > 0 })
         {
-            foreach (var tagName in request.Tags.Distinct(StringComparer.OrdinalIgnoreCase))
+            foreach (var tagName in request.Tags.Select(tag => tag.Trim()).Where(tag => tag.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 var tag = await _db.Set<ArtCommission.Domain.Entities.ArtistStudio.Tag>()
                     .FirstOrDefaultAsync(x => x.Name == tagName, cancellationToken);

@@ -10,7 +10,8 @@ public record RegisterCommand(
     string Password,
     string FullName,
     string VerificationTicket,
-    string? Role = null
+    string? Role = null,
+    string? UserAgent = null
 ) : IRequest<(bool Success, AuthResponseDto? AuthResponse, string[] Errors)>;
 
 public class RegisterCommandHandler : IRequestHandler<RegisterCommand, (bool Success, AuthResponseDto? AuthResponse, string[] Errors)>
@@ -47,7 +48,7 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, (bool Suc
             return (false, null, authErrors);
         }
 
-        var tokens = await _jwtTokenGenerator.GenerateTokensAsync(user, roles, clientIp: null, cancellationToken);
+        var tokens = await _jwtTokenGenerator.GenerateTokensAsync(user, roles, clientIp: null, request.UserAgent, cancellationToken);
         var authResponse = new AuthResponseDto(user, roles, tokens);
 
         return (true, authResponse, Array.Empty<string>());

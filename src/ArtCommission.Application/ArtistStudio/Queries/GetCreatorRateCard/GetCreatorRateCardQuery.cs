@@ -1,4 +1,7 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Security.Cryptography;
+using System.Text;
 using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Common.Interfaces;
 using MediatR;
@@ -9,12 +12,23 @@ namespace ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard;
 public record RateCardMilestoneDto(int Sequence, string Title, decimal Price);
 public record RateCardPackageDto(Guid Id, string Name, string? Description, decimal Price, List<RateCardMilestoneDto> Milestones);
 
+// Older stored packages used slugs. Map them consistently to IDs for display and ordering.
+public sealed class RateCardIdConverter : JsonConverter<Guid>
+{
+    public override Guid Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var value = reader.GetString() ?? string.Empty;
+        return Guid.TryParse(value, out var id) ? id : new Guid(SHA256.HashData(Encoding.UTF8.GetBytes(value)).AsSpan(0, 16));
+    }
+    public override void Write(Utf8JsonWriter writer, Guid value, JsonSerializerOptions options) => writer.WriteStringValue(value);
+}
+
 public record GetCreatorRateCardQuery(Guid Identifier) : IRequest<(bool Success, List<RateCardPackageDto>? Data, string[] Errors)>;
 
 public class GetCreatorRateCardQueryHandler : IRequestHandler<GetCreatorRateCardQuery, (bool Success, List<RateCardPackageDto>? Data, string[] Errors)>
 {
     private readonly IApplicationDbContext _db;
-    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true, Converters = { new RateCardIdConverter() } };
 
     public GetCreatorRateCardQueryHandler(IApplicationDbContext db)
     {

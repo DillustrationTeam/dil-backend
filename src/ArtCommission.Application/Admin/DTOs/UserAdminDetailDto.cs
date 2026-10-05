@@ -3,39 +3,59 @@ namespace ArtCommission.Application.Admin.DTOs;
 /// <summary>
 /// DTO chứa thông tin chi tiết hồ sơ tài khoản, vai trò, số dư ví và lịch sử xử phạt (SCR-23 / UC31).
 /// </summary>
-public record UserAdminDetailDto
+public sealed record UserAdminDetailDto
 {
-    public Guid Id { get; init; }
-    public string Email { get; init; } = string.Empty;
-    public string UserName { get; init; } = string.Empty;
-    public string FullName { get; init; } = string.Empty;
-    public string? PhoneNumber { get; init; }
-    public List<string> Roles { get; init; } = new();
-    public bool IsVerified { get; init; }
-    public bool IsLockedOut { get; init; }
-    public DateTimeOffset? LockoutEnd { get; init; }
-    public DateTimeOffset CreatedAt { get; init; }
-    public DateTimeOffset? UpdatedAt { get; init; }
+    public Guid Id { get; set; }
 
-    public UserAdminWalletDto? Wallet { get; init; }
-    public List<UserSanctionHistoryDto> SanctionsHistory { get; init; } = new();
+    public string Email { get; set; } = string.Empty;
+
+    public string UserName { get; set; } = string.Empty;
+
+    public string FullName { get; set; } = string.Empty;
+
+    public string? PhoneNumber { get; set; }
+
+    public List<string> Roles { get; set; } = new();
+
+    public bool IsVerified { get; set; }
+
+    public bool IsLockedOut { get; set; }
+
+    public DateTimeOffset? LockoutEnd { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+
+    public DateTimeOffset? UpdatedAt { get; set; }
+
+    public UserAdminWalletDto? Wallet { get; set; }
+
+    public List<UserSanctionHistoryDto> SanctionsHistory { get; set; } = new();
 }
 
-public record UserAdminWalletDto
+public sealed record UserAdminWalletDto
 {
-    public decimal Balance { get; init; }
-    public decimal LockedBalance { get; init; }
-    public string Currency { get; init; } = "VND";
+    public decimal Balance { get; set; }
+
+    public decimal LockedBalance { get; set; }
+
+    public string Currency { get; set; } = "VND";
 }
 
-public record UserSanctionHistoryDto
+public sealed record UserSanctionHistoryDto
 {
-    public Guid Id { get; init; }
-    public string ActionType { get; init; } = string.Empty;
-    public string Reason { get; init; } = string.Empty;
-    public int? DurationDays { get; init; }
-    public DateTimeOffset? ExpiresAt { get; init; }
-    public Guid ActionByAdminId { get; init; }
-    public string ActionByAdminName { get; init; } = string.Empty;
-    public DateTimeOffset CreatedAt { get; init; }
+    public Guid Id { get; set; }
+
+    public string ActionType { get; set; } = string.Empty;
+
+    public string Reason { get; set; } = string.Empty;
+
+    public int? DurationDays { get; set; }
+
+    public DateTimeOffset? ExpiresAt { get; set; }
+
+    public Guid ActionByAdminId { get; set; }
+
+    public string ActionByAdminName { get; set; } = string.Empty;
+
+    public DateTimeOffset CreatedAt { get; set; }
 }

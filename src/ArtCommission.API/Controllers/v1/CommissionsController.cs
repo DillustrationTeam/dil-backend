@@ -19,6 +19,14 @@ namespace ArtCommission.API.Controllers.v1;
 [ProducesResponseType(StatusCodes.Status500InternalServerError)]
 public class CommissionsController : ControllerBase
 {
+    private const long MaxWipFileSize = 25 * 1024 * 1024;
+    private const long MaxFinalFileSize = 100 * 1024 * 1024;
+    private static readonly string[] WipContentTypes = ["image/jpeg", "image/png", "image/webp"];
+    private static readonly string[] FinalContentTypes =
+    [
+        .. WipContentTypes, "application/pdf", "application/zip", "application/x-zip-compressed",
+        "image/vnd.adobe.photoshop", "application/octet-stream"
+    ];
     private readonly ICommissionService _commissionService;
 
     public CommissionsController(ICommissionService commissionService)
@@ -124,6 +132,7 @@ public class CommissionsController : ControllerBase
     [HttpPost("{commissionId:guid}/milestones/{milestoneId:guid}/submit")]
     [Authorize(Roles = "Creator")]
     [Consumes("multipart/form-data")]
+    [RequestSizeLimit(MaxWipFileSize)]
     public async Task<IActionResult> SubmitMilestoneWip(
         Guid commissionId,
         Guid milestoneId,
@@ -131,6 +140,8 @@ public class CommissionsController : ControllerBase
         [FromForm] string? creatorNote,
         CancellationToken ct)
     {
+        ValidateUpload(file, MaxWipFileSize, WipContentTypes, "WIP");
+        if (creatorNote?.Length > 2000) throw new ArgumentException("Creator note must be 2000 characters or fewer.");
         var creatorId = GetCurrentUserId();
         var stream = file?.OpenReadStream();
         var contentType = file?.ContentType;
@@ -183,11 +194,13 @@ public class CommissionsController : ControllerBase
     [HttpPost("{id:guid}/deliver")]
     [Authorize(Roles = "Creator")]
     [Consumes("multipart/form-data")]
+    [RequestSizeLimit(MaxFinalFileSize)]
     public async Task<IActionResult> DeliverFinalWork(Guid id, IFormFile file, CancellationToken ct)
     {
+        ValidateUpload(file, MaxFinalFileSize, FinalContentTypes, "final deliverable");
         var creatorId = GetCurrentUserId();
         var stream = file.OpenReadStream();
-        var result = await _commissionService.DeliverFinalWorkAsync(id, stream, file.ContentType, file.FileName, creatorId, ct);
+        var result = await _commissionService.DeliverFinalWorkAsync(id, stream, file.ContentType, Path.GetFileName(file.FileName), creatorId, ct);
         return Ok(new ApiResponse<CommissionDto>(result));
     }
 
@@ -276,5 +289,13 @@ public class CommissionsController : ControllerBase
         var creatorId = GetCurrentUserId();
         var result = await _commissionService.ReplyReviewAsync(id, request.ReplyComment, creatorId, ct);
         return Ok(new ApiResponse<ReviewDto>(result));
+    }
+
+    private static void ValidateUpload(IFormFile? file, long maxSize, string[] allowedContentTypes, string label)
+    {
+        if (file is null || file.Length == 0) throw new ArgumentException($"{label} file is required.");
+        if (file.Length > maxSize) throw new ArgumentException($"{label} file exceeds the size limit.");
+        if (!allowedContentTypes.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase))
+            throw new ArgumentException($"Unsupported {label} file type.");
     }
 }

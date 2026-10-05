@@ -50,9 +50,9 @@ public sealed record SettleAuctionRequest(bool Force = false);
 /// <summary>
 /// UC32–UC35 — Auction &amp; Art Trade (14 endpoint).
 ///
-/// Mọi endpoint đều yêu cầu đăng nhập. Quyền sở hữu tài nguyên (chỉ seller sửa phiên
-/// của mình, chỉ winner tải file gốc) được kiểm tra trong handler, KHÔNG tin tham số
-/// từ client.
+/// Các endpoint đọc dữ liệu chợ (danh sách, chi tiết, lịch sử bid) cho phép khách xem.
+/// Các thao tác thay đổi dữ liệu vẫn yêu cầu đăng nhập và quyền sở hữu tài nguyên
+/// được kiểm tra trong handler, KHÔNG tin tham số từ client.
 /// </summary>
 [Authorize]
 [Route("api/v1/auctions")]
@@ -149,6 +149,7 @@ public class AuctionsController : ApiControllerBase
 
     /// <summary>Danh sách phiên đấu giá cho chợ, lọc và phân trang cursor (UC32).</summary>
     [HttpGet]
+    [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -177,6 +178,7 @@ public class AuctionsController : ApiControllerBase
     /// sẽ không thấy dữ liệu.
     /// </remarks>
     [HttpGet("{auctionId:guid}")]
+    [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -348,6 +350,7 @@ public class AuctionsController : ApiControllerBase
 
     /// <summary>Lịch sử đặt giá của phiên, cursor theo placed_at (UC32).</summary>
     [HttpGet("{auctionId:guid}/bids")]
+    [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

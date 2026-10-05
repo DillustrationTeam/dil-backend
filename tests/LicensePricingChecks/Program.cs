@@ -25,7 +25,7 @@ db.CreatorProfiles.Add(new CreatorProfile
 db.CreatorTerms.Add(new CreatorTerms { CreatorProfileId = creatorId, CommercialLicenseMultiplier = 1.5m });
 await db.SaveChangesAsync();
 
-var service = new ArtCommission.Infrastructure.Services.CommissionService(db, null!, null!, null!);
+var service = new ArtCommission.Infrastructure.Services.CommissionService(db, null!, null!, null!, new ArtCommission.Application.Payment.Common.VoucherCheckService(db));
 
 async Task<CommissionDto> Create(string licenseType) => await service.CreateCommissionAsync(new CreateCommissionRequest
 {
