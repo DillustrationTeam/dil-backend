@@ -308,12 +308,36 @@ public class VouchersController : ApiControllerBase
         return BadRequestEnvelope(errors);
     }
 
-    private static bool TryParseDate(string? value, out DateOnly date) =>
-        DateOnly.TryParse(
+    private static bool TryParseDate(string? value, out DateOnly date)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            date = default;
+            return false;
+        }
+
+        if (DateOnly.TryParse(
             value,
             System.Globalization.CultureInfo.InvariantCulture,
             System.Globalization.DateTimeStyles.None,
-            out date);
+            out date))
+        {
+            return true;
+        }
+
+        // Hỗ trợ cả định dạng ISO datetime nếu client gửi kèm giờ (e.g. 2026-10-05T16:24:00.000Z hoặc 2026-10-05T16:24)
+        if (DateTimeOffset.TryParse(
+            value,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None,
+            out var dto))
+        {
+            date = DateOnly.FromDateTime(dto.Date);
+            return true;
+        }
+
+        return false;
+    }
 }
 
 // ---------------------------------------------------------------------------
