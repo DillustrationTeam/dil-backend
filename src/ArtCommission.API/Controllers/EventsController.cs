@@ -59,6 +59,19 @@ public class EventsController : ApiControllerBase
     }
 
     /// <summary>
+    /// Lấy thống kê tổng quan của các sự kiện trên toàn hệ thống (Tổng giải thưởng, số sự kiện đang mở, tổng bài nộp).
+    /// </summary>
+    [HttpGet("stats")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetEventStats(CancellationToken cancellationToken = default)
+    {
+        var query = new GetEventStatsQuery();
+        var result = await Mediator.Send(query, cancellationToken);
+        return OkEnvelope(result);
+    }
+
+    /// <summary>
     /// Lấy chi tiết một sự kiện theo Id (Công khai).
     /// </summary>
     [HttpGet("{id:guid}")]
