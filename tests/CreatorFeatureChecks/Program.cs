@@ -90,4 +90,27 @@ var mutations = new MarketplaceMutationHandler(db);
 Check(!(await mutations.Handle(new MarketplaceMutationCommand("comment", follower, Guid.NewGuid(), Text: "Test"), default)).Success, "Missing artwork comment rejected before FK failure");
 Check(!(await mutations.Handle(new MarketplaceMutationCommand("comment", follower, artworkForInteractions.Id, Text: "Test"), default)).Success, "Hidden artwork comment rejected");
 Check(!(await mutations.Handle(new MarketplaceMutationCommand("review", follower, creator.Id, Review: new CreateCreatorReviewRequest(5, "fake")), default)).Success, "Direct review cannot bypass completed commission checks");
+var profileUpdate = new ArtCommission.Application.ArtistStudio.Commands.UpdateCreatorProfile.UpdateCreatorProfileCommand(
+    creator.UserId, "Updated Creator", "", "", "", "", "", "", false, 0);
+var profileValidator = new ArtCommission.Application.ArtistStudio.Commands.UpdateCreatorProfile.UpdateCreatorProfileCommandValidator();
+Check(profileValidator.Validate(profileUpdate).IsValid, "Empty optional fields can be cleared");
+foreach (var url in new[] { "javascript:alert(1)", "data:image/png;base64,abc", "not-a-url", "//example.com/banner.png" })
+{
+    Check(!profileValidator.Validate(profileUpdate with { WebsiteUrl = url }).IsValid, "Reject unsafe website URL");
+    Check(!profileValidator.Validate(profileUpdate with { BannerUrl = url }).IsValid, "Reject invalid banner URL");
+}
+Check(profileValidator.Validate(profileUpdate with { WebsiteUrl = "https://example.com", BannerUrl = "https://example.com/banner.png" }).IsValid, "Accept HTTP(S) profile URLs");
+Check(!profileValidator.Validate(profileUpdate with { Location = new string('x', 201) }).IsValid, "Location fits SQL limit");
+Check(!profileValidator.Validate(profileUpdate with { WebsiteUrl = "https://example.com/" + new string('x', 500) }).IsValid, "Website fits SQL limit");
+Check(!profileValidator.Validate(profileUpdate with { BannerUrl = "https://example.com/" + new string('x', 500) }).IsValid, "Banner fits SQL limit");
+var profileEditor = new ArtCommission.Application.ArtistStudio.Commands.UpdateCreatorProfile.UpdateCreatorProfileCommandHandler(db);
+Check(!(await profileEditor.Handle(profileUpdate with { UserId = Guid.NewGuid() }, default)).Success, "Another user cannot update this profile");
+creator.Headline = "Old headline";
+creator.WebsiteUrl = "https://example.com";
+await db.SaveChangesAsync();
+var editedProfile = await profileEditor.Handle(profileUpdate, default);
+Check(editedProfile.Success && editedProfile.Data?.Id == creator.Id, "Editing preserves profile identity");
+Check(creator.Headline is null && creator.WebsiteUrl is null && !creator.IsAcceptingOrders && creator.AvailableSlots == 0, "Editing clears fields and persists false/zero values");
+var createValidator = new ArtCommission.Application.ArtistStudio.Commands.CreateCreatorProfile.CreateCreatorProfileCommandValidator();
+Check(!createValidator.Validate(new ArtCommission.Application.ArtistStudio.Commands.CreateCreatorProfile.CreateCreatorProfileCommand(creator.UserId, "Creator", null, null, null, new string('x', 201), "javascript:alert(1)", "not-a-url")).IsValid, "Onboarding shares profile URL and length protections");
 Console.WriteLine($"Passed {checks} creator feature checks.");

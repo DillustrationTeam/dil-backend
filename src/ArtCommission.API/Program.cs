@@ -1,4 +1,5 @@
 using System.Text;
+using System.Security.Claims;
 using System.Net.Mail;
 using ArtCommission.API.BackgroundWorkers;
 using ArtCommission.API.Common;
@@ -113,6 +114,11 @@ builder.Services.Configure<PaymentReconciliationSettings>(
     builder.Configuration.GetSection(PaymentReconciliationSettings.SectionName));
 builder.Services.AddHostedService<PaymentReconciliationWorker>();
 
+// 3d-2. Job nền quét lời mời giám khảo đã hết hạn
+builder.Services.Configure<InvitationExpirationSettings>(
+    builder.Configuration.GetSection(InvitationExpirationSettings.SectionName));
+builder.Services.AddHostedService<InvitationExpirationWorker>();
+
 // 3c. Cổng thanh toán payOS
 // Secret lấy từ User Secrets (dev) hoặc biến môi trường PayOS__ClientId / PayOS__ApiKey / PayOS__ChecksumKey.
 builder.Services.Configure<PayOsOptions>(builder.Configuration.GetSection(PayOsOptions.SectionName));
@@ -142,6 +148,7 @@ builder.Services.AddSingleton<PayOSClient>(sp =>
 });
 
 builder.Services.AddScoped<IPaymentGateway, PayOsPaymentGateway>();
+builder.Services.AddScoped<IPayOsPayoutService, PayOsPayoutService>();
 
 // 3d-2. Cloudinary Signed Upload — client tự upload file thẳng lên Cloudinary, server chỉ ký.
 // Secret lấy từ User Secrets (dev) hoặc biến môi trường Cloudinary__ApiSecret.
@@ -257,12 +264,70 @@ builder.Services.AddAuthentication(options =>
     // Chỉ đọc từ query-string cho đúng route hub, không nới lỏng cho REST.
     options.Events = new JwtBearerEvents
     {
+        OnTokenValidated = async context =>
+        {
+            var userIdStr = context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? context.Principal?.FindFirst("sub")?.Value;
+
+            if (string.IsNullOrEmpty(userIdStr) || !Guid.TryParse(userIdStr, out var userId))
+            {
+                context.Fail("Invalid token credentials.");
+                return;
+            }
+
+            var db = context.HttpContext.RequestServices.GetRequiredService<IApplicationDbContext>();
+            var userStatus = await db.Users
+                .AsNoTracking()
+                .Where(u => u.Id == userId)
+                .Select(u => new { u.IsDeleted, u.LockoutEnd })
+                .FirstOrDefaultAsync();
+
+            if (userStatus == null || userStatus.IsDeleted)
+            {
+                const string message = "Tài khoản không tồn tại hoặc đã bị vô hiệu hóa.";
+                context.Fail(message);
+                context.HttpContext.Items["AuthFailureMessage"] = message;
+                return;
+            }
+
+            if (userStatus.LockoutEnd.HasValue && userStatus.LockoutEnd.Value > DateTimeOffset.UtcNow)
+            {
+                var isBanned = userStatus.LockoutEnd.Value >= DateTimeOffset.MaxValue.AddDays(-365);
+                var message = isBanned
+                    ? "Tài khoản của bạn đã bị khóa vĩnh viễn do vi phạm chính sách."
+                    : $"Tài khoản của bạn đã bị đình chỉ hoạt động đến {userStatus.LockoutEnd.Value.ToLocalTime():dd/MM/yyyy HH:mm}.";
+
+                context.Fail(message);
+                context.HttpContext.Items["AuthFailureMessage"] = message;
+                return;
+            }
+        },
         OnChallenge = async context =>
         {
+            if (context.Response.HasStarted)
+            {
+                return;
+            }
+
             context.HandleResponse();
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+
+            var message = context.HttpContext.Items["AuthFailureMessage"] as string;
+            if (string.IsNullOrEmpty(message))
+            {
+                var authFailure = context.AuthenticateFailure?.Message;
+                if (!string.IsNullOrEmpty(authFailure) && !authFailure.Contains("signature", StringComparison.OrdinalIgnoreCase))
+                {
+                    message = authFailure;
+                }
+                else
+                {
+                    message = "A valid access token is required.";
+                }
+            }
+
             await context.Response.WriteAsJsonAsync(ApiErrors.Create(401, "Unauthorized",
-                "A valid access token is required.", context.HttpContext.TraceIdentifier));
+                message, context.HttpContext.TraceIdentifier));
         },
         OnForbidden = async context =>
         {

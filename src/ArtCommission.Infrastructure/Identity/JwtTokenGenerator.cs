@@ -25,7 +25,7 @@ public class JwtTokenGenerator : IJwtTokenGenerator
 
     public async Task<TokenDto> GenerateTokensAsync(UserDto user, IEnumerable<string> roles, string? clientIp, string? userAgent = null, CancellationToken cancellationToken = default)
     {
-        var secretKey = _configuration["Jwt:SecretKey"] ?? "Default_Secret_Key_For_Development_Only_Must_Be_Long_256_Bits";
+        var secretKey = GetSecretKey();
         var issuer = _configuration["Jwt:Issuer"] ?? "ArtCommissionAPI";
         var audience = _configuration["Jwt:Audience"] ?? "ArtCommissionClient";
         var expiryMinutes = double.TryParse(_configuration["Jwt:ExpiryMinutes"], out var min) ? min : 15;
@@ -110,6 +110,27 @@ public class JwtTokenGenerator : IJwtTokenGenerator
             return (false, null, new[] { "Invalid or expired refresh token." });
         }
 
+        if (existingToken.User.LockoutEnd.HasValue && existingToken.User.LockoutEnd.Value > DateTimeOffset.UtcNow)
+        {
+            var isBanned = existingToken.User.LockoutEnd.Value >= DateTimeOffset.MaxValue.AddDays(-365);
+            var lockoutMsg = isBanned
+                ? "Tài khoản của bạn đã bị khóa vĩnh viễn do vi phạm chính sách."
+                : $"Tài khoản của bạn đã bị đình chỉ hoạt động đến {existingToken.User.LockoutEnd.Value.ToLocalTime():dd/MM/yyyy HH:mm}.";
+
+            var activeTokens = await _dbContext.RefreshTokens
+                .Where(rt => rt.UserId == existingToken.UserId && rt.RevokedAt == null)
+                .ToListAsync(cancellationToken);
+
+            foreach (var activeToken in activeTokens)
+            {
+                activeToken.RevokedAt = DateTimeOffset.UtcNow;
+            }
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            return (false, null, new[] { lockoutMsg });
+        }
+
         // Revoke current token (Rotation)
         var newRawRefreshToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
         var newRefreshTokenHash = HashToken(newRawRefreshToken);
@@ -136,7 +157,7 @@ public class JwtTokenGenerator : IJwtTokenGenerator
             existingToken.User.SocialLinks
         );
 
-        var secretKey = _configuration["Jwt:SecretKey"] ?? "Default_Secret_Key_For_Development_Only_Must_Be_Long_256_Bits";
+        var secretKey = GetSecretKey();
         var issuer = _configuration["Jwt:Issuer"] ?? "ArtCommissionAPI";
         var audience = _configuration["Jwt:Audience"] ?? "ArtCommissionClient";
         var expiryMinutes = double.TryParse(_configuration["Jwt:ExpiryMinutes"], out var min) ? min : 15;
@@ -232,4 +253,8 @@ public class JwtTokenGenerator : IJwtTokenGenerator
         var hashBytes = SHA256.HashData(bytes);
         return Convert.ToHexString(hashBytes);
     }
+
+    private string GetSecretKey() =>
+        _configuration["Jwt:SecretKey"]
+        ?? throw new InvalidOperationException("Jwt:SecretKey is not configured.");
 }

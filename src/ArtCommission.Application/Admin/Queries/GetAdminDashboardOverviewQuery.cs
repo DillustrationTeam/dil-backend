@@ -32,7 +32,7 @@ public class GetAdminDashboardOverviewQueryHandler : IRequestHandler<GetAdminDas
 
         // 1. CHỈ SỐ TÀI CHÍNH (Financial KPIs)
         var totalGmv = await _db.Commissions
-            .Where(c => !c.IsDeleted && c.Status != CommissionStatus.PendingAcceptance)
+            .Where(c => !c.IsDeleted && c.Status == CommissionStatus.Completed)
             .SumAsync(c => (decimal?)c.FinalPrice, cancellationToken) ?? 0m;
 
         var activeEscrowLocked = await _db.Commissions
@@ -42,15 +42,6 @@ public class GetAdminDashboardOverviewQueryHandler : IRequestHandler<GetAdminDas
         var netPlatformRevenue = await _db.WalletTransactions
             .Where(t => !t.IsDeleted && t.Type == WalletTransactionType.PlatformFee)
             .SumAsync(t => (decimal?)t.Amount, cancellationToken) ?? 0m;
-
-        if (netPlatformRevenue == 0m)
-        {
-            // Dự toán nếu sàn thu 10% trên các đơn hoàn thành
-            var completedDisbursed = await _db.Commissions
-                .Where(c => !c.IsDeleted && c.Status == CommissionStatus.Completed)
-                .SumAsync(c => (decimal?)c.DisbursedAmount, cancellationToken) ?? 0m;
-            netPlatformRevenue = Math.Round(completedDisbursed * 0.10m, 2);
-        }
 
         var totalPlatformBalance = await _db.Wallets
             .Where(w => !w.IsDeleted)
@@ -168,8 +159,14 @@ public class GetAdminDashboardOverviewQueryHandler : IRequestHandler<GetAdminDas
         // 5. BIỂU ĐỒ DÒNG TIỀN THEO NGÀY (Revenue Trend)
         var recentCommissions = await _db.Commissions
             .AsNoTracking()
-            .Where(c => !c.IsDeleted && c.CreatedAt >= trendStartDate)
-            .Select(c => new { c.CreatedAt, c.FinalPrice, c.EscrowHeldAmount, c.Status })
+            .Where(c => !c.IsDeleted && c.CreatedAt >= trendStartDate && c.Status == CommissionStatus.Completed)
+            .Select(c => new { c.CreatedAt, c.FinalPrice, c.EscrowHeldAmount })
+            .ToListAsync(cancellationToken);
+
+        var recentPlatformFees = await _db.WalletTransactions
+            .AsNoTracking()
+            .Where(t => !t.IsDeleted && t.Type == WalletTransactionType.PlatformFee && t.CreatedAt >= trendStartDate)
+            .Select(t => new { t.CreatedAt, t.Amount })
             .ToListAsync(cancellationToken);
 
         var trendList = new List<AdminDailyRevenueDto>();
@@ -183,11 +180,12 @@ public class GetAdminDashboardOverviewQueryHandler : IRequestHandler<GetAdminDas
                 .ToList();
 
             var dayGmv = dayComms
-                .Where(c => c.Status != CommissionStatus.PendingAcceptance)
                 .Sum(c => c.FinalPrice);
 
             var dayEscrow = dayComms.Sum(c => c.EscrowHeldAmount);
-            var dayRevenue = Math.Round(dayGmv * 0.10m, 2);
+            var dayRevenue = recentPlatformFees
+                .Where(t => t.CreatedAt.Date == date)
+                .Sum(t => t.Amount);
 
             trendList.Add(new AdminDailyRevenueDto
             {

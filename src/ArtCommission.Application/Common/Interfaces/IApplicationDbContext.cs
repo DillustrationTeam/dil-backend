@@ -1,6 +1,7 @@
 using ArtCommission.Domain.Entities.Ai;
 using ArtCommission.Domain.Entities.ArtistStudio;
 using ArtCommission.Domain.Entities.Chat;
+using ArtCommission.Domain.Entities.Event;
 using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Domain.Entities.Notifications;
 using ArtCommission.Domain.Entities.Payment;
@@ -105,6 +106,15 @@ public interface IApplicationDbContext
     DbSet<RefreshToken> RefreshTokens { get; }
     DbSet<EmailVerificationCode> EmailVerificationCodes { get; }
     DbSet<TwoFactorRecoveryCode> TwoFactorRecoveryCodes { get; }
+
+    // Module Event & Contest (Module 10)
+    DbSet<PlatformEvent> PlatformEvents { get; }
+    DbSet<EventSubmission> EventSubmissions { get; }
+    DbSet<EventVote> EventVotes { get; }
+    DbSet<EventCriteria> EventCriteria { get; }
+    DbSet<CriteriaScore> CriteriaScores { get; }
+    DbSet<Jury> Juries { get; }
+    DbSet<Invitation> Invitations { get; }
 
     DbSet<T> Set<T>() where T : class;
 

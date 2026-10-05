@@ -1,3 +1,4 @@
+using System.Data;
 using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.ArtistStudio.Queries;
 using ArtCommission.Application.Common.Interfaces;
@@ -119,10 +120,9 @@ public class MarketplaceMutationHandler : IRequestHandler<MarketplaceMutationCom
                     return (false, null, new[] { "Artwork not found." });
                 var comment = new ArtworkComment { ArtworkId = c.TargetId, UserId = c.UserId, Body = c.Text.Trim() }; _db.ArtworkComments.Add(comment); await _db.SaveChangesAsync(ct); return (true, new ArtworkCommentDto(comment.Id, c.UserId, "You", comment.Body, comment.CreatedAt), Array.Empty<string>());
             case "follow":
-                var profile = await _db.CreatorProfiles.FirstOrDefaultAsync(x => x.Id == c.TargetId && !x.IsDeleted, ct); if (profile is null) return (false, null, new[] { "Creator not found." });
-                if (!await _db.Follows.AnyAsync(x => x.FollowerUserId == c.UserId && x.CreatorProfileId == c.TargetId, ct)) { _db.Follows.Add(new Follow { FollowerUserId = c.UserId, CreatorProfileId = c.TargetId }); profile.FollowerCount++; await _db.SaveChangesAsync(ct); } return (true, new { following = true }, Array.Empty<string>());
+                return await FollowAsync(c.UserId, c.TargetId, ct);
             case "unfollow":
-                var follow = await _db.Follows.FindAsync(new object[] { c.UserId, c.TargetId }, ct); if (follow != null) { _db.Follows.Remove(follow); var p = await _db.CreatorProfiles.FindAsync(new object[] { c.TargetId }, ct); if (p != null && p.FollowerCount > 0) p.FollowerCount--; await _db.SaveChangesAsync(ct); } return (true, new { following = false }, Array.Empty<string>());
+                return await UnfollowAsync(c.UserId, c.TargetId, ct);
             case "collection":
                 if (string.IsNullOrWhiteSpace(c.Text) || c.Text.Length > 100) return (false, null, new[] { "Collection name must contain 1 to 100 characters." });
                 var collection = new PersonalCollection { OwnerUserId = c.UserId, Name = c.Text.Trim(), IsPublic = c.IsPublic }; _db.PersonalCollections.Add(collection); await _db.SaveChangesAsync(ct); return (true, new PersonalCollectionDto(collection.Id, collection.Name, collection.IsPublic, 0, collection.CreatedAt), Array.Empty<string>());
@@ -132,12 +132,58 @@ public class MarketplaceMutationHandler : IRequestHandler<MarketplaceMutationCom
                 return savedState is null ? (false, null, new[] { "Collection or artwork not found." }) : (true, savedState, Array.Empty<string>());
             case "service":
                 var creator = await _db.CreatorProfiles.FirstOrDefaultAsync(x => x.UserId == c.UserId && !x.IsDeleted, ct); if (creator is null || c.Service is null) return (false, null, new[] { "Creator profile and service details are required." });
-                if (string.IsNullOrWhiteSpace(c.Service.Title) || c.Service.StartingPrice < 0 || c.Service.DeliveryDays < 1) return (false, null, new[] { "Service details are invalid." });
+                if (string.IsNullOrWhiteSpace(c.Service.Title) || c.Service.Title.Length > 150
+                    || c.Service.Description?.Length > 2000
+                    || c.Service.StartingPrice is <= 0 or > 500_000_000m
+                    || c.Service.DeliveryDays is < 1 or > 365
+                    || c.Service.MaxRevisions is < 0 or > 20) return (false, null, new[] { "Service details are invalid." });
                 var service = new CommissionService { CreatorProfileId = creator.Id, Title = c.Service.Title.Trim(), Description = c.Service.Description, StartingPrice = c.Service.StartingPrice, DeliveryDays = c.Service.DeliveryDays, MaxRevisions = c.Service.MaxRevisions, IsActive = c.Service.IsActive }; _db.CommissionServices.Add(service); await _db.SaveChangesAsync(ct); return (true, new CommissionServiceDto(service.Id, service.Title, service.Description, service.StartingPrice, service.DeliveryDays, service.MaxRevisions, service.IsActive), Array.Empty<string>());
             case "review":
                 // Reviews must be tied to a completed commission and checked by CommissionService.
                 return (false, null, new[] { "Hãy gửi đánh giá từ đơn commission đã hoàn thành." });
             default: return (false, null, new[] { "Unsupported marketplace action." });
         }
+    }
+
+    private async Task<(bool Success, object? Data, string[] Errors)> FollowAsync(Guid userId, Guid creatorProfileId, CancellationToken ct)
+    {
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        var profile = await _db.CreatorProfiles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == creatorProfileId && !x.IsDeleted, ct);
+        if (profile is null) return (false, null, new[] { "Creator not found." });
+        if (profile.UserId == userId) return (false, null, new[] { "You cannot follow your own creator profile." });
+
+        var exists = await _db.Follows.AnyAsync(
+            x => x.FollowerUserId == userId && x.CreatorProfileId == creatorProfileId,
+            ct);
+        if (!exists)
+        {
+            _db.Follows.Add(new Follow { FollowerUserId = userId, CreatorProfileId = creatorProfileId });
+            await _db.SaveChangesAsync(ct);
+            await _db.CreatorProfiles
+                .Where(x => x.Id == creatorProfileId)
+                .ExecuteUpdateAsync(update => update.SetProperty(x => x.FollowerCount, x => x.FollowerCount + 1), ct);
+        }
+
+        await transaction.CommitAsync(ct);
+        return (true, new { following = true }, Array.Empty<string>());
+    }
+
+    private async Task<(bool Success, object? Data, string[] Errors)> UnfollowAsync(Guid userId, Guid creatorProfileId, CancellationToken ct)
+    {
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        var deleted = await _db.Follows
+            .Where(x => x.FollowerUserId == userId && x.CreatorProfileId == creatorProfileId)
+            .ExecuteDeleteAsync(ct);
+        if (deleted > 0)
+        {
+            await _db.CreatorProfiles
+                .Where(x => x.Id == creatorProfileId && x.FollowerCount > 0)
+                .ExecuteUpdateAsync(update => update.SetProperty(x => x.FollowerCount, x => x.FollowerCount - 1), ct);
+        }
+
+        await transaction.CommitAsync(ct);
+        return (true, new { following = false }, Array.Empty<string>());
     }
 }

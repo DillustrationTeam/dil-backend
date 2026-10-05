@@ -50,11 +50,16 @@ public class UpdatePayoutRequestStatusCommandHandler
 {
     private readonly IApplicationDbContext _db;
     private readonly IWalletService _walletService;
+    private readonly IPayOsPayoutService _payOsPayoutService;
 
-    public UpdatePayoutRequestStatusCommandHandler(IApplicationDbContext db, IWalletService walletService)
+    public UpdatePayoutRequestStatusCommandHandler(
+        IApplicationDbContext db,
+        IWalletService walletService,
+        IPayOsPayoutService payOsPayoutService)
     {
         _db = db;
         _walletService = walletService;
+        _payOsPayoutService = payOsPayoutService;
     }
 
     public async Task<(bool, bool, PayoutRequestDto?, string[])> Handle(
@@ -111,8 +116,48 @@ public class UpdatePayoutRequestStatusCommandHandler
         }
         else
         {
-            // Processed — Admin đã chuyển khoản thật, tiền đã bị trừ từ lúc tạo yêu cầu
-            payout.TransactionRef = request.TransactionRef;
+            // Processed — Thực hiện chi tiền qua payOS hoặc ghi nhận mã giao dịch của Admin
+            bankAccount = await _db.BankAccounts
+                .FirstOrDefaultAsync(b => b.Id == payout.BankAccountId, cancellationToken);
+
+            if (bankAccount is null)
+            {
+                return (false, false, null, ["Không tìm thấy tài khoản ngân hàng nhận tiền."]);
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.TransactionRef))
+            {
+                // Admin đã chuyển tay ngoài đời hoặc cung cấp mã giao dịch thủ công
+                payout.TransactionRef = request.TransactionRef;
+            }
+            else
+            {
+                // Tự động phát lệnh chi qua Kênh chi payOS
+                var refId = $"PO{payout.Id.ToString()[..8].ToUpperInvariant()}";
+                var desc = string.IsNullOrWhiteSpace(request.PayoutNote)
+                    ? $"Payout {payout.Amount:N0}VND"
+                    : request.PayoutNote.Trim();
+                if (desc.Length > 25) desc = desc[..25];
+
+                var payoutResult = await _payOsPayoutService.CreatePayoutAsync(
+                    new PayOsPayoutRequest(
+                        ReferenceId: refId,
+                        Amount: (long)payout.Amount,
+                        Description: desc,
+                        ToBin: bankAccount.BankBin ?? "970418",
+                        ToAccountNumber: bankAccount.AccountNumber
+                    ),
+                    cancellationToken);
+
+                if (!payoutResult.Success)
+                {
+                    return (false, false, null,
+                        [$"Cổng payOS từ chối lệnh chi tiền: {payoutResult.Message} (Mã lỗi: {payoutResult.ErrorCode ?? "N/A"})"]);
+                }
+
+                payout.TransactionRef = payoutResult.TransactionRef ?? refId;
+            }
+
             if (!string.IsNullOrWhiteSpace(request.PayoutNote))
             {
                 payout.PayoutNote = request.PayoutNote;

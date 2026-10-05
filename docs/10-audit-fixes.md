@@ -17,3 +17,12 @@ The two branches independently introduced the same workstation tables. SyncLocal
 Verified locally: full migrations passed on a newly created isolated SQL database (removed afterwards) and on DillustrationLocal with existing workstation tables. Backend build has zero errors/warnings; 38 workflow, 34 creator, 26 pricing/workflow, 10 SQL interaction, and 13 authenticated HTTP interaction checks passed. Develop's auction, license pricing, and voucher suites also passed; the optional auction SQL race check was skipped because no dedicated connection was supplied. EF still reports the pre-existing decimal precision and collection value-comparer warnings.
 
 Frontend sends voucherCode when creating the request, matching the commission service contract. Voucher redemption occurs during escrow deposit; checkout displays the persisted discount. This avoids nested voucher forms and claiming a generic redemption changed a commission's price when it did not.
+# Public creator profile access (2026-10-04)
+
+GET `/api/v1/creator/{id}` allows anonymous reads of the existing public CreatorProfileDto. The surrounding controller remains authorized: `/creator/me`, profile creation/update, and artwork writes still require authentication. Verified anonymous public reads return 200 and anonymous private reads return 401. This fixes guest creator-detail rendering without changing schema.
+
+### Profile regression audit (2026-10-04)
+
+- Both profile validators enforce Location ≤200 and WebsiteUrl/BannerUrl ≤500 to match SQL columns. Optional URLs accept only absolute HTTP(S), while null/empty values remain supported. No schema changes.
+- CreatorFeatureChecks now has 51 checks, including profile ownership, field clearing, false/zero values and invalid URLs/lengths.
+- `scripts/Test-ProfileRegression.ps1` runs 12 live HTTP checks on localhost: guest profile GET, authenticated-only private GET/PUT, invalid input rejection without mutation, and edit identity/clear/false/zero behavior. The seeded demo creator is restored in finally. Requires PowerShell 7 and a running local API; never points to production.

@@ -26,13 +26,15 @@ public class ClientProfileConfiguration : IEntityTypeConfiguration<ClientProfile
             .HasConversion(
                  v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
                  v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<string>()
-             );
+             )
+            .Metadata.SetValueComparer(StringListValueComparer.Instance);
 
         builder.Property(x => x.PreferredLanguages)
             .HasConversion(
                  v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
                  v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<string>()
-             );
+             )
+            .Metadata.SetValueComparer(StringListValueComparer.Instance);
     }
 }
 

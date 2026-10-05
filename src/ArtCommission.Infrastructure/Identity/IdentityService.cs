@@ -73,12 +73,32 @@ public class IdentityService : IIdentityService
         return (true, user.Id, Array.Empty<string>());
     }
 
+    private static (bool IsLockedOut, string Message) CheckUserLockout(ApplicationUser user)
+    {
+        if (user.LockoutEnd.HasValue && user.LockoutEnd.Value > DateTimeOffset.UtcNow)
+        {
+            var isBanned = user.LockoutEnd.Value >= DateTimeOffset.MaxValue.AddDays(-365);
+            var message = isBanned
+                ? "Tài khoản của bạn đã bị khóa vĩnh viễn do vi phạm chính sách."
+                : $"Tài khoản của bạn đã bị đình chỉ hoạt động đến {user.LockoutEnd.Value.ToLocalTime():dd/MM/yyyy HH:mm}.";
+            return (true, message);
+        }
+
+        return (false, string.Empty);
+    }
+
     public async Task<(bool Success, UserDto? User, string[] Roles, string[] Errors)> AuthenticateUserAsync(string emailOrUsername, string password, CancellationToken cancellationToken = default)
     {
         var user = await ResolveUserByEmailOrUsernameAsync(emailOrUsername, cancellationToken);
         if (user == null || user.IsDeleted)
         {
             return (false, null, Array.Empty<string>(), new[] { "Invalid email/username or password." });
+        }
+
+        var (isLockedOut, lockoutMessage) = CheckUserLockout(user);
+        if (isLockedOut)
+        {
+            return (false, null, Array.Empty<string>(), new[] { lockoutMessage });
         }
 
         var isValidPassword = await _userManager.CheckPasswordAsync(user, password);
@@ -134,6 +154,12 @@ public class IdentityService : IIdentityService
             return (false, null, Array.Empty<string>(), new[] { "User not found." });
         }
 
+        var (isLockedOut, lockoutMessage) = CheckUserLockout(user);
+        if (isLockedOut)
+        {
+            return (false, null, Array.Empty<string>(), new[] { lockoutMessage });
+        }
+
         var roles = await _userManager.GetRolesAsync(user);
         var userDto = new UserDto(user.Id, user.Email!, user.FullName, user.IsVerified, user.CreatedAt, user.AvatarUrl, user.CoverUrl, user.Bio, user.SocialLinks);
 
@@ -146,6 +172,12 @@ public class IdentityService : IIdentityService
         if (user == null || user.IsDeleted)
         {
             return (false, null, Array.Empty<string>(), new[] { "User not found." });
+        }
+
+        var (isLockedOut, lockoutMessage) = CheckUserLockout(user);
+        if (isLockedOut)
+        {
+            return (false, null, Array.Empty<string>(), new[] { lockoutMessage });
         }
 
         var roles = await _userManager.GetRolesAsync(user);
@@ -413,6 +445,12 @@ public class IdentityService : IIdentityService
         var linkedUser = await _userManager.FindByLoginAsync(provider, providerKey);
         if (linkedUser != null && !linkedUser.IsDeleted)
         {
+            var (isLockedOut, lockoutMessage) = CheckUserLockout(linkedUser);
+            if (isLockedOut)
+            {
+                return (false, null, Array.Empty<string>(), new[] { lockoutMessage });
+            }
+
             var linkedRoles = await _userManager.GetRolesAsync(linkedUser);
             var linkedUserDto = new UserDto(linkedUser.Id, linkedUser.Email!, linkedUser.FullName, linkedUser.IsVerified, linkedUser.CreatedAt, linkedUser.AvatarUrl, linkedUser.CoverUrl, linkedUser.Bio, linkedUser.SocialLinks);
             return (true, linkedUserDto, linkedRoles.ToArray(), null, Array.Empty<string>());
@@ -424,6 +462,12 @@ public class IdentityService : IIdentityService
             if (existingUser.IsDeleted)
             {
                 return (false, null, Array.Empty<string>(), null, new[] { "This account is no longer active." });
+            }
+
+            var (isLockedOut, lockoutMessage) = CheckUserLockout(existingUser);
+            if (isLockedOut)
+            {
+                return (false, null, Array.Empty<string>(), new[] { lockoutMessage });
             }
 
             if (!emailVerified)
