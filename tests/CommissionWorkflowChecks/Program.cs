@@ -6,6 +6,7 @@ using ArtCommission.Infrastructure.Persistence;
 using ArtCommission.Infrastructure.Services;
 using ArtCommission.Application.Payment.Common;
 using ArtCommission.Application.Commission.Interfaces;
+using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard;
 using ArtCommission.Domain.Entities.Payment;
 using System.Text.Json;
@@ -25,7 +26,8 @@ var profile = new CreatorProfile { UserId = creatorId, DisplayName = "Test creat
 db.CreatorProfiles.Add(profile);
 db.Wallets.Add(new Wallet { UserId = clientId, Balance = 10000m });
 await db.SaveChangesAsync();
-var service = new CommissionService(db, new WalletService(db), new TestWatermark(), new TestStorage(), new VoucherCheckService(db));
+var notifications = new TestNotificationPublisher();
+var service = new CommissionService(db, new WalletService(db), new TestWatermark(), new TestStorage(), new VoucherCheckService(db), notifications);
 var checks = 0;
 
 void Equal<T>(T expected, T actual, string name)
@@ -56,13 +58,20 @@ async Task<(Guid Id, Guid[] Milestones)> Create(string title)
 }
 
 var normal = await Create("normal");
+Equal((creatorId, NotificationType.CommissionStatusChanged),
+    (notifications.Items[^1].UserId, notifications.Items[^1].Type), "new request notifies creator");
+Equal("CreatorCommissionRequests", notifications.Items[^1].RefType, "new request opens creator request queue");
 await Rejected(() => service.DepositEscrowAsync(normal.Id, clientId, "Wallet"), "deposit before accept");
 await Rejected(() => service.SubmitMilestoneWipAsync(normal.Id, normal.Milestones[0],
     null, new MemoryStream(new byte[] { 1, 2, 3 }), "image/png", creatorId), "submit before accept");
 await service.RespondCommissionAsync(normal.Id, new RespondCommissionRequest { Action = "Accept" }, creatorId);
+Equal((clientId, NotificationType.CommissionStatusChanged),
+    (notifications.Items[^1].UserId, notifications.Items[^1].Type), "creator response notifies client");
 await Rejected(() => service.SubmitMilestoneWipAsync(normal.Id, normal.Milestones[0],
     null, new MemoryStream(new byte[] { 1, 2, 3 }), "image/png", creatorId), "submit before deposit");
 await service.DepositEscrowAsync(normal.Id, clientId, "Wallet");
+Equal((creatorId, NotificationType.EscrowStatusChanged),
+    (notifications.Items[^1].UserId, notifications.Items[^1].Type), "escrow deposit notifies creator");
 await Rejected(() => service.DepositEscrowAsync(normal.Id, clientId, "Wallet"), "duplicate deposit");
 await Rejected(() => service.ApproveMilestoneAsync(normal.Id, normal.Milestones[0], clientId), "approve before submit");
 await Rejected(() => service.RequestMilestoneRevisionAsync(normal.Id, normal.Milestones[0],
@@ -103,7 +112,7 @@ Equal(CommissionStatus.Completed.ToString(), (await service.GetCommissionByIdAsy
     "completed state unchanged");
 
 var rejected = await Create("rejected");
-await service.RespondCommissionAsync(rejected.Id, new RespondCommissionRequest { Action = "Reject" }, creatorId);
+await service.RespondCommissionAsync(rejected.Id, new RespondCommissionRequest { Action = "Reject", RejectReason = "Không phù hợp" }, creatorId);
 await Rejected(() => service.RespondCommissionAsync(rejected.Id,
     new RespondCommissionRequest { Action = "Accept" }, creatorId), "accept after reject");
 
@@ -120,6 +129,8 @@ Equal(450m, (await service.GetCommissionByIdAsync(negotiated.Id, clientId))!.Esc
 
 var disputed = await Create("disputed");
 await service.CreateDisputeAsync(disputed.Id, new CreateDisputeRequest { Reason = "test" }, clientId);
+Equal((creatorId, NotificationType.DisputeStatusChanged),
+    (notifications.Items[^1].UserId, notifications.Items[^1].Type), "new dispute notifies other party");
 await Rejected(() => service.CreateDisputeAsync(disputed.Id,
     new CreateDisputeRequest { Reason = "again" }, creatorId), "duplicate dispute");
 await Rejected(() => service.CompleteCommissionAsync(disputed.Id, clientId), "complete disputed");
@@ -202,4 +213,24 @@ sealed class TestStorage : IStorageService
     public Task<string> UploadPublicAsync(Stream stream, string key, string contentType, CancellationToken ct = default) => Task.FromResult(key);
     public Task<string> UploadPrivateAsync(Stream stream, string key, string contentType, CancellationToken ct = default) => Task.FromResult(key);
     public string GeneratePresignedDownloadUrl(string key, TimeSpan expiry) => "https://example.test/" + key;
+}
+
+sealed class TestNotificationPublisher : INotificationPublisher
+{
+    public List<(Guid UserId, NotificationType Type, string? RefType, string? DedupKey)> Items { get; } = [];
+
+    public Task<NotificationDto?> PublishAsync(
+        Guid userId,
+        NotificationType notificationType,
+        string title,
+        string body,
+        string? refType = null,
+        Guid? refId = null,
+        NotificationChannel channel = NotificationChannel.InApp,
+        string? dedupKey = null,
+        CancellationToken cancellationToken = default)
+    {
+        Items.Add((userId, notificationType, refType, dedupKey));
+        return Task.FromResult<NotificationDto?>(null);
+    }
 }

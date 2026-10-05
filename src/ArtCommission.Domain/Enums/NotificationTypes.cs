@@ -55,7 +55,16 @@ public enum NotificationType
     InvitationExpired,
 
     /// <summary>Phiên đấu giá bắt đầu, kết thúc hoặc được gia hạn.</summary>
-    AuctionLifecycle
+    AuctionLifecycle,
+
+    /// <summary>Yêu cầu đặt vẽ hoặc trạng thái đơn đặt vẽ thay đổi.</summary>
+    CommissionStatusChanged,
+
+    /// <summary>Tiền ký quỹ của đơn đặt vẽ thay đổi trạng thái.</summary>
+    EscrowStatusChanged,
+
+    /// <summary>Tranh chấp của đơn đặt vẽ được mở hoặc phân xử.</summary>
+    DisputeStatusChanged
 }
 
 public static class NotificationTypeNames
@@ -74,6 +83,9 @@ public static class NotificationTypeNames
     public const string InvitationDeclined = nameof(NotificationType.InvitationDeclined);
     public const string InvitationCanceled = nameof(NotificationType.InvitationCanceled);
     public const string InvitationExpired = nameof(NotificationType.InvitationExpired);
+    public const string CommissionStatusChanged = nameof(NotificationType.CommissionStatusChanged);
+    public const string EscrowStatusChanged = nameof(NotificationType.EscrowStatusChanged);
+    public const string DisputeStatusChanged = nameof(NotificationType.DisputeStatusChanged);
 
     public static readonly string[] All =
     [
@@ -90,7 +102,10 @@ public static class NotificationTypeNames
         InvitationAccepted,
         InvitationDeclined,
         InvitationCanceled,
-        InvitationExpired
+        InvitationExpired,
+        CommissionStatusChanged,
+        EscrowStatusChanged,
+        DisputeStatusChanged
     ];
 }
 
@@ -133,14 +148,16 @@ public static class NotificationCategoryMap
     public static NotificationType[] TypesOf(NotificationCategory category) => category switch
     {
         NotificationCategory.Finance =>
-            [NotificationType.PaymentSucceeded, NotificationType.PayoutStatusChanged],
+            [NotificationType.PaymentSucceeded, NotificationType.PayoutStatusChanged, NotificationType.EscrowStatusChanged],
 
         NotificationCategory.Order =>
         [
             NotificationType.OutbidAlert,
             NotificationType.AuctionEndingSoon,
             NotificationType.AuctionWon,
-            NotificationType.DeadlineRiskWarning
+            NotificationType.DeadlineRiskWarning,
+            NotificationType.CommissionStatusChanged,
+            NotificationType.DisputeStatusChanged
         ],
 
         NotificationCategory.System =>

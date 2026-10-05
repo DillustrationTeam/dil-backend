@@ -2,6 +2,7 @@ using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Commission.DTOs;
 using ArtCommission.Application.Commission.Interfaces;
 using ArtCommission.Application.Commission.Validators;
+using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
 using ArtCommission.Domain.Entities.Commission;
 using ArtCommission.Domain.Entities.Payment;
@@ -9,6 +10,7 @@ using ArtCommission.Domain.Enums;
 using ArtCommission.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 
 namespace ArtCommission.Infrastructure.Services;
 
@@ -19,15 +21,20 @@ public class CommissionService : ICommissionService
     private readonly IWatermarkService _watermarkService;
     private readonly IStorageService _storageService;
     private readonly IVoucherCheckService _voucherCheckService;
+    private readonly INotificationPublisher? _notifications;
+    private readonly ILogger<CommissionService>? _logger;
 
     public CommissionService(AppDbContext dbContext, IWalletService walletService, IWatermarkService watermarkService,
-        IStorageService storageService, IVoucherCheckService voucherCheckService)
+        IStorageService storageService, IVoucherCheckService voucherCheckService,
+        INotificationPublisher? notifications = null, ILogger<CommissionService>? logger = null)
     {
         _dbContext = dbContext;
         _walletService = walletService;
         _watermarkService = watermarkService;
         _storageService = storageService;
         _voucherCheckService = voucherCheckService;
+        _notifications = notifications;
+        _logger = logger;
     }
 
     private static void RequireClient(Commission commission, Guid userId)
@@ -153,6 +160,13 @@ public class CommissionService : ICommissionService
         _dbContext.Commissions.Add(commission);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        await PublishSafeAsync(
+            creator.UserId, NotificationType.CommissionStatusChanged,
+            "Bạn có yêu cầu đặt vẽ mới",
+            $"Khách hàng đã gửi yêu cầu “{commission.Title}”.",
+            commission.Id, $"CommissionCreated:{commission.Id}:{creator.UserId}", cancellationToken,
+            refType: "CreatorCommissionRequests");
+
         return MapToDto(commission);
     }
 
@@ -265,6 +279,13 @@ public class CommissionService : ICommissionService
         commission.UpdatedAt = DateTimeOffset.UtcNow;
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        await PublishSafeAsync(
+            commission.ClientId, NotificationType.CommissionStatusChanged,
+            "Yêu cầu đặt vẽ đã được phản hồi",
+            $"Creator đã {request.Action.ToLowerInvariant()} yêu cầu “{commission.Title}”.",
+            commission.Id, $"CommissionResponse:{commission.Id}:{commission.Status}:{commission.ClientId}", cancellationToken,
+            refType: commission.Status == CommissionStatus.InProgress ? "CommissionCheckout" : "ClientCommissionRequest");
+
         return MapToDto(commission);
     }
 
@@ -277,6 +298,15 @@ public class CommissionService : ICommissionService
         commission.Status = accept ? CommissionStatus.InProgress : CommissionStatus.Cancelled;
         commission.UpdatedAt = DateTimeOffset.UtcNow;
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        var creatorUserId = await CreatorUserIdAsync(commission.CreatorId, cancellationToken);
+        await PublishSafeAsync(
+            creatorUserId, NotificationType.CommissionStatusChanged,
+            "Khách hàng đã phản hồi đề nghị giá",
+            $"Khách hàng đã {(accept ? "chấp nhận" : "từ chối")} đề nghị giá cho “{commission.Title}”.",
+            commission.Id, $"CounterofferResponse:{commission.Id}:{accept}:{creatorUserId}", cancellationToken,
+            refType: "CreatorCommissionRequests");
+
         return MapToDto(commission);
     }
 
@@ -337,6 +367,13 @@ public class CommissionService : ICommissionService
         await _dbContext.SaveChangesAsync(cancellationToken);
         if (tx is not null)
             await tx.CommitAsync(cancellationToken);
+
+        var creatorUserId = await CreatorUserIdAsync(commission.CreatorId, cancellationToken);
+        await PublishSafeAsync(
+            creatorUserId, NotificationType.EscrowStatusChanged,
+            "Đơn đặt vẽ đã được ký quỹ",
+            $"Khách hàng đã ký quỹ {commission.FinalPrice:N0} VND cho “{commission.Title}”.",
+            commission.Id, $"EscrowDeposited:{commission.Id}:{creatorUserId}", cancellationToken);
 
         return MapToDto(commission);
     }
@@ -551,6 +588,14 @@ public class CommissionService : ICommissionService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        var creatorUserId = await CreatorUserIdAsync(commission.CreatorId, cancellationToken);
+        var recipientId = raisedById == commission.ClientId ? creatorUserId : commission.ClientId;
+        await PublishSafeAsync(
+            recipientId, NotificationType.DisputeStatusChanged,
+            "Đơn đặt vẽ có tranh chấp mới",
+            $"Một tranh chấp đã được mở cho “{commission.Title}”.",
+            commission.Id, $"DisputeOpened:{dispute.Id}:{recipientId}", cancellationToken);
+
         return MapToDisputeDto(dispute);
     }
 
@@ -608,6 +653,36 @@ public class CommissionService : ICommissionService
     private Task<Guid> CreatorProfileIdAsync(Guid userId, CancellationToken cancellationToken) =>
         _dbContext.CreatorProfiles.Where(p => p.UserId == userId && !p.IsDeleted)
             .Select(p => p.Id).FirstOrDefaultAsync(cancellationToken);
+
+    private Task<Guid> CreatorUserIdAsync(Guid creatorProfileId, CancellationToken cancellationToken) =>
+        _dbContext.CreatorProfiles.Where(p => p.Id == creatorProfileId && !p.IsDeleted)
+            .Select(p => p.UserId).SingleAsync(cancellationToken);
+
+    private async Task PublishSafeAsync(
+        Guid userId,
+        NotificationType type,
+        string title,
+        string body,
+        Guid commissionId,
+        string dedupKey,
+        CancellationToken cancellationToken,
+        string refType = "Commission")
+    {
+        if (_notifications is null) return;
+
+        try
+        {
+            await _notifications.PublishAsync(
+                userId, type, title, body, refType, commissionId,
+                dedupKey: dedupKey, cancellationToken: cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex,
+                "Không phát được thông báo commission. UserId={UserId} CommissionId={CommissionId} Type={Type}",
+                userId, commissionId, type);
+        }
+    }
 
     private async Task<Commission> PartyCommissionAsync(Guid id, Guid userId, CancellationToken cancellationToken)
     {

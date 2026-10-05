@@ -5,6 +5,8 @@ using ArtCommission.Domain.Enums;
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using INotificationPublisher = ArtCommission.Application.Notifications.Common.INotificationPublisher;
 
 namespace ArtCommission.Application.Commission.Disputes.Commands;
 
@@ -40,11 +42,19 @@ public class ResolveDisputeArbitrationCommandHandler
 {
     private readonly IApplicationDbContext _db;
     private readonly IWalletService _walletService;
+    private readonly INotificationPublisher _notifications;
+    private readonly ILogger<ResolveDisputeArbitrationCommandHandler> _logger;
 
-    public ResolveDisputeArbitrationCommandHandler(IApplicationDbContext db, IWalletService walletService)
+    public ResolveDisputeArbitrationCommandHandler(
+        IApplicationDbContext db,
+        IWalletService walletService,
+        INotificationPublisher notifications,
+        ILogger<ResolveDisputeArbitrationCommandHandler> logger)
     {
         _db = db;
         _walletService = walletService;
+        _notifications = notifications;
+        _logger = logger;
     }
 
     public async Task<(bool Success, string Message, string[] Errors)> Handle(
@@ -79,6 +89,10 @@ public class ResolveDisputeArbitrationCommandHandler
 
             var commission = dispute.Commission;
             var totalLockedEscrow = commission.EscrowHeldAmount;
+            var creatorUserId = await _db.CreatorProfiles
+                .Where(profile => profile.Id == commission.CreatorId && !profile.IsDeleted)
+                .Select(profile => profile.UserId)
+                .SingleAsync(cancellationToken);
 
             // Tính toán số tiền phân bổ Escrow
             var clientRefundAmount = Math.Round(totalLockedEscrow * (request.ClientRefundPercent / 100m), 2);
@@ -92,10 +106,6 @@ public class ResolveDisputeArbitrationCommandHandler
             if (totalLockedEscrow > 0)
             {
                 var clientWallet = await _walletService.GetOrCreateWalletAsync(commission.ClientId, cancellationToken);
-                var creatorUserId = await _db.CreatorProfiles
-                    .Where(profile => profile.Id == commission.CreatorId && !profile.IsDeleted)
-                    .Select(profile => profile.UserId)
-                    .SingleAsync(cancellationToken);
                 var creatorWallet = await _walletService.GetOrCreateWalletAsync(creatorUserId, cancellationToken);
 
                 // ------------------------------------------------------------------
@@ -233,12 +243,44 @@ public class ResolveDisputeArbitrationCommandHandler
                     ? $"Phán quyết Creator thắng 100%. Đã giải ngân {creatorPayAmount:N0} VND vào ví Creator (sau khi trừ {feePercent}% phí sàn {platformFee:N0} VND)."
                     : $"Phán quyết phân chia ({request.ClientRefundPercent}% - {100 - request.ClientRefundPercent}%). Đã hoàn {clientRefundAmount:N0} VND vào ví Client, giải ngân {creatorPayAmount:N0} VND vào ví Creator.";
 
+            await PublishResolutionNotificationSafeAsync(
+                commission.ClientId, commission.Id, dispute.Id, summary, cancellationToken);
+            await PublishResolutionNotificationSafeAsync(
+                creatorUserId, commission.Id, dispute.Id, summary, cancellationToken);
+
             return (true, summary, Array.Empty<string>());
         }
         catch (Exception ex)
         {
             await transaction.RollbackAsync(cancellationToken);
             return (false, string.Empty, new[] { $"Lỗi xử lý giao dịch phân xử tranh chấp: {ex.Message}" });
+        }
+    }
+
+    private async Task PublishResolutionNotificationSafeAsync(
+        Guid userId,
+        Guid commissionId,
+        Guid disputeId,
+        string summary,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _notifications.PublishAsync(
+                userId,
+                NotificationType.DisputeStatusChanged,
+                "Tranh chấp đã được phân xử",
+                summary,
+                "Commission",
+                commissionId,
+                dedupKey: $"DisputeResolved:{disputeId}:{userId}",
+                cancellationToken: cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Không phát được thông báo phân xử. UserId={UserId} DisputeId={DisputeId}",
+                userId, disputeId);
         }
     }
 }
