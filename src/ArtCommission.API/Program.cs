@@ -23,7 +23,6 @@ using ArtCommission.Infrastructure.ExternalServices.R2;
 using ArtCommission.Infrastructure.ExternalServices.Watermark;
 using ArtCommission.Infrastructure.Identity;
 using ArtCommission.Infrastructure.Persistence;
-using ArtCommission.Infrastructure.Persistence.Seed;
 using ArtCommission.Infrastructure.Services;
 using FluentValidation;
 using Hangfire;
@@ -493,17 +492,6 @@ if (!isDocumentGeneration)
                 var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
                 var roleManager = services.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
                 await DevelopmentDemoSeeder.SeedAsync(dbContext, userManager, roleManager);
-
-                // Seed dữ liệu mẫu riêng cho Creator Application (5 user + wallet + creator profile + artwork),
-                // idempotent. Nằm trong cùng guard isDocumentGeneration để không chạy lúc build export OpenAPI.
-                try
-                {
-                    await DevDataSeeder.SeedSampleDataAsync(services, logger);
-                }
-                catch (Exception seedEx)
-                {
-                    logger.LogError(seedEx, "An error occurred while seeding development sample data.");
-                }
             }
 
             logger.LogInformation("Database initialized successfully.");

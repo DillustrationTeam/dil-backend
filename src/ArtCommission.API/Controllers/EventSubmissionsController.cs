@@ -274,5 +274,34 @@ public class EventSubmissionsController : ApiControllerBase
             totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
         });
     }
+
+    /// <summary>
+    /// Chấm điểm bài dự thi sự kiện theo tiêu chí Rubric (Dành cho Giám khảo / Head Jury).
+    /// </summary>
+    [HttpPost("{id:guid}/score")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> SubmitScore(
+        Guid id,
+        [FromBody] SubmitScoreDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var command = new SubmitJuryScoreCommand(id, CurrentUserId, dto);
+        var (success, data, errors) = await Mediator.Send(command, cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(data);
+    }
 }
+
 

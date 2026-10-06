@@ -176,6 +176,7 @@ public class JuriesController : ApiControllerBase
     }
 }
 
+
 public sealed record AddJuryRequest(
     Guid EventId,
     Guid CreatorId,

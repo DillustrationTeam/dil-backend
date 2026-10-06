@@ -614,4 +614,20 @@ public class EventsController : ApiControllerBase
 
         return OkEnvelope(new { message = "Đã xóa giám khảo khỏi sự kiện thành công." });
     }
+
+    /// <summary>
+    /// Lấy danh sách tiêu chí chấm điểm (Rubric) của sự kiện.
+    /// </summary>
+    [HttpGet("{id:guid}/criteria")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetEventCriteria(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var query = new GetEventCriteriaQuery(id);
+        var result = await Mediator.Send(query, cancellationToken);
+        return OkEnvelope(result);
+    }
 }
+
