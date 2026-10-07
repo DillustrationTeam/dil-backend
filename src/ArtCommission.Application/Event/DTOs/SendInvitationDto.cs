@@ -6,5 +6,4 @@ public sealed record SendInvitationDto
 
     public string Email { get; set; } = string.Empty;
 
-    public bool IsHeadJury { get; set; }
 }

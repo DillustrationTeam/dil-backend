@@ -13,15 +13,14 @@ namespace ArtCommission.Application.Event.Commands;
 public record SendInvitationCommand(
     Guid EventId,
     Guid AdminId,
-    string Email,
-    bool IsHeadJury
+    string Email
 ) : IRequest<(bool Success, InvitationDto? Data, string[] Errors)>
 {
     public SendInvitationCommand(Guid eventId, Guid adminId, InviteJuryDto dto)
-        : this(eventId, adminId, dto.Email, dto.IsHeadJury) { }
+        : this(eventId, adminId, dto.Email) { }
 
     public SendInvitationCommand(Guid adminId, SendInvitationDto dto)
-        : this(dto.EventId, adminId, dto.Email, dto.IsHeadJury) { }
+        : this(dto.EventId, adminId, dto.Email) { }
 }
 
 public class SendInvitationCommandHandler
@@ -119,25 +118,18 @@ public class SendInvitationCommandHandler
             return (false, null, ["Đã tồn tại một lời mời đang chờ phản hồi cho Creator này trong sự kiện."]);
         }
 
-        // 7. Kiểm tra nếu mời làm HeadJury thì sự kiện đã có HeadJury chưa
-        if (request.IsHeadJury)
-        {
-            var hasHeadJury = await _db.Juries
-                .AnyAsync(j => j.EventId == request.EventId && j.IsHeadJury && !j.IsDeleted, cancellationToken);
+        // 7. Logic Trưởng ban giám khảo (Head Jury):
+        // Nếu sự kiện chưa có bất kỳ giám khảo nào và chưa có ai được mời làm Head Jury, người đầu tiên được mời sẽ là Head Jury.
+        var hasAnyJury = await _db.Juries
+            .AnyAsync(j => j.EventId == request.EventId && !j.IsDeleted, cancellationToken);
 
-            if (hasHeadJury)
-            {
-                return (false, null, ["Sự kiện này đã có Trưởng ban giám khảo (Head Jury)."]);
-            }
+        var hasHeadJury = await _db.Juries
+            .AnyAsync(j => j.EventId == request.EventId && j.IsHeadJury && !j.IsDeleted, cancellationToken);
 
-            var hasPendingHeadJury = await _db.Invitations
-                .AnyAsync(i => i.EventId == request.EventId && i.IsHeadJury && i.Status == InvitationStatus.Pending && !i.IsDeleted, cancellationToken);
+        var hasPendingHeadJury = await _db.Invitations
+            .AnyAsync(i => i.EventId == request.EventId && i.IsHeadJury && i.Status == InvitationStatus.Pending && !i.IsDeleted, cancellationToken);
 
-            if (hasPendingHeadJury)
-            {
-                return (false, null, ["Đang có một lời mời Trưởng ban giám khảo (Head Jury) chờ phản hồi."]);
-            }
-        }
+        bool isHeadJury = !hasAnyJury && !hasHeadJury && !hasPendingHeadJury;
 
         // 8. Tạo lời mời mới
         var invitation = new Invitation
@@ -146,7 +138,7 @@ public class SendInvitationCommandHandler
             EventId = request.EventId,
             SentFromAdminId = request.AdminId,
             SentToCreatorId = creator.Id,
-            IsHeadJury = request.IsHeadJury,
+            IsHeadJury = isHeadJury,
             Status = InvitationStatus.Pending,
             CreatedAt = now,
             IsDeleted = false

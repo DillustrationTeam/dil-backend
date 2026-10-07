@@ -66,6 +66,12 @@ public class CreateVoteCommandHandler
             return (false, null, ["Event is not currently open for voting."]);
         }
 
+        // Rule 0: Creator không được tự vote cho bài nộp của chính mình
+        if (submission.SubmitterId == request.VoterId)
+        {
+            return (false, null, ["Creator (tác giả) không thể tự bình chọn cho bài dự thi của chính mình."]);
+        }
+
         // Rule 1: 1 User chỉ được vote cho 1 bức tranh 1 lần
         var alreadyVoted = await _db.EventVotes
             .AnyAsync(v => v.SubmissionId == request.SubmissionId && v.VoterId == request.VoterId, cancellationToken);

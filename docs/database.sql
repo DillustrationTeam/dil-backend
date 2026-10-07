@@ -867,5 +867,103 @@ BEGIN
 END
 GO
 
+-- ============================================================================
+-- EVENT RULES ENFORCEMENT & DATA ADJUSTMENTS
+-- ============================================================================
+
+-- 1. Trigger: Creator không được tham gia vào các event nơi mình là Jury (Rule A)
+IF OBJECT_ID(N'dbo.TR_EventSubmissions_PreventJurySubmission', N'TR') IS NOT NULL
+    DROP TRIGGER dbo.TR_EventSubmissions_PreventJurySubmission;
+GO
+
+CREATE TRIGGER dbo.TR_EventSubmissions_PreventJurySubmission
+ON dbo.EventSubmissions
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        INNER JOIN dbo.CreatorProfiles cp ON i.SubmitterId = cp.UserId
+        INNER JOIN dbo.Juries j ON j.EventId = i.EventId AND j.CreatorId = cp.Id
+        WHERE j.IsDeleted = 0
+    )
+    BEGIN
+        RAISERROR (N'Thành viên Ban giám khảo (Jury) của sự kiện không được tham gia nộp bài dự thi trong sự kiện đó.', 16, 1);
+        ROLLBACK TRANSACTION;
+        RETURN;
+    END
+END;
+GO
+
+-- 2. Trigger: Creator không được tự vote bài dự thi của chính mình (Rule B)
+IF OBJECT_ID(N'dbo.TR_EventVotes_PreventSelfVote', N'TR') IS NOT NULL
+    DROP TRIGGER dbo.TR_EventVotes_PreventSelfVote;
+GO
+
+CREATE TRIGGER dbo.TR_EventVotes_PreventSelfVote
+ON dbo.EventVotes
+AFTER INSERT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (
+        SELECT 1
+        FROM inserted v
+        INNER JOIN dbo.EventSubmissions s ON v.SubmissionId = s.Id
+        WHERE v.VoterId = s.SubmitterId
+    )
+    BEGIN
+        RAISERROR (N'Creator (tác giả) không thể tự bình chọn cho bài dự thi của chính mình.', 16, 1);
+        ROLLBACK TRANSACTION;
+        RETURN;
+    END
+END;
+GO
+
+-- 3. Data Adjustments & Cleanup (Đảm bảo dữ liệu hiện có tuân thủ 2 rule mới)
+-- Xóa các lượt vote liên quan đến bài dự thi của Jury hoặc tự vote bài của mình
+DELETE v
+FROM dbo.EventVotes v
+INNER JOIN dbo.EventSubmissions s ON v.SubmissionId = s.Id
+LEFT JOIN dbo.CreatorProfiles cp ON s.SubmitterId = cp.UserId
+LEFT JOIN dbo.Juries j ON j.EventId = s.EventId AND j.CreatorId = cp.Id AND j.IsDeleted = 0
+WHERE v.VoterId = s.SubmitterId OR j.Id IS NOT NULL;
+
+-- Xóa điểm tiêu chí (CriteriaScores) của bài dự thi do Jury nộp
+IF OBJECT_ID(N'dbo.CriteriaScores', N'U') IS NOT NULL
+BEGIN
+    DELETE cs
+    FROM dbo.CriteriaScores cs
+    INNER JOIN dbo.EventSubmissions s ON cs.SubmissionId = s.Id
+    INNER JOIN dbo.CreatorProfiles cp ON s.SubmitterId = cp.UserId
+    INNER JOIN dbo.Juries j ON j.EventId = s.EventId AND j.CreatorId = cp.Id
+    WHERE j.IsDeleted = 0;
+END
+
+-- Xóa các bài nộp dự thi nếu tác giả là Jury của sự kiện đó
+DELETE s
+FROM dbo.EventSubmissions s
+INNER JOIN dbo.CreatorProfiles cp ON s.SubmitterId = cp.UserId
+INNER JOIN dbo.Juries j ON j.EventId = s.EventId AND j.CreatorId = cp.Id
+WHERE j.IsDeleted = 0;
+
+-- Cập nhật lại số lượng VoteCount chính xác cho các bài dự thi còn lại
+ALTER TABLE dbo.EventSubmissions DISABLE TRIGGER TR_EventSubmissions_PreventJurySubmission;
+
+UPDATE s
+SET s.VoteCount = (
+    SELECT COUNT(*) 
+    FROM dbo.EventVotes v 
+    WHERE v.SubmissionId = s.Id
+)
+FROM dbo.EventSubmissions s;
+
+ALTER TABLE dbo.EventSubmissions ENABLE TRIGGER TR_EventSubmissions_PreventJurySubmission;
+GO
+
 PRINT N'Database creation script with enhancements completed successfully!';
 GO
