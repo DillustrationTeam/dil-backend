@@ -174,6 +174,42 @@ public class JuriesController : ApiControllerBase
 
         return OkEnvelope(new { message = "Đã xóa giám khảo khỏi sự kiện thành công." });
     }
+
+    /// <summary>
+    /// Cập nhật vai trò (Head Jury / Jury) của một giám khảo trong sự kiện (Dành cho Quản trị viên & Kiểm duyệt viên).
+    /// </summary>
+    [HttpPut("{id:guid}/role")]
+    [HttpPut("{id:guid}")]
+    [Authorize(Roles = AdminOrModRoles)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateJuryRole(
+        Guid id,
+        [FromBody] UpdateJuryRoleDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var command = new UpdateJuryRoleCommand(
+            JuryId: id,
+            AdminId: CurrentUserId,
+            IsHeadJury: dto.IsHeadJury
+        );
+
+        var (success, errors) = await Mediator.Send(command, cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(new { message = "Đã cập nhật vai trò giám khảo thành công." });
+    }
 }
 
 
