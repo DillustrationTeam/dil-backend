@@ -70,7 +70,7 @@ public interface IApplicationDbContext
 
     // Module Commission & Dispute (UC10/UC14/UC27/UC30)
     DbSet<ArtCommission.Domain.Entities.Commission.Commission> Commissions { get; }
-    DbSet<ArtCommission.Domain.Entities.Commission.Dispute> Disputes { get; }
+    DbSet<ArtCommission.Domain.Entities.Dispute.CommissionDispute> Disputes { get; }
     DbSet<ArtCommission.Domain.Entities.Commission.Milestone> Milestones { get; }
     DbSet<ArtCommission.Domain.Entities.Commission.Review> Reviews { get; }
 
@@ -115,6 +115,7 @@ public interface IApplicationDbContext
     DbSet<CriteriaScore> CriteriaScores { get; }
     DbSet<Jury> Juries { get; }
     DbSet<Invitation> Invitations { get; }
+    DbSet<ArtCommission.Domain.Entities.Dispute.SubmissionDispute> SubmissionDisputes { get; }
 
     DbSet<T> Set<T>() where T : class;
 

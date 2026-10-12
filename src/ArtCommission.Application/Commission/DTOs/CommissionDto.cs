@@ -28,5 +28,5 @@ public class CommissionDetailDto : CommissionDto
 {
     public List<MilestoneDto> Milestones { get; set; } = new();
     public ReviewDto? Review { get; set; }
-    public DisputeDto? Dispute { get; set; }
+    public ArtCommission.Application.Dispute.CommissionDispute.DTOs.CommissionDisputeDto? Dispute { get; set; }
 }

@@ -6,6 +6,7 @@ using ArtCommission.Domain.Entities.Commission;
 using ArtCommission.Domain.Entities.Auction;
 using ArtCommission.Domain.Entities.Chat;
 using ArtCommission.Domain.Entities.CreatorApplication;
+using ArtCommission.Domain.Entities.Dispute;
 using ArtCommission.Domain.Entities.Event;
 using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Domain.Entities.Notifications;
@@ -51,7 +52,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<Commission> Commissions => Set<Commission>();
     public DbSet<Milestone> Milestones => Set<Milestone>();
     public DbSet<Review> Reviews => Set<Review>();
-    public DbSet<Dispute> Disputes => Set<Dispute>();
+    public DbSet<CommissionDispute> Disputes => Set<CommissionDispute>();
 
     // Module Payment & Wallet
     public DbSet<Wallet> Wallets => Set<Wallet>();
@@ -116,6 +117,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<CriteriaScore> CriteriaScores => Set<CriteriaScore>();
     public DbSet<Jury> Juries => Set<Jury>();
     public DbSet<Invitation> Invitations => Set<Invitation>();
+    public DbSet<SubmissionDispute> SubmissionDisputes => Set<SubmissionDispute>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

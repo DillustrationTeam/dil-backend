@@ -34,4 +34,5 @@ public class EventSubmission
     public Artwork? Artwork { get; set; }
 
     public ICollection<EventVote> Votes { get; set; } = new List<EventVote>();
+    public ICollection<Dispute.SubmissionDispute> Disputes { get; set; } = new List<Dispute.SubmissionDispute>();
 }

@@ -1,7 +1,7 @@
 -- ============================================================================
 -- DATABASE SCHEMA CREATION SCRIPT — ArtCommission (Dillustration)
 -- Target DBMS: Microsoft SQL Server 2019+ / Azure SQL Database
--- Total Tables: 39 Tables (24 Core Entities + 15 Feature Entities)
+-- Total Tables: 40 Tables (24 Core Entities + 16 Feature Entities)
 -- Compatible with: EF Core 8 Code-First & Direct T-SQL Execution
 -- NOTE: Auth module (AspNetUsers, RefreshTokens) is UNCHANGED as requested.
 -- ============================================================================
@@ -252,7 +252,7 @@ BEGIN
 END
 GO
 
--- Bảng Tranh chấp (Dispute)
+-- Bảng Tranh chấp Đơn hàng (CommissionDispute / Disputes)
 IF OBJECT_ID(N'dbo.Disputes', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.Disputes (
@@ -261,15 +261,18 @@ BEGIN
         RaisedById UNIQUEIDENTIFIER NOT NULL,
         Reason NVARCHAR(2000) NOT NULL,
         EvidenceUrls NVARCHAR(MAX) NULL,      -- ⚡ [CẢI TIẾN] JSON array ảnh bằng chứng tranh chấp
-        Status NVARCHAR(50) NOT NULL DEFAULT 'Pending', -- Pending, UnderReview, Resolved
+        Status NVARCHAR(50) NOT NULL DEFAULT 'Pending', -- Pending, UnderReview, Resolved, Rejected
         Resolution NVARCHAR(50) NULL,          -- ⚡ [CẢI TIẾN] ClientWin100, ArtistWin100, SplitCustom
         ClientRefundAmount DECIMAL(18, 2) NULL,-- ⚡ [CẢI TIẾN] Số tiền hoàn cho Client theo phán quyết
         ArtistPayAmount DECIMAL(18, 2) NULL,   -- ⚡ [CẢI TIẾN] Số tiền trả cho Họa sĩ theo phán quyết
-        AdminNote NVARCHAR(MAX) NULL,
+        AdminNote NVARCHAR(MAX) NULL,          -- Ghi chú phân xử của Admin / Moderator
         ResolvedAt DATETIMEOFFSET NULL,
         CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        UpdatedAt DATETIMEOFFSET NULL,
+        IsDeleted BIT NOT NULL DEFAULT 0,
         CONSTRAINT FK_Disputes_Commissions FOREIGN KEY (CommissionId) REFERENCES dbo.Commissions(Id),
-        CONSTRAINT FK_Disputes_RaisedBy FOREIGN KEY (RaisedById) REFERENCES dbo.AspNetUsers(Id)
+        CONSTRAINT FK_Disputes_RaisedBy FOREIGN KEY (RaisedById) REFERENCES dbo.AspNetUsers(Id),
+        CONSTRAINT UX_Disputes_CommissionId UNIQUE (CommissionId)
     );
 END
 GO
@@ -718,6 +721,35 @@ BEGIN
         CONSTRAINT FK_EventVotes_Submission FOREIGN KEY (SubmissionId) REFERENCES dbo.EventSubmissions(Id) ON DELETE CASCADE,
         CONSTRAINT FK_EventVotes_Voter FOREIGN KEY (VoterId) REFERENCES dbo.AspNetUsers(Id)
     );
+END
+GO
+
+-- Bảng Khiếu nại Bài thi Sự kiện (SubmissionDispute / SubmissionDisputes)
+IF OBJECT_ID(N'dbo.SubmissionDisputes', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.SubmissionDisputes (
+        Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_SubmissionDisputes PRIMARY KEY DEFAULT NEWID(),
+        EventId UNIQUEIDENTIFIER NOT NULL,
+        SubmissionId UNIQUEIDENTIFIER NOT NULL,
+        RaisedById UNIQUEIDENTIFIER NOT NULL,
+        Category NVARCHAR(50) NOT NULL,                -- Copyright, ScoreAppeal, AiArt, VoteFraud
+        Priority NVARCHAR(50) NOT NULL DEFAULT 'Medium', -- Low, Medium, High
+        Reason NVARCHAR(2000) NOT NULL,
+        EvidenceUrls NVARCHAR(MAX) NULL,               -- JSON array ảnh/link bằng chứng khiếu nại
+        Status NVARCHAR(50) NOT NULL DEFAULT 'Pending', -- Pending, UnderReview, Resolved, Rejected
+        Resolution NVARCHAR(50) NULL,                 -- Dismiss, Disqualify, AdjustScore, DeductVotes
+        Note NVARCHAR(MAX) NULL,                      -- Ghi chú phân xử của Admin / Moderator
+        ResolvedAt DATETIMEOFFSET NULL,
+        CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        UpdatedAt DATETIMEOFFSET NULL,
+        IsDeleted BIT NOT NULL DEFAULT 0,
+        CONSTRAINT FK_SubmissionDisputes_Event FOREIGN KEY (EventId) REFERENCES dbo.PlatformEvents(Id),
+        CONSTRAINT FK_SubmissionDisputes_Submission FOREIGN KEY (SubmissionId) REFERENCES dbo.EventSubmissions(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_SubmissionDisputes_RaisedBy FOREIGN KEY (RaisedById) REFERENCES dbo.AspNetUsers(Id)
+    );
+
+    CREATE INDEX IX_SubmissionDisputes_SubmissionId ON dbo.SubmissionDisputes(SubmissionId);
+    CREATE INDEX IX_SubmissionDisputes_Event_Status ON dbo.SubmissionDisputes(EventId, Status);
 END
 GO
 
