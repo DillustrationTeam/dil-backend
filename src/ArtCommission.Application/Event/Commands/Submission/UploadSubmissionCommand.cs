@@ -78,12 +78,21 @@ public class UploadSubmissionCommandHandler
         }
 
         // 4. Kiểm tra quyền Creator (Chỉ Creator mới có thể tham gia nộp bài dự thi sự kiện)
-        var isCreator = await _db.CreatorProfiles
-            .AnyAsync(cp => cp.UserId == request.SubmitterId && !cp.IsDeleted, cancellationToken);
+        var creatorProfile = await _db.CreatorProfiles
+            .FirstOrDefaultAsync(cp => cp.UserId == request.SubmitterId && !cp.IsDeleted, cancellationToken);
 
-        if (!isCreator)
+        if (creatorProfile == null)
         {
             return (false, null, ["Chỉ Creator (Họa sĩ) mới có thể tham gia nộp bài dự thi sự kiện. Vui lòng thiết lập hồ sơ Creator để tham gia."]);
+        }
+
+        // 4a. Kiểm tra Creator có phải Jury của sự kiện này không
+        var isJuryForEvent = await _db.Juries
+            .AnyAsync(j => j.EventId == request.EventId && j.CreatorId == creatorProfile.Id && !j.IsDeleted, cancellationToken);
+
+        if (isJuryForEvent)
+        {
+            return (false, null, ["Thành viên Ban giám khảo (Jury) của sự kiện không được tham gia nộp bài dự thi trong chính sự kiện đó."]);
         }
 
         // 4b. Kiểm tra quy tắc 1 Creator chỉ được nộp duy nhất 1 bài dự thi cho mỗi sự kiện

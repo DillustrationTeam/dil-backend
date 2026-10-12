@@ -1,7 +1,7 @@
 -- ============================================================================
 -- DATABASE SCHEMA CREATION SCRIPT — ArtCommission (Dillustration)
 -- Target DBMS: Microsoft SQL Server 2019+ / Azure SQL Database
--- Total Tables: 39 Tables (24 Core Entities + 15 Feature Entities)
+-- Total Tables: 40 Tables (24 Core Entities + 16 Feature Entities)
 -- Compatible with: EF Core 8 Code-First & Direct T-SQL Execution
 -- NOTE: Auth module (AspNetUsers, RefreshTokens) is UNCHANGED as requested.
 -- ============================================================================
@@ -252,7 +252,7 @@ BEGIN
 END
 GO
 
--- Bảng Tranh chấp (Dispute)
+-- Bảng Tranh chấp Đơn hàng (CommissionDispute / Disputes)
 IF OBJECT_ID(N'dbo.Disputes', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.Disputes (
@@ -261,15 +261,18 @@ BEGIN
         RaisedById UNIQUEIDENTIFIER NOT NULL,
         Reason NVARCHAR(2000) NOT NULL,
         EvidenceUrls NVARCHAR(MAX) NULL,      -- ⚡ [CẢI TIẾN] JSON array ảnh bằng chứng tranh chấp
-        Status NVARCHAR(50) NOT NULL DEFAULT 'Pending', -- Pending, UnderReview, Resolved
+        Status NVARCHAR(50) NOT NULL DEFAULT 'Pending', -- Pending, UnderReview, Resolved, Rejected
         Resolution NVARCHAR(50) NULL,          -- ⚡ [CẢI TIẾN] ClientWin100, ArtistWin100, SplitCustom
         ClientRefundAmount DECIMAL(18, 2) NULL,-- ⚡ [CẢI TIẾN] Số tiền hoàn cho Client theo phán quyết
         ArtistPayAmount DECIMAL(18, 2) NULL,   -- ⚡ [CẢI TIẾN] Số tiền trả cho Họa sĩ theo phán quyết
-        AdminNote NVARCHAR(MAX) NULL,
+        AdminNote NVARCHAR(MAX) NULL,          -- Ghi chú phân xử của Admin / Moderator
         ResolvedAt DATETIMEOFFSET NULL,
         CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        UpdatedAt DATETIMEOFFSET NULL,
+        IsDeleted BIT NOT NULL DEFAULT 0,
         CONSTRAINT FK_Disputes_Commissions FOREIGN KEY (CommissionId) REFERENCES dbo.Commissions(Id),
-        CONSTRAINT FK_Disputes_RaisedBy FOREIGN KEY (RaisedById) REFERENCES dbo.AspNetUsers(Id)
+        CONSTRAINT FK_Disputes_RaisedBy FOREIGN KEY (RaisedById) REFERENCES dbo.AspNetUsers(Id),
+        CONSTRAINT UX_Disputes_CommissionId UNIQUE (CommissionId)
     );
 END
 GO
@@ -721,6 +724,35 @@ BEGIN
 END
 GO
 
+-- Bảng Khiếu nại Bài thi Sự kiện (SubmissionDispute / SubmissionDisputes)
+IF OBJECT_ID(N'dbo.SubmissionDisputes', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.SubmissionDisputes (
+        Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_SubmissionDisputes PRIMARY KEY DEFAULT NEWID(),
+        EventId UNIQUEIDENTIFIER NOT NULL,
+        SubmissionId UNIQUEIDENTIFIER NOT NULL,
+        RaisedById UNIQUEIDENTIFIER NOT NULL,
+        Category NVARCHAR(50) NOT NULL,                -- Copyright, ScoreAppeal, AiArt, VoteFraud
+        Priority NVARCHAR(50) NOT NULL DEFAULT 'Medium', -- Low, Medium, High
+        Reason NVARCHAR(2000) NOT NULL,
+        EvidenceUrls NVARCHAR(MAX) NULL,               -- JSON array ảnh/link bằng chứng khiếu nại
+        Status NVARCHAR(50) NOT NULL DEFAULT 'Pending', -- Pending, UnderReview, Resolved, Rejected
+        Resolution NVARCHAR(50) NULL,                 -- Dismiss, Disqualify, AdjustScore, DeductVotes
+        Note NVARCHAR(MAX) NULL,                      -- Ghi chú phân xử của Admin / Moderator
+        ResolvedAt DATETIMEOFFSET NULL,
+        CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        UpdatedAt DATETIMEOFFSET NULL,
+        IsDeleted BIT NOT NULL DEFAULT 0,
+        CONSTRAINT FK_SubmissionDisputes_Event FOREIGN KEY (EventId) REFERENCES dbo.PlatformEvents(Id),
+        CONSTRAINT FK_SubmissionDisputes_Submission FOREIGN KEY (SubmissionId) REFERENCES dbo.EventSubmissions(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_SubmissionDisputes_RaisedBy FOREIGN KEY (RaisedById) REFERENCES dbo.AspNetUsers(Id)
+    );
+
+    CREATE INDEX IX_SubmissionDisputes_SubmissionId ON dbo.SubmissionDisputes(SubmissionId);
+    CREATE INDEX IX_SubmissionDisputes_Event_Status ON dbo.SubmissionDisputes(EventId, Status);
+END
+GO
+
 -- Bảng Huy hiệu / Badge Hệ thống
 IF OBJECT_ID(N'dbo.Badges', N'U') IS NULL
 BEGIN
@@ -865,6 +897,104 @@ BEGIN
     (NEWID(), 'escrow_hold_days', '7', N'Số ngày tạm giữ tiền escrow sau khi hoàn thành commission', SYSDATETIMEOFFSET()),
     (NEWID(), 'max_revision_count', '3', N'Số lần yêu cầu sửa đổi tối đa mặc định cho 1 milestone', SYSDATETIMEOFFSET());
 END
+GO
+
+-- ============================================================================
+-- EVENT RULES ENFORCEMENT & DATA ADJUSTMENTS
+-- ============================================================================
+
+-- 1. Trigger: Creator không được tham gia vào các event nơi mình là Jury (Rule A)
+IF OBJECT_ID(N'dbo.TR_EventSubmissions_PreventJurySubmission', N'TR') IS NOT NULL
+    DROP TRIGGER dbo.TR_EventSubmissions_PreventJurySubmission;
+GO
+
+CREATE TRIGGER dbo.TR_EventSubmissions_PreventJurySubmission
+ON dbo.EventSubmissions
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        INNER JOIN dbo.CreatorProfiles cp ON i.SubmitterId = cp.UserId
+        INNER JOIN dbo.Juries j ON j.EventId = i.EventId AND j.CreatorId = cp.Id
+        WHERE j.IsDeleted = 0
+    )
+    BEGIN
+        RAISERROR (N'Thành viên Ban giám khảo (Jury) của sự kiện không được tham gia nộp bài dự thi trong sự kiện đó.', 16, 1);
+        ROLLBACK TRANSACTION;
+        RETURN;
+    END
+END;
+GO
+
+-- 2. Trigger: Creator không được tự vote bài dự thi của chính mình (Rule B)
+IF OBJECT_ID(N'dbo.TR_EventVotes_PreventSelfVote', N'TR') IS NOT NULL
+    DROP TRIGGER dbo.TR_EventVotes_PreventSelfVote;
+GO
+
+CREATE TRIGGER dbo.TR_EventVotes_PreventSelfVote
+ON dbo.EventVotes
+AFTER INSERT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (
+        SELECT 1
+        FROM inserted v
+        INNER JOIN dbo.EventSubmissions s ON v.SubmissionId = s.Id
+        WHERE v.VoterId = s.SubmitterId
+    )
+    BEGIN
+        RAISERROR (N'Creator (tác giả) không thể tự bình chọn cho bài dự thi của chính mình.', 16, 1);
+        ROLLBACK TRANSACTION;
+        RETURN;
+    END
+END;
+GO
+
+-- 3. Data Adjustments & Cleanup (Đảm bảo dữ liệu hiện có tuân thủ 2 rule mới)
+-- Xóa các lượt vote liên quan đến bài dự thi của Jury hoặc tự vote bài của mình
+DELETE v
+FROM dbo.EventVotes v
+INNER JOIN dbo.EventSubmissions s ON v.SubmissionId = s.Id
+LEFT JOIN dbo.CreatorProfiles cp ON s.SubmitterId = cp.UserId
+LEFT JOIN dbo.Juries j ON j.EventId = s.EventId AND j.CreatorId = cp.Id AND j.IsDeleted = 0
+WHERE v.VoterId = s.SubmitterId OR j.Id IS NOT NULL;
+
+-- Xóa điểm tiêu chí (CriteriaScores) của bài dự thi do Jury nộp
+IF OBJECT_ID(N'dbo.CriteriaScores', N'U') IS NOT NULL
+BEGIN
+    DELETE cs
+    FROM dbo.CriteriaScores cs
+    INNER JOIN dbo.EventSubmissions s ON cs.SubmissionId = s.Id
+    INNER JOIN dbo.CreatorProfiles cp ON s.SubmitterId = cp.UserId
+    INNER JOIN dbo.Juries j ON j.EventId = s.EventId AND j.CreatorId = cp.Id
+    WHERE j.IsDeleted = 0;
+END
+
+-- Xóa các bài nộp dự thi nếu tác giả là Jury của sự kiện đó
+DELETE s
+FROM dbo.EventSubmissions s
+INNER JOIN dbo.CreatorProfiles cp ON s.SubmitterId = cp.UserId
+INNER JOIN dbo.Juries j ON j.EventId = s.EventId AND j.CreatorId = cp.Id
+WHERE j.IsDeleted = 0;
+
+-- Cập nhật lại số lượng VoteCount chính xác cho các bài dự thi còn lại
+ALTER TABLE dbo.EventSubmissions DISABLE TRIGGER TR_EventSubmissions_PreventJurySubmission;
+
+UPDATE s
+SET s.VoteCount = (
+    SELECT COUNT(*) 
+    FROM dbo.EventVotes v 
+    WHERE v.SubmissionId = s.Id
+)
+FROM dbo.EventSubmissions s;
+
+ALTER TABLE dbo.EventSubmissions ENABLE TRIGGER TR_EventSubmissions_PreventJurySubmission;
 GO
 
 PRINT N'Database creation script with enhancements completed successfully!';

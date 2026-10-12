@@ -302,6 +302,44 @@ public class EventSubmissionsController : ApiControllerBase
 
         return OkEnvelope(data);
     }
+
+    /// <summary>
+    /// Gửi khiếu nại/báo cáo vi phạm bài dự thi sự kiện (Copyright, ScoreAppeal, AiArt, VoteFraud...).
+    /// </summary>
+    [HttpPost("{id:guid}/disputes")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> CreateSubmissionDispute(
+        Guid id,
+        [FromBody] ArtCommission.Application.Dispute.SubmissionDispute.DTOs.CreateSubmissionDisputeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var command = new ArtCommission.Application.Dispute.SubmissionDispute.Commands.CreateSubmissionDisputeCommand(
+            SubmissionId: id,
+            RaisedById: CurrentUserId,
+            Category: request.Category,
+            Reason: request.Reason,
+            Description: request.Description,
+            EvidenceUrls: request.EvidenceUrls,
+            Priority: request.Priority
+        );
+
+        var (success, message, disputeId, errors) = await Mediator.Send(command, cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(new { message, disputeId });
+    }
 }
+
 
 

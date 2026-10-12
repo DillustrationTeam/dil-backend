@@ -1,6 +1,9 @@
-using ArtCommission.Application.Commission.Disputes.Commands;
-using ArtCommission.Application.Commission.Disputes.DTOs;
-using ArtCommission.Application.Commission.Disputes.Queries;
+using ArtCommission.Application.Dispute.CommissionDispute.Commands;
+using ArtCommission.Application.Dispute.CommissionDispute.DTOs;
+using ArtCommission.Application.Dispute.CommissionDispute.Queries;
+using ArtCommission.Application.Dispute.SubmissionDispute.Commands;
+using ArtCommission.Application.Dispute.SubmissionDispute.DTOs;
+using ArtCommission.Application.Dispute.SubmissionDispute.Queries;
 using ArtCommission.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -8,19 +11,24 @@ using Microsoft.AspNetCore.Mvc;
 namespace ArtCommission.API.Controllers;
 
 /// <summary>
-/// Quản lý phân xử khiếu nại tranh chấp đơn đặt vẽ &amp; Phân bổ tiền cọc Escrow nguyên tử (SCR-22 / UC30).
+/// Quản lý phân xử khiếu nại tranh chấp (Commission Disputes &amp; Event Submission Disputes).
 /// Dành cho Moderator và Administrator.
 /// </summary>
 [Authorize(Roles = $"{UserRoleNames.Moderator},{UserRoleNames.Administrator}")]
 [Route("api/v1/admin/disputes")]
 public class AdminDisputesController : ApiControllerBase
 {
+    // =========================================================================
+    // 1. TRANH CHẤP ĐƠN HÀNG VẼ (COMMISSION DISPUTES)
+    // =========================================================================
+
     /// <summary>
-    /// Lấy danh sách hàng đợi các vụ khiếu nại tranh chấp cần xử lý, kèm tổng tiền escrow bị lock (SCR-22 / UC30).
+    /// Lấy danh sách hàng đợi các vụ khiếu nại tranh chấp đơn đặt vẽ cần xử lý, kèm tổng tiền escrow bị lock (SCR-22 / UC30).
     /// Hỗ trợ lọc theo trạng thái (Pending, UnderReview, Resolved, All), tìm kiếm và phân trang.
     /// </summary>
     [HttpGet]
     [HttpGet("queue")]
+    [HttpGet("commissions")]
     [ProducesResponseType(typeof(IEnumerable<DisputeQueueItemDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -47,9 +55,10 @@ public class AdminDisputesController : ApiControllerBase
     }
 
     /// <summary>
-    /// Xem chi tiết hồ sơ trọng tài tranh chấp, claim, commission, escrow amount và chat snapshot (SCR-22 / UC30).
+    /// Xem chi tiết hồ sơ trọng tài tranh chấp đơn vẽ, claim, commission, escrow amount và chat snapshot (SCR-22 / UC30).
     /// </summary>
     [HttpGet("{id:guid}")]
+    [HttpGet("commissions/{id:guid}")]
     [ProducesResponseType(typeof(DisputeArbitrationDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -73,6 +82,8 @@ public class AdminDisputesController : ApiControllerBase
     /// Thực thi phán quyết trọng tài và phân bổ tiền ký quỹ Escrow nguyên tử (SCR-22 / UC30).
     /// </summary>
     [HttpPost("{id:guid}/arbitrate")]
+    [HttpPost("commissions/{id:guid}/arbitrate")]
+    [HttpPost("commissions/{id:guid}/resolve")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -92,6 +103,104 @@ public class AdminDisputesController : ApiControllerBase
             ClientRefundPercent: request.ClientRefundPercent,
             AdminNote: request.AdminNote,
             ModeratorId: CurrentUserId
+        );
+
+        var (success, message, errors) = await Mediator.Send(command, cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(new { message });
+    }
+
+    // =========================================================================
+    // 2. KHIẾU NẠI BÀI THI SỰ KIỆN (EVENT SUBMISSION DISPUTES)
+    // =========================================================================
+
+    /// <summary>
+    /// Lấy danh sách hàng đợi khiếu nại bài thi sự kiện (Submission Disputes) cần xử lý.
+    /// Hỗ trợ lọc theo EventId, SubmissionId, Status, Category và phân trang.
+    /// </summary>
+    [HttpGet("submissions")]
+    [ProducesResponseType(typeof(IEnumerable<SubmissionDisputeDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GetSubmissionDisputes(
+        [FromQuery] Guid? eventId = null,
+        [FromQuery] Guid? submissionId = null,
+        [FromQuery] string? status = null,
+        [FromQuery] string? category = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        CancellationToken cancellationToken = default)
+    {
+        var query = new GetSubmissionDisputesQuery(
+            EventId: eventId,
+            SubmissionId: submissionId,
+            Status: status,
+            Category: category,
+            PageNumber: page,
+            PageSize: pageSize
+        );
+
+        var (items, totalCount) = await Mediator.Send(query, cancellationToken);
+
+        return OkEnvelope(items, new
+        {
+            page,
+            pageSize,
+            totalCount,
+            totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
+        });
+    }
+
+    /// <summary>
+    /// Xem chi tiết một vụ khiếu nại bài dự thi sự kiện theo Id.
+    /// </summary>
+    [HttpGet("submissions/{id:guid}")]
+    [ProducesResponseType(typeof(SubmissionDisputeDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetSubmissionDisputeDetail(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var query = new GetSubmissionDisputeByIdQuery(id);
+        var result = await Mediator.Send(query, cancellationToken);
+
+        if (result == null)
+        {
+            return NotFoundEnvelope("Không tìm thấy vụ khiếu nại bài thi yêu cầu.");
+        }
+
+        return OkEnvelope(result);
+    }
+
+    /// <summary>
+    /// Xử lý phán quyết khiếu nại bài dự thi sự kiện (Dismiss, Disqualify, AdjustScore, DeductVotes).
+    /// </summary>
+    [HttpPost("submissions/{id:guid}/resolve")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> ResolveSubmissionDispute(
+        Guid id,
+        [FromBody] ResolveSubmissionDisputeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var command = new ResolveSubmissionDisputeCommand(
+            DisputeId: id,
+            ModeratorId: CurrentUserId,
+            Resolution: request.Resolution,
+            Note: request.Note
         );
 
         var (success, message, errors) = await Mediator.Send(command, cancellationToken);
