@@ -11,12 +11,14 @@ public sealed class LocalFileStorageService : IStorageService
 {
     private readonly string _rootPath;
     private readonly string _baseUrl;
+    private readonly string _signingKey;
 
     public LocalFileStorageService(IConfiguration configuration)
     {
         _rootPath = configuration["LocalStorage:RootPath"]
             ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "demo-uploads");
         _baseUrl = (configuration["LocalStorage:BaseUrl"] ?? "http://localhost:5075").TrimEnd('/');
+        _signingKey = LocalPresignedUrlSigner.GetSigningKey(configuration);
     }
 
     public Task<string> UploadPublicAsync(Stream stream, string key, string contentType, CancellationToken ct = default) =>
@@ -31,8 +33,12 @@ public sealed class LocalFileStorageService : IStorageService
         return key;
     }
 
-    public string GeneratePresignedDownloadUrl(string privateKey, TimeSpan expiry) =>
-        $"{_baseUrl}/demo-uploads/private/{ToUrlPath(privateKey)}";
+    public string GeneratePresignedDownloadUrl(string privateKey, TimeSpan expiry)
+    {
+        var expiresAt = DateTimeOffset.UtcNow.Add(expiry).ToUnixTimeSeconds();
+        var signature = LocalPresignedUrlSigner.Sign(privateKey, expiresAt, _signingKey);
+        return $"{_baseUrl}/demo-uploads/private/{ToUrlPath(privateKey)}?expires={expiresAt}&signature={signature}";
+    }
 
     private async Task UploadAsync(Stream stream, string visibility, string key, CancellationToken ct)
     {

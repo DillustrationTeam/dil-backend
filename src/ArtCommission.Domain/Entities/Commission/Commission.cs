@@ -23,6 +23,8 @@ public class Commission : BaseEntity
     public int CurrentStage { get; set; } = 1;
     public CommissionStatus Status { get; set; } = CommissionStatus.PendingAcceptance;
     public DateTimeOffset? DeadlineAt { get; set; }
+    public string? CancellationReason { get; set; }
+    public string? CancellationDetails { get; set; }
 
     // Navigation properties
     public ICollection<Milestone> Milestones { get; set; } = new List<Milestone>();

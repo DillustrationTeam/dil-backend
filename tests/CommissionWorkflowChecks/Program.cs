@@ -13,6 +13,7 @@ using System.Text.Json;
 using CommissionService = ArtCommission.Infrastructure.Services.CommissionService;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using ArtCommission.Infrastructure.ExternalServices.R2;
 
 var clientId = Guid.NewGuid();
 var creatorId = Guid.NewGuid();
@@ -37,12 +38,26 @@ void Equal<T>(T expected, T actual, string name)
     checks++;
 }
 
+var signedUrlNow = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+var signedUrlExpiry = signedUrlNow.AddMinutes(15).ToUnixTimeSeconds();
+var signedUrlSignature = LocalPresignedUrlSigner.Sign("commissions/demo/final.zip", signedUrlExpiry, "test-signing-key");
+Equal(true, LocalPresignedUrlSigner.IsValid("commissions/demo/final.zip", signedUrlExpiry.ToString(), signedUrlSignature, "test-signing-key", signedUrlNow), "local signed URL is valid before expiry");
+Equal(false, LocalPresignedUrlSigner.IsValid("commissions/demo/final.zip", signedUrlExpiry.ToString(), signedUrlSignature, "test-signing-key", signedUrlNow.AddMinutes(16)), "local signed URL expires");
+Equal(false, LocalPresignedUrlSigner.IsValid("commissions/demo/other.zip", signedUrlExpiry.ToString(), signedUrlSignature, "test-signing-key", signedUrlNow), "local signed URL rejects another key");
+
 async Task Rejected(Func<Task> action, string name)
 {
     try { await action(); }
     catch (InvalidOperationException) { checks++; return; }
     catch (ArgumentException) { checks++; return; }
     throw new Exception($"{name}: invalid transition was accepted");
+}
+
+async Task Denied(Func<Task> action, string name)
+{
+    try { await action(); }
+    catch (UnauthorizedAccessException) { checks++; return; }
+    throw new Exception($"{name}: unauthorized action was accepted");
 }
 
 async Task<(Guid Id, Guid[] Milestones)> Create(string title)
@@ -110,11 +125,25 @@ await Rejected(() => service.CreateReviewAsync(normal.Id, new CreateReviewReques
 await Rejected(() => service.CancelCommissionAsync(normal.Id, new CancelWithPolicyRequest { CancellationReason = "late" }, clientId), "cancel completed");
 Equal(CommissionStatus.Completed.ToString(), (await service.GetCommissionByIdAsync(normal.Id, clientId))!.Status,
     "completed state unchanged");
+Equal(normal.Id, (await service.GetCommissionByIdAsync(normal.Id, creatorId))!.Id,
+    "AAMCS-041 UTCID06 creator can read own commission detail");
+Equal(true, (await service.GetMilestoneWipPreviewUrlAsync(normal.Id, normal.Milestones[0], clientId)).Contains("commissions/"),
+    "AAMCS-047 UTCID06 participant can obtain protected WIP URL");
+Equal(true, (await service.GetFinalDownloadUrlAsync(normal.Id, creatorId)).DownloadUrl.Contains("commissions/"),
+    "AAMCS-051 UTCID06 creator can obtain protected final URL");
 
 var rejected = await Create("rejected");
 await service.RespondCommissionAsync(rejected.Id, new RespondCommissionRequest { Action = "Reject", RejectReason = "Không phù hợp" }, creatorId);
 await Rejected(() => service.RespondCommissionAsync(rejected.Id,
     new RespondCommissionRequest { Action = "Accept" }, creatorId), "accept after reject");
+
+var invalidReject = await Create("invalid reject");
+await Rejected(() => service.RespondCommissionAsync(invalidReject.Id,
+    new RespondCommissionRequest { Action = "Reject", RejectReason = " " }, creatorId),
+    "AAMCS-043 UTCID02 blank reject reason");
+await Denied(() => service.RespondCommissionAsync(invalidReject.Id,
+    new RespondCommissionRequest { Action = "Reject", RejectReason = "client cannot reject" }, clientId),
+    "AAMCS-043 UTCID03 client cannot reject creator request");
 
 var negotiated = await Create("negotiated");
 await service.RespondCommissionAsync(negotiated.Id,
@@ -127,6 +156,11 @@ await service.DepositEscrowAsync(negotiated.Id, clientId, "Wallet");
 Equal(450m, (await service.GetCommissionByIdAsync(negotiated.Id, clientId))!.EscrowHeldAmount,
     "negotiated deposit matches total");
 
+var invalidNegotiation = await Create("invalid negotiation");
+await Rejected(() => service.RespondCommissionAsync(invalidNegotiation.Id,
+    new RespondCommissionRequest { Action = "Negotiate", NegotiatePrice = 0 }, creatorId),
+    "AAMCS-044 UTCID03 zero negotiation price");
+
 var disputed = await Create("disputed");
 await service.CreateDisputeAsync(disputed.Id, new CreateDisputeRequest { Reason = "test" }, clientId);
 Equal((creatorId, NotificationType.DisputeStatusChanged),
@@ -134,9 +168,14 @@ Equal((creatorId, NotificationType.DisputeStatusChanged),
 await Rejected(() => service.CreateDisputeAsync(disputed.Id,
     new CreateDisputeRequest { Reason = "again" }, creatorId), "duplicate dispute");
 await Rejected(() => service.CompleteCommissionAsync(disputed.Id, clientId), "complete disputed");
+Equal(disputed.Id, (await service.GetDisputeByCommissionIdAsync(disputed.Id, clientId))!.CommissionId,
+    "AAMCS-058 UTCID06 participant can read dispute detail");
 
 var cancelled = await Create("cancelled");
-await service.CancelCommissionAsync(cancelled.Id, new CancelWithPolicyRequest { CancellationReason = "changed mind" }, clientId);
+await service.CancelCommissionAsync(cancelled.Id, new CancelWithPolicyRequest { CancellationReason = "changed mind", Details = "budget changed" }, clientId);
+var cancelledDetail = await service.GetCommissionByIdAsync(cancelled.Id, clientId);
+Equal("changed mind", cancelledDetail!.CancellationReason, "cancellation reason persisted");
+Equal("budget changed", cancelledDetail.CancellationDetails, "cancellation details persisted");
 var cancelledState = await service.GetCommissionByIdAsync(cancelled.Id, clientId);
 Equal(EscrowStatus.Pending.ToString(), cancelledState!.EscrowStatus, "no false refund");
 await Rejected(() => service.DepositEscrowAsync(cancelled.Id, clientId, "Wallet"), "deposit cancelled");

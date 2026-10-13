@@ -21,6 +21,8 @@ public class CommissionDto
     public int CurrentStage { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTimeOffset? DeadlineAt { get; set; }
+    public string? CancellationReason { get; set; }
+    public string? CancellationDetails { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 }
 
@@ -30,3 +32,5 @@ public class CommissionDetailDto : CommissionDto
     public ReviewDto? Review { get; set; }
     public DisputeDto? Dispute { get; set; }
 }
+
+public sealed record FinalDownloadDto(string DownloadUrl, DateTimeOffset ExpiresAt);

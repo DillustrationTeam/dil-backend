@@ -519,7 +519,7 @@ public class CommissionService : ICommissionService
         return MapToDto(commission);
     }
 
-    public async Task<string> GetFinalDownloadUrlAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
+    public async Task<FinalDownloadDto> GetFinalDownloadUrlAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
         var commission = await PartyCommissionAsync(id, userId, cancellationToken);
         if (commission.Status != CommissionStatus.Completed)
@@ -530,7 +530,10 @@ public class CommissionService : ICommissionService
         if (lastMilestone?.FinalDeliverableUrl == null)
             throw new InvalidOperationException("Final deliverable not found.");
 
-        return _storageService.GeneratePresignedDownloadUrl(lastMilestone.FinalDeliverableUrl, TimeSpan.FromMinutes(15));
+        var expiresIn = TimeSpan.FromMinutes(15);
+        var expiresAt = DateTimeOffset.UtcNow.Add(expiresIn);
+        var downloadUrl = _storageService.GeneratePresignedDownloadUrl(lastMilestone.FinalDeliverableUrl, expiresIn);
+        return new FinalDownloadDto(downloadUrl, expiresAt);
     }
 
     public async Task<string> GetMilestoneWipPreviewUrlAsync(Guid commissionId, Guid milestoneId, Guid userId, CancellationToken cancellationToken = default)
@@ -544,6 +547,10 @@ public class CommissionService : ICommissionService
 
     public async Task<CommissionDto> CancelCommissionAsync(Guid id, CancelWithPolicyRequest request, Guid userId, CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(request.CancellationReason) || request.CancellationReason.Length > 500
+            || request.Details?.Length > 2000)
+            throw new ArgumentException("Cancellation reason is required and cancellation details are too long.");
+
         await using var tx = await BeginTransactionAsync(cancellationToken);
         var commission = await PartyCommissionAsync(id, userId, cancellationToken);
         if (commission.Status is CommissionStatus.Completed or CommissionStatus.Cancelled or CommissionStatus.Disputed)
@@ -552,6 +559,8 @@ public class CommissionService : ICommissionService
             throw new InvalidOperationException("Funded commissions must be resolved through a dispute.");
 
         commission.Status = CommissionStatus.Cancelled;
+        commission.CancellationReason = request.CancellationReason.Trim();
+        commission.CancellationDetails = string.IsNullOrWhiteSpace(request.Details) ? null : request.Details.Trim();
         commission.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -729,6 +738,8 @@ public class CommissionService : ICommissionService
             CurrentStage = c.CurrentStage,
             Status = c.Status.ToString(),
             DeadlineAt = c.DeadlineAt,
+            CancellationReason = c.CancellationReason,
+            CancellationDetails = c.CancellationDetails,
             CreatedAt = c.CreatedAt
         };
     }
@@ -755,6 +766,8 @@ public class CommissionService : ICommissionService
             CurrentStage = dto.CurrentStage,
             Status = dto.Status,
             DeadlineAt = dto.DeadlineAt,
+            CancellationReason = dto.CancellationReason,
+            CancellationDetails = dto.CancellationDetails,
             CreatedAt = dto.CreatedAt,
             Milestones = c.Milestones.Select(MapToMilestoneDto).ToList(),
             Review = c.Reviews.FirstOrDefault() != null ? MapToReviewDto(c.Reviews.First()) : null,
@@ -813,10 +826,19 @@ public class CommissionService : ICommissionService
             Resolution = d.Resolution,
             ClientRefundAmount = d.ClientRefundAmount,
             ArtistPayAmount = d.ArtistPayAmount,
+            ClientRefundPercent = ParseClientRefundPercent(d.Resolution),
             AdminNote = d.AdminNote,
             ResolvedAt = d.ResolvedAt,
             CreatedAt = d.CreatedAt
         };
+    }
+
+    private static decimal? ParseClientRefundPercent(string? resolution)
+    {
+        if (resolution == "ClientWin100") return 100m;
+        if (resolution == "ArtistWin100") return 0m;
+        var value = resolution?.Split('_');
+        return value is { Length: 3 } && decimal.TryParse(value[1], out var percent) ? percent : null;
     }
     #endregion
 }

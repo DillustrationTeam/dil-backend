@@ -225,8 +225,8 @@ public class CommissionsController : ControllerBase
     public async Task<IActionResult> GetFinalDownloadUrl(Guid id, CancellationToken ct)
     {
         var userId = GetCurrentUserId();
-        var url = await _commissionService.GetFinalDownloadUrlAsync(id, userId, ct);
-        return Ok(new ApiResponse<object>(new { downloadUrl = url }));
+        var download = await _commissionService.GetFinalDownloadUrlAsync(id, userId, ct);
+        return Ok(new ApiResponse<FinalDownloadDto>(download));
     }
 
     /// <summary>

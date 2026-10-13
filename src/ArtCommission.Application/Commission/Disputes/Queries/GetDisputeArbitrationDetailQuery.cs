@@ -174,6 +174,7 @@ public class GetDisputeArbitrationDetailQueryHandler : IRequestHandler<GetDisput
             Resolution = dispute.Resolution,
             ClientRefundAmount = dispute.ClientRefundAmount,
             ArtistPayAmount = dispute.ArtistPayAmount,
+            ClientRefundPercent = ParseClientRefundPercent(dispute.Resolution),
             AdminNote = dispute.AdminNote,
             CreatedAt = dispute.CreatedAt,
             ResolvedAt = dispute.ResolvedAt,
@@ -181,5 +182,13 @@ public class GetDisputeArbitrationDetailQueryHandler : IRequestHandler<GetDisput
             Milestones = milestones,
             ChatSnapshot = chatSnapshot
         };
+    }
+
+    private static decimal? ParseClientRefundPercent(string? resolution)
+    {
+        if (resolution == "ClientWin100") return 100m;
+        if (resolution == "ArtistWin100") return 0m;
+        var value = resolution?.Split('_');
+        return value is { Length: 3 } && decimal.TryParse(value[1], out var percent) ? percent : null;
     }
 }
