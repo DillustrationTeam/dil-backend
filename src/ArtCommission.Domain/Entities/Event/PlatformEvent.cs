@@ -22,6 +22,10 @@ public class PlatformEvent : BaseEntity
 
     public bool IsFeatured { get; set; } = false;
 
+    public bool IsHeadJurySignedOff { get; set; } = false;
+
+    public DateTimeOffset? HeadJurySignedOffAt { get; set; }
+
     public DateTimeOffset SubmissionStartAt { get; set; }
 
     public DateTimeOffset SubmissionEndAt { get; set; }

@@ -7,12 +7,11 @@ public class SubmissionDispute : BaseEntity
     public Guid EventId { get; set; }
     public Guid SubmissionId { get; set; }
     public Guid RaisedById { get; set; }
-    public string Category { get; set; } = string.Empty; // Copyright, ScoreAppeal, AiArt, VoteFraud
     public string Priority { get; set; } = "Medium";     // Low, Medium, High
     public string Reason { get; set; } = string.Empty;
     public string? EvidenceUrls { get; set; }
     public string Status { get; set; } = "Pending";      // Pending, UnderReview, Resolved, Rejected
-    public string? Resolution { get; set; }              // Dismiss, Disqualify, AdjustScore, DeductVotes
+    public string? Resolution { get; set; }              // Dismiss, Disqualify, RequestReEvaluation, Other
     public string? Note { get; set; }
     public DateTimeOffset? ResolvedAt { get; set; }
 

@@ -47,4 +47,8 @@ public sealed record EventDetailDto
     public DateTimeOffset? UpdatedAt { get; set; }
 
     public bool IsOpenForSubmission { get; set; }
+    
+    public bool IsHeadJurySignedOff { get; set; }
+
+    public DateTimeOffset? HeadJurySignedOffAt { get; set; }
 }

@@ -324,7 +324,6 @@ public class EventSubmissionsController : ApiControllerBase
         var command = new ArtCommission.Application.Dispute.SubmissionDispute.Commands.CreateSubmissionDisputeCommand(
             SubmissionId: id,
             RaisedById: CurrentUserId,
-            Category: request.Category,
             Reason: request.Reason,
             Description: request.Description,
             EvidenceUrls: request.EvidenceUrls,

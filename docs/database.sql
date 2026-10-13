@@ -567,6 +567,8 @@ BEGIN
         Prize NVARCHAR(1000) NULL,
         MaxVote INT NOT NULL DEFAULT 1,               -- ⚡ Số lượt bình chọn tối đa của mỗi người dùng
         Status NVARCHAR(50) NOT NULL DEFAULT 'Draft', -- Draft, Open, Judging, Ended
+        IsHeadJurySignedOff BIT NOT NULL DEFAULT 0,   -- ⚡ Trưởng ban giám khảo đã ký duyệt kết quả
+        HeadJurySignedOffAt DATETIMEOFFSET NULL,      -- ⚡ Thời điểm Head Jury ký duyệt
         SubmissionStartAt DATETIMEOFFSET NOT NULL,
         SubmissionEndAt DATETIMEOFFSET NOT NULL,
         JudgingStartAt DATETIMEOFFSET NOT NULL,
@@ -732,12 +734,11 @@ BEGIN
         EventId UNIQUEIDENTIFIER NOT NULL,
         SubmissionId UNIQUEIDENTIFIER NOT NULL,
         RaisedById UNIQUEIDENTIFIER NOT NULL,
-        Category NVARCHAR(50) NOT NULL,                -- Copyright, ScoreAppeal, AiArt, VoteFraud
         Priority NVARCHAR(50) NOT NULL DEFAULT 'Medium', -- Low, Medium, High
         Reason NVARCHAR(2000) NOT NULL,
         EvidenceUrls NVARCHAR(MAX) NULL,               -- JSON array ảnh/link bằng chứng khiếu nại
         Status NVARCHAR(50) NOT NULL DEFAULT 'Pending', -- Pending, UnderReview, Resolved, Rejected
-        Resolution NVARCHAR(50) NULL,                 -- Dismiss, Disqualify, AdjustScore, DeductVotes
+        Resolution NVARCHAR(50) NULL,                 -- Dismiss, Disqualify, RequestReEvaluation, Other
         Note NVARCHAR(MAX) NULL,                      -- Ghi chú phân xử của Admin / Moderator
         ResolvedAt DATETIMEOFFSET NULL,
         CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
@@ -914,6 +915,10 @@ AFTER INSERT, UPDATE
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    -- Tối ưu: Nếu chỉ cập nhật AdminNote, Score, VoteCount mà không đổi SubmitterId/EventId thì bỏ qua
+    IF EXISTS (SELECT 1 FROM deleted) AND NOT (UPDATE(SubmitterId) OR UPDATE(EventId))
+        RETURN;
 
     IF EXISTS (
         SELECT 1

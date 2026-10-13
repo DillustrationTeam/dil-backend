@@ -12,7 +12,6 @@ public record GetSubmissionDisputesQuery(
     Guid? SubmissionId = null,
     Guid? RaisedById = null,
     string? Status = null,
-    string? Category = null,
     int PageNumber = 1,
     int PageSize = 20
 ) : IRequest<(List<SubmissionDisputeDto> Items, int TotalCount)>;
@@ -58,11 +57,6 @@ public class GetSubmissionDisputesQueryHandler
             query = query.Where(d => d.Status == request.Status.Trim());
         }
 
-        if (!string.IsNullOrWhiteSpace(request.Category))
-        {
-            query = query.Where(d => d.Category == request.Category.Trim());
-        }
-
         int totalCount = await query.CountAsync(cancellationToken);
 
         int pageNumber = request.PageNumber > 0 ? request.PageNumber : 1;
@@ -101,7 +95,6 @@ public class GetSubmissionDisputesQueryHandler
                 ArtworkImageUrl = d.Submission?.Artwork?.ImageUrl ?? d.Submission?.Artwork?.ThumbnailUrl,
                 RaisedById = d.RaisedById,
                 RaisedByName = user?.FullName ?? user?.UserName ?? "Unknown",
-                Category = d.Category,
                 Priority = d.Priority,
                 Reason = d.Reason,
                 EvidenceUrls = d.EvidenceUrls,

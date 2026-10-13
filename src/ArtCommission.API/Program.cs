@@ -461,7 +461,7 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
         UnauthorizedAccessException => (403, "Forbidden", exception.Message),
         ArgumentException => (400, "Bad Request", exception.Message),
         InvalidOperationException => (400, "Bad Request", exception.Message),
-        _ => (500, "Lỗi máy chủ", "Đã xảy ra lỗi không mong muốn.")
+        _ => (500, "Lỗi máy chủ", app.Environment.IsDevelopment() ? $"{exception?.GetType().Name}: {exception?.Message} | {exception?.InnerException?.Message}" : "Đã xảy ra lỗi không mong muốn.")
     };
     app.Logger.LogError(exception, "API request failed with status {StatusCode}", status);
     context.Response.StatusCode = status;

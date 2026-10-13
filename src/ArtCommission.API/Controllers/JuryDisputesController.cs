@@ -36,7 +36,6 @@ public class JuryDisputesController : ApiControllerBase
         [FromQuery] Guid? eventId = null,
         [FromQuery] Guid? submissionId = null,
         [FromQuery] string? status = null,
-        [FromQuery] string? category = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
         CancellationToken cancellationToken = default)
@@ -74,7 +73,6 @@ public class JuryDisputesController : ApiControllerBase
             EventId: eventId,
             SubmissionId: submissionId,
             Status: status,
-            Category: category,
             PageNumber: page,
             PageSize: pageSize
         );
@@ -168,7 +166,6 @@ public class JuryDisputesController : ApiControllerBase
         var command = new CreateSubmissionDisputeCommand(
             SubmissionId: request.SubmissionId,
             RaisedById: CurrentUserId,
-            Category: request.Category,
             Reason: request.Reason,
             Description: request.Description,
             EvidenceUrls: request.EvidenceUrls,
@@ -185,7 +182,7 @@ public class JuryDisputesController : ApiControllerBase
     }
 
     /// <summary>
-    /// Trưởng ban giám khảo (Head Jury) hoặc Quản trị viên xử lý khiếu nại bài dự thi (Dismiss, Disqualify, AdjustScore, DeductVotes).
+    /// Trưởng ban giám khảo (Head Jury) hoặc Quản trị viên xử lý khiếu nại bài dự thi (Dismiss, Disqualify, RequestReEvaluation).
     /// </summary>
     [HttpPost("{id:guid}/resolve")]
     [ProducesResponseType(StatusCodes.Status200OK)]
