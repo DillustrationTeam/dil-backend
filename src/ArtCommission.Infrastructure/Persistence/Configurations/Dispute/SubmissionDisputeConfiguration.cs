@@ -24,8 +24,6 @@ public class SubmissionDisputeConfiguration : IEntityTypeConfiguration<Submissio
         builder.Property(d => d.Resolution)
             .HasMaxLength(50);
 
-        builder.Property(d => d.Category)
-            .HasMaxLength(50);
 
         builder.Property(d => d.Priority)
             .HasMaxLength(50);

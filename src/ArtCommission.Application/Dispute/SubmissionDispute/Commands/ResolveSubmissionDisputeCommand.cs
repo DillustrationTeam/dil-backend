@@ -1,5 +1,5 @@
 using ArtCommission.Application.Common.Interfaces;
-using FluentValidation;
+using ArtCommission.Application.Dispute.SubmissionDispute.Validators;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,28 +8,9 @@ namespace ArtCommission.Application.Dispute.SubmissionDispute.Commands;
 public record ResolveSubmissionDisputeCommand(
     Guid DisputeId,
     Guid ModeratorId,
-    string Resolution, // Dismiss, Disqualify, AdjustScore, DeductVotes
+    string Resolution, // Dismiss, Disqualify, RequestReEvaluation, Other
     string? Note
 ) : IRequest<(bool Success, string Message, string[] Errors)>;
-
-public class ResolveSubmissionDisputeCommandValidator : AbstractValidator<ResolveSubmissionDisputeCommand>
-{
-    private static readonly string[] AllowedResolutions = ["Dismiss", "Disqualify", "AdjustScore", "DeductVotes", "Other"];
-
-    public ResolveSubmissionDisputeCommandValidator()
-    {
-        RuleFor(x => x.DisputeId)
-            .NotEmpty().WithMessage("Mã vụ khiếu nại (DisputeId) không được để trống.");
-
-        RuleFor(x => x.ModeratorId)
-            .NotEmpty().WithMessage("Mã người xử lý (ModeratorId) không được để trống.");
-
-        RuleFor(x => x.Resolution)
-            .NotEmpty().WithMessage("Hình thức giải quyết (Resolution) không được để trống.")
-            .Must(r => AllowedResolutions.Contains(r, StringComparer.OrdinalIgnoreCase))
-            .WithMessage("Hình thức giải quyết không hợp lệ (hợp lệ: Dismiss, Disqualify, AdjustScore, DeductVotes, Other).");
-    }
-}
 
 public class ResolveSubmissionDisputeCommandHandler
     : IRequestHandler<ResolveSubmissionDisputeCommand, (bool Success, string Message, string[] Errors)>
@@ -78,8 +59,15 @@ public class ResolveSubmissionDisputeCommandHandler
         if (string.Equals(request.Resolution, "Disqualify", StringComparison.OrdinalIgnoreCase) && dispute.Submission != null)
         {
             dispute.Submission.AdminNote = !string.IsNullOrWhiteSpace(request.Note)
-                ? $"[Bị truất quyền do khiếu nại {dispute.Category}]: {request.Note}"
-                : $"[Bị truất quyền do khiếu nại {dispute.Category}]";
+                ? $"[Bị truất quyền do khiếu nại]: {request.Note}"
+                : "[Bị truất quyền do khiếu nại]";
+        }
+        // Nếu yêu cầu Ban Giám Khảo phúc khảo / chấm lại (RequestReEvaluation)
+        else if (string.Equals(request.Resolution, "RequestReEvaluation", StringComparison.OrdinalIgnoreCase) && dispute.Submission != null)
+        {
+            dispute.Submission.AdminNote = !string.IsNullOrWhiteSpace(request.Note)
+                ? $"[Yêu cầu Ban Giám Khảo chấm lại]: {request.Note}"
+                : "[Yêu cầu Ban Giám Khảo chấm lại do khiếu nại]";
         }
 
         await _db.SaveChangesAsync(cancellationToken);

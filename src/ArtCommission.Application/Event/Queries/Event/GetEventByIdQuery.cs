@@ -53,7 +53,9 @@ public class GetEventByIdQueryHandler
                 TotalVoteCount = e.Submissions.Sum(s => (int?)s.VoteCount) ?? 0,
                 CreatedAt = e.CreatedAt,
                 UpdatedAt = e.UpdatedAt,
-                IsOpenForSubmission = e.Status == EventStatus.Open && e.SubmissionStartAt <= now && e.SubmissionEndAt >= now
+                IsOpenForSubmission = e.Status == EventStatus.Open && e.SubmissionStartAt <= now && e.SubmissionEndAt >= now,
+                IsHeadJurySignedOff = e.IsHeadJurySignedOff,
+                HeadJurySignedOffAt = e.HeadJurySignedOffAt
             })
             .FirstOrDefaultAsync(cancellationToken);
     }

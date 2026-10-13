@@ -2044,11 +2044,6 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("Category")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -2235,7 +2230,12 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("EventId", "Score", "VoteCount");
 
-                    b.ToTable("EventSubmissions", (string)null);
+                    b.ToTable("EventSubmissions", null, t =>
+                        {
+                            t.HasTrigger("TR_EventSubmissions_PreventJurySubmission");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.Event.EventVote", b =>
@@ -2253,7 +2253,12 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("VoterId");
 
-                    b.ToTable("EventVotes", (string)null);
+                    b.ToTable("EventVotes", null, t =>
+                        {
+                            t.HasTrigger("TR_EventVotes_PreventSelfVote");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.Event.Invitation", b =>
@@ -2370,12 +2375,20 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<DateTimeOffset?>("HeadJurySignedOffAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
                     b.Property<bool>("IsFeatured")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("IsHeadJurySignedOff")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(false);

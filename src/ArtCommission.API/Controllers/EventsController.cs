@@ -629,5 +629,37 @@ public class EventsController : ApiControllerBase
         var result = await Mediator.Send(query, cancellationToken);
         return OkEnvelope(result);
     }
+
+    /// <summary>
+    /// Ký duyệt và xác nhận kết quả chung cuộc của Trưởng ban giám khảo (Head Jury Sign-Off).
+    /// </summary>
+    [HttpPost("{id:guid}/head-jury/sign-off")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> SignOffHeadJury(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var command = new SignOffHeadJuryCommand(id, CurrentUserId);
+        var (success, errors, signedOffAt) = await Mediator.Send(command, cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(new
+        {
+            message = "Trưởng ban giám khảo đã ký duyệt kết quả cuộc thi thành công.",
+            isHeadJurySignedOff = true,
+            signedOffAt
+        });
+    }
 }
 

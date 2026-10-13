@@ -1,4 +1,5 @@
 using ArtCommission.Application.Common.Interfaces;
+using ArtCommission.Application.Dispute.SubmissionDispute.Validators;
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -9,40 +10,11 @@ namespace ArtCommission.Application.Dispute.SubmissionDispute.Commands;
 public record CreateSubmissionDisputeCommand(
     Guid SubmissionId,
     Guid RaisedById,
-    string Category,
     string Reason,
     string? Description = null,
     List<string>? EvidenceUrls = null,
     string Priority = "Medium"
 ) : IRequest<(bool Success, string Message, Guid? DisputeId, string[] Errors)>;
-
-public class CreateSubmissionDisputeCommandValidator : AbstractValidator<CreateSubmissionDisputeCommand>
-{
-    private static readonly string[] AllowedCategories = ["Copyright", "ScoreAppeal", "AiArt", "VoteFraud", "Other"];
-    private static readonly string[] AllowedPriorities = ["Low", "Medium", "High"];
-
-    public CreateSubmissionDisputeCommandValidator()
-    {
-        RuleFor(x => x.SubmissionId)
-            .NotEmpty().WithMessage("Mã bài dự thi (SubmissionId) không được để trống.");
-
-        RuleFor(x => x.RaisedById)
-            .NotEmpty().WithMessage("Mã người gửi khiếu nại (RaisedById) không được để trống.");
-
-        RuleFor(x => x.Category)
-            .NotEmpty().WithMessage("Danh mục khiếu nại không được để trống.")
-            .Must(c => AllowedCategories.Contains(c, StringComparer.OrdinalIgnoreCase))
-            .WithMessage("Danh mục khiếu nại không hợp lệ (hợp lệ: Copyright, ScoreAppeal, AiArt, VoteFraud, Other).");
-
-        RuleFor(x => x.Reason)
-            .NotEmpty().WithMessage("Lý do khiếu nại không được để trống.")
-            .MaximumLength(2000).WithMessage("Lý do khiếu nại không được vượt quá 2000 ký tự.");
-
-        RuleFor(x => x.Priority)
-            .Must(p => string.IsNullOrWhiteSpace(p) || AllowedPriorities.Contains(p, StringComparer.OrdinalIgnoreCase))
-            .WithMessage("Mức độ ưu tiên không hợp lệ (hợp lệ: Low, Medium, High).");
-    }
-}
 
 public class CreateSubmissionDisputeCommandHandler
     : IRequestHandler<CreateSubmissionDisputeCommand, (bool Success, string Message, Guid? DisputeId, string[] Errors)>
@@ -112,7 +84,6 @@ public class CreateSubmissionDisputeCommandHandler
             EventId = submission.EventId,
             SubmissionId = submission.Id,
             RaisedById = request.RaisedById,
-            Category = request.Category.Trim(),
             Priority = string.IsNullOrWhiteSpace(request.Priority) ? "Medium" : request.Priority.Trim(),
             Reason = fullReason,
             EvidenceUrls = serializedEvidence,

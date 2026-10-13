@@ -130,7 +130,6 @@ public class AdminDisputesController : ApiControllerBase
         [FromQuery] Guid? eventId = null,
         [FromQuery] Guid? submissionId = null,
         [FromQuery] string? status = null,
-        [FromQuery] string? category = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
         CancellationToken cancellationToken = default)
@@ -139,7 +138,6 @@ public class AdminDisputesController : ApiControllerBase
             EventId: eventId,
             SubmissionId: submissionId,
             Status: status,
-            Category: category,
             PageNumber: page,
             PageSize: pageSize
         );
@@ -179,7 +177,7 @@ public class AdminDisputesController : ApiControllerBase
     }
 
     /// <summary>
-    /// Xử lý phán quyết khiếu nại bài dự thi sự kiện (Dismiss, Disqualify, AdjustScore, DeductVotes).
+    /// Xử lý phán quyết khiếu nại bài dự thi sự kiện (Dismiss, Disqualify, RequestReEvaluation).
     /// </summary>
     [HttpPost("submissions/{id:guid}/resolve")]
     [ProducesResponseType(StatusCodes.Status200OK)]

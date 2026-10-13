@@ -51,7 +51,6 @@ public class GetSubmissionDisputeByIdQueryHandler
             ArtworkImageUrl = dispute.Submission?.Artwork?.ImageUrl ?? dispute.Submission?.Artwork?.ThumbnailUrl,
             RaisedById = dispute.RaisedById,
             RaisedByName = user?.FullName ?? user?.UserName ?? "Unknown",
-            Category = dispute.Category,
             Priority = dispute.Priority,
             Reason = dispute.Reason,
             EvidenceUrls = dispute.EvidenceUrls,

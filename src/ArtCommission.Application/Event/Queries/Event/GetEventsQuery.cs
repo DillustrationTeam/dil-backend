@@ -109,7 +109,9 @@ public class GetEventsQueryHandler
                 TotalVoteCount = e.Submissions.SelectMany(s => s.Votes).Count(),
                 CreatedAt = e.CreatedAt,
                 UpdatedAt = e.UpdatedAt,
-                IsActive = e.Status == EventStatus.Open && e.SubmissionStartAt <= now && e.ResultAnnouncementAt >= now
+                IsActive = e.Status == EventStatus.Open && e.SubmissionStartAt <= now && e.ResultAnnouncementAt >= now,
+                IsHeadJurySignedOff = e.IsHeadJurySignedOff,
+                HeadJurySignedOffAt = e.HeadJurySignedOffAt
             })
             .ToListAsync(cancellationToken);
 
