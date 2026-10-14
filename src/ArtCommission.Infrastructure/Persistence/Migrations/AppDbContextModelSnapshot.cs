@@ -1687,14 +1687,53 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("CancellationDetails")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("CancellationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTimeOffset?>("CancellationRequestExpiresAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CancellationRequestStatus")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTimeOffset?>("CancellationRequestedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("CancellationRequestedById")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CancellationRequestedByRole")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<Guid>("ClientId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("ClientTermsAcceptedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ClientTermsVersion")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<Guid>("CreatorId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("CreatorTermsAcceptedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatorTermsVersion")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<int>("CurrentStage")
                         .IsConcurrencyToken()

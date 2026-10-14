@@ -513,6 +513,10 @@ if (!isDocumentGeneration)
             "auction-lifecycle",
             job => job.RunAsync(CancellationToken.None),
             Cron.Minutely);
+        recurringJobManager.AddOrUpdate<CommissionCancellationJob>(
+            "commission-cancellation-lifecycle",
+            job => job.RunAsync(CancellationToken.None),
+            Cron.Minutely);
     }
     catch (Exception ex)
     {
@@ -548,6 +552,32 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// Local private files use expiring signed URLs, matching R2 presigned-download behavior.
+app.Use(async (context, next) =>
+{
+    const string privatePrefix = "/demo-uploads/private";
+    if (!context.Request.Path.StartsWithSegments(privatePrefix, out var remaining))
+    {
+        await next();
+        return;
+    }
+
+    var privateKey = Uri.UnescapeDataString(remaining.Value?.TrimStart('/') ?? string.Empty);
+    var signingKey = ArtCommission.Infrastructure.ExternalServices.R2.LocalPresignedUrlSigner
+        .GetSigningKey(context.RequestServices.GetRequiredService<IConfiguration>());
+    if (!ArtCommission.Infrastructure.ExternalServices.R2.LocalPresignedUrlSigner.IsValid(
+            privateKey,
+            context.Request.Query["expires"],
+            context.Request.Query["signature"],
+            signingKey))
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return;
+    }
+
+    await next();
+});
 
 app.UseStaticFiles();
 

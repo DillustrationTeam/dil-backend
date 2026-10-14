@@ -13,6 +13,7 @@ using System.Text.Json;
 using CommissionService = ArtCommission.Infrastructure.Services.CommissionService;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using ArtCommission.Infrastructure.ExternalServices.R2;
 
 var clientId = Guid.NewGuid();
 var creatorId = Guid.NewGuid();
@@ -37,6 +38,13 @@ void Equal<T>(T expected, T actual, string name)
     checks++;
 }
 
+var signedUrlNow = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+var signedUrlExpiry = signedUrlNow.AddMinutes(15).ToUnixTimeSeconds();
+var signedUrlSignature = LocalPresignedUrlSigner.Sign("commissions/demo/final.zip", signedUrlExpiry, "test-signing-key");
+Equal(true, LocalPresignedUrlSigner.IsValid("commissions/demo/final.zip", signedUrlExpiry.ToString(), signedUrlSignature, "test-signing-key", signedUrlNow), "local signed URL is valid before expiry");
+Equal(false, LocalPresignedUrlSigner.IsValid("commissions/demo/final.zip", signedUrlExpiry.ToString(), signedUrlSignature, "test-signing-key", signedUrlNow.AddMinutes(16)), "local signed URL expires");
+Equal(false, LocalPresignedUrlSigner.IsValid("commissions/demo/other.zip", signedUrlExpiry.ToString(), signedUrlSignature, "test-signing-key", signedUrlNow), "local signed URL rejects another key");
+
 async Task Rejected(Func<Task> action, string name)
 {
     try { await action(); }
@@ -45,7 +53,14 @@ async Task Rejected(Func<Task> action, string name)
     throw new Exception($"{name}: invalid transition was accepted");
 }
 
-async Task<(Guid Id, Guid[] Milestones)> Create(string title)
+async Task Denied(Func<Task> action, string name)
+{
+    try { await action(); }
+    catch (UnauthorizedAccessException) { checks++; return; }
+    throw new Exception($"{name}: unauthorized action was accepted");
+}
+
+async Task<(Guid Id, Guid[] Milestones)> Create(string title, bool acceptTerms = true)
 {
     var created = await service.CreateCommissionAsync(new CreateCommissionRequest
     {
@@ -53,11 +68,16 @@ async Task<(Guid Id, Guid[] Milestones)> Create(string title)
         Title = title,
         PackageId = packageId
     }, clientId);
+    if (acceptTerms)
+    {
+        await service.AcceptWorkroomTermsAsync(created.Id, clientId);
+        await service.AcceptWorkroomTermsAsync(created.Id, creatorId);
+    }
     var detail = await service.GetCommissionByIdAsync(created.Id, clientId);
     return (created.Id, detail!.Milestones.OrderBy(m => m.Sequence).Select(m => m.Id).ToArray());
 }
 
-var normal = await Create("normal");
+var normal = await Create("normal", acceptTerms: false);
 Equal((creatorId, NotificationType.CommissionStatusChanged),
     (notifications.Items[^1].UserId, notifications.Items[^1].Type), "new request notifies creator");
 Equal("CreatorCommissionRequests", notifications.Items[^1].RefType, "new request opens creator request queue");
@@ -69,6 +89,8 @@ Equal((clientId, NotificationType.CommissionStatusChanged),
     (notifications.Items[^1].UserId, notifications.Items[^1].Type), "creator response notifies client");
 await Rejected(() => service.SubmitMilestoneWipAsync(normal.Id, normal.Milestones[0],
     null, new MemoryStream(new byte[] { 1, 2, 3 }), "image/png", creatorId), "submit before deposit");
+var clientTerms = await service.AcceptWorkroomTermsAsync(normal.Id, clientId);
+Equal("1.0", clientTerms.ClientTermsVersion, "client terms acceptance persisted");
 await service.DepositEscrowAsync(normal.Id, clientId, "Wallet");
 Equal((creatorId, NotificationType.EscrowStatusChanged),
     (notifications.Items[^1].UserId, notifications.Items[^1].Type), "escrow deposit notifies creator");
@@ -79,6 +101,8 @@ await Rejected(() => service.RequestMilestoneRevisionAsync(normal.Id, normal.Mil
 await Rejected(() => service.DeliverFinalWorkAsync(normal.Id, new MemoryStream(new byte[] { 1, 2, 3 }), "image/png", "final.png", creatorId), "deliver early");
 await Rejected(() => service.CompleteCommissionAsync(normal.Id, clientId), "complete early");
 await Rejected(() => service.CreateReviewAsync(normal.Id, new CreateReviewRequest { Rating = 5 }, clientId), "review early");
+var creatorTerms = await service.AcceptWorkroomTermsAsync(normal.Id, creatorId);
+Equal("1.0", creatorTerms.CreatorTermsVersion, "creator terms acceptance persisted");
 
 for (var i = 0; i < normal.Milestones.Length; i++)
 {
@@ -110,11 +134,25 @@ await Rejected(() => service.CreateReviewAsync(normal.Id, new CreateReviewReques
 await Rejected(() => service.CancelCommissionAsync(normal.Id, new CancelWithPolicyRequest { CancellationReason = "late" }, clientId), "cancel completed");
 Equal(CommissionStatus.Completed.ToString(), (await service.GetCommissionByIdAsync(normal.Id, clientId))!.Status,
     "completed state unchanged");
+Equal(normal.Id, (await service.GetCommissionByIdAsync(normal.Id, creatorId))!.Id,
+    "AAMCS-041 UTCID06 creator can read own commission detail");
+Equal(true, (await service.GetMilestoneWipPreviewUrlAsync(normal.Id, normal.Milestones[0], clientId)).Contains("commissions/"),
+    "AAMCS-047 UTCID06 participant can obtain protected WIP URL");
+Equal(true, (await service.GetFinalDownloadUrlAsync(normal.Id, creatorId)).DownloadUrl.Contains("commissions/"),
+    "AAMCS-051 UTCID06 creator can obtain protected final URL");
 
 var rejected = await Create("rejected");
 await service.RespondCommissionAsync(rejected.Id, new RespondCommissionRequest { Action = "Reject", RejectReason = "Không phù hợp" }, creatorId);
 await Rejected(() => service.RespondCommissionAsync(rejected.Id,
     new RespondCommissionRequest { Action = "Accept" }, creatorId), "accept after reject");
+
+var invalidReject = await Create("invalid reject");
+await Rejected(() => service.RespondCommissionAsync(invalidReject.Id,
+    new RespondCommissionRequest { Action = "Reject", RejectReason = " " }, creatorId),
+    "AAMCS-043 UTCID02 blank reject reason");
+await Denied(() => service.RespondCommissionAsync(invalidReject.Id,
+    new RespondCommissionRequest { Action = "Reject", RejectReason = "client cannot reject" }, clientId),
+    "AAMCS-043 UTCID03 client cannot reject creator request");
 
 var negotiated = await Create("negotiated");
 await service.RespondCommissionAsync(negotiated.Id,
@@ -127,6 +165,11 @@ await service.DepositEscrowAsync(negotiated.Id, clientId, "Wallet");
 Equal(450m, (await service.GetCommissionByIdAsync(negotiated.Id, clientId))!.EscrowHeldAmount,
     "negotiated deposit matches total");
 
+var invalidNegotiation = await Create("invalid negotiation");
+await Rejected(() => service.RespondCommissionAsync(invalidNegotiation.Id,
+    new RespondCommissionRequest { Action = "Negotiate", NegotiatePrice = 0 }, creatorId),
+    "AAMCS-044 UTCID03 zero negotiation price");
+
 var disputed = await Create("disputed");
 await service.CreateDisputeAsync(disputed.Id, new CreateDisputeRequest { Reason = "test" }, clientId);
 Equal((creatorId, NotificationType.DisputeStatusChanged),
@@ -134,12 +177,66 @@ Equal((creatorId, NotificationType.DisputeStatusChanged),
 await Rejected(() => service.CreateDisputeAsync(disputed.Id,
     new CreateDisputeRequest { Reason = "again" }, creatorId), "duplicate dispute");
 await Rejected(() => service.CompleteCommissionAsync(disputed.Id, clientId), "complete disputed");
+Equal(disputed.Id, (await service.GetDisputeByCommissionIdAsync(disputed.Id, clientId))!.CommissionId,
+    "AAMCS-058 UTCID06 participant can read dispute detail");
 
 var cancelled = await Create("cancelled");
-await service.CancelCommissionAsync(cancelled.Id, new CancelWithPolicyRequest { CancellationReason = "changed mind" }, clientId);
+await service.CancelCommissionAsync(cancelled.Id, new CancelWithPolicyRequest { CancellationReason = "changed mind", Details = "budget changed" }, clientId);
+var cancelledDetail = await service.GetCommissionByIdAsync(cancelled.Id, clientId);
+Equal("changed mind", cancelledDetail!.CancellationReason, "cancellation reason persisted");
+Equal("budget changed", cancelledDetail.CancellationDetails, "cancellation details persisted");
 var cancelledState = await service.GetCommissionByIdAsync(cancelled.Id, clientId);
 Equal(EscrowStatus.Pending.ToString(), cancelledState!.EscrowStatus, "no false refund");
 await Rejected(() => service.DepositEscrowAsync(cancelled.Id, clientId, "Wallet"), "deposit cancelled");
+
+var mutualCancellation = await Create("mutual cancellation");
+await service.RespondCommissionAsync(mutualCancellation.Id, new RespondCommissionRequest { Action = "Accept" }, creatorId);
+await service.DepositEscrowAsync(mutualCancellation.Id, clientId, "Wallet");
+var requestedByCreator = await service.CancelCommissionAsync(mutualCancellation.Id,
+    new CancelWithPolicyRequest { CancellationReason = "Creator unavailable" }, creatorId);
+Equal("Pending", requestedByCreator.CancellationRequestStatus, "started work creates cancellation request");
+await Denied(() => service.RespondCancellationRequestAsync(mutualCancellation.Id, true, creatorId),
+    "requester cannot approve own cancellation request");
+var mutuallyCancelled = await service.RespondCancellationRequestAsync(mutualCancellation.Id, true, clientId);
+Equal(CommissionStatus.Cancelled.ToString(), mutuallyCancelled.Status, "counterparty approval cancels commission");
+Equal(0m, mutuallyCancelled.EscrowHeldAmount, "mutual cancellation refunds remaining escrow");
+
+var clientTimeout = await Create("client cancellation timeout");
+await service.RespondCommissionAsync(clientTimeout.Id, new RespondCommissionRequest { Action = "Accept" }, creatorId);
+await service.DepositEscrowAsync(clientTimeout.Id, clientId, "Wallet");
+await service.CancelCommissionAsync(clientTimeout.Id,
+    new CancelWithPolicyRequest { CancellationReason = "Changed requirements" }, clientId);
+var clientTimeoutEntity = await db.Commissions.FindAsync(clientTimeout.Id);
+clientTimeoutEntity!.CancellationRequestExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+await db.SaveChangesAsync();
+await service.ProcessCancellationDeadlinesAsync();
+var expiredClientRequest = await service.GetCommissionByIdAsync(clientTimeout.Id, clientId);
+Equal("Expired", expiredClientRequest!.CancellationRequestStatus, "silent creator expires client request for dispute");
+Equal(CommissionStatus.InProgress.ToString(), expiredClientRequest.Status, "client timeout does not auto cancel active work");
+
+var creatorTimeout = await Create("creator cancellation timeout");
+await service.RespondCommissionAsync(creatorTimeout.Id, new RespondCommissionRequest { Action = "Accept" }, creatorId);
+await service.DepositEscrowAsync(creatorTimeout.Id, clientId, "Wallet");
+await service.CancelCommissionAsync(creatorTimeout.Id,
+    new CancelWithPolicyRequest { CancellationReason = "Cannot continue" }, creatorId);
+var creatorTimeoutEntity = await db.Commissions.FindAsync(creatorTimeout.Id);
+creatorTimeoutEntity!.CancellationRequestExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+await db.SaveChangesAsync();
+await service.ProcessCancellationDeadlinesAsync();
+var autoCancelledCreatorRequest = await service.GetCommissionByIdAsync(creatorTimeout.Id, clientId);
+Equal(CommissionStatus.Cancelled.ToString(), autoCancelledCreatorRequest!.Status, "silent client auto accepts creator request");
+Equal(0m, autoCancelledCreatorRequest.EscrowHeldAmount, "creator timeout refunds remaining escrow");
+
+var overdue = await Create("overdue cancellation");
+await service.RespondCommissionAsync(overdue.Id, new RespondCommissionRequest { Action = "Accept" }, creatorId);
+await service.DepositEscrowAsync(overdue.Id, clientId, "Wallet");
+var overdueEntity = await db.Commissions.FindAsync(overdue.Id);
+overdueEntity!.DeadlineAt = DateTimeOffset.UtcNow.AddHours(-25);
+await db.SaveChangesAsync();
+var overdueCancellation = await service.CancelCommissionAsync(overdue.Id,
+    new CancelWithPolicyRequest { CancellationReason = "Creator ghosting after deadline" }, clientId);
+Equal(CommissionStatus.Cancelled.ToString(), overdueCancellation.Status, "overdue grace expiry auto cancels");
+Equal(0m, overdueCancellation.EscrowHeldAmount, "overdue auto cancellation refunds escrow");
 
 await Rejected(() => service.CreateCommissionAsync(new CreateCommissionRequest
 {

@@ -71,6 +71,8 @@ async Task<(Guid Id, Guid[] Milestones)> Create(string title, string? voucherCod
         Title = title,
         VoucherCode = voucherCode
     }, clientId);
+    await service.AcceptWorkroomTermsAsync(created.Id, clientId);
+    await service.AcceptWorkroomTermsAsync(created.Id, creatorUserId);
     var detail = await service.GetCommissionByIdAsync(created.Id, clientId);
     return (created.Id, detail!.Milestones.OrderBy(m => m.Sequence).Select(m => m.Id).ToArray());
 }
@@ -129,8 +131,9 @@ Equal(270m, (await service.GetCommissionByIdAsync(discounted.Id, clientId))!.Fin
 await service.RespondCommissionAsync(discounted.Id, new RespondCommissionRequest { Action = "Accept" }, creatorUserId);
 await service.DepositEscrowAsync(discounted.Id, clientId, "Wallet");
 Equal(1, await db.VoucherRedemptions.CountAsync(), "voucher redeemed once");
-await Rejected(() => service.CancelCommissionAsync(discounted.Id,
-    new CancelWithPolicyRequest { CancellationReason = "too late" }, clientId), "funded cancellation");
+var cancellationRequest = await service.CancelCommissionAsync(discounted.Id,
+    new CancelWithPolicyRequest { CancellationReason = "too late" }, clientId);
+Equal("Pending", cancellationRequest.CancellationRequestStatus, "funded cancellation requires counterparty response");
 
 var commercial = await service.CreateCommissionAsync(new CreateCommissionRequest
 {
