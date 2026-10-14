@@ -119,6 +119,28 @@ public static class DatabaseSeeder
             }
         }
 
+        var quanEmail = "minhquaningenious@gmail.com";
+        var existingQuan = await userManager.FindByEmailAsync(quanEmail);
+        if (existingQuan == null)
+        {
+            var quanUser = new ApplicationUser
+            {
+                Id = Guid.NewGuid(),
+                UserName = quanEmail,
+                Email = quanEmail,
+                FullName = "Ngo Le Minh Quan",
+                EmailConfirmed = true,
+                IsVerified = true,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+
+            var createQuanResult = await userManager.CreateAsync(quanUser, "abc123");
+            if (createQuanResult.Succeeded)
+            {
+                await userManager.AddToRoleAsync(quanUser, UserRoleNames.Client);
+            }
+        }
+
         // Seed default PlatformConfig values (SCR-18 / UC33)
         var defaultConfigs = new Dictionary<string, (string Value, string Description)>
         {

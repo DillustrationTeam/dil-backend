@@ -1818,66 +1818,6 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.ToTable("Commissions", (string)null);
                 });
 
-            modelBuilder.Entity("ArtCommission.Domain.Entities.Commission.Dispute", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("AdminNote")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal?>("ArtistPayAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("ClientRefundAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<Guid>("CommissionId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("EvidenceUrls")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("bit");
-
-                    b.Property<Guid>("RaisedById")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Reason")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("nvarchar(2000)");
-
-                    b.Property<string>("Resolution")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<DateTimeOffset?>("ResolvedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CommissionId")
-                        .IsUnique();
-
-                    b.ToTable("Disputes", (string)null);
-                });
-
             modelBuilder.Entity("ArtCommission.Domain.Entities.Commission.Milestone", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2077,6 +2017,127 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.ToTable("CreatorApplications", (string)null);
                 });
 
+            modelBuilder.Entity("ArtCommission.Domain.Entities.Dispute.CommissionDispute", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AdminNote")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal?>("ArtistPayAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("ClientRefundAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid>("CommissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("EvidenceUrls")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("RaisedById")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CommissionId")
+                        .IsUnique();
+
+                    b.ToTable("Disputes", (string)null);
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.Dispute.SubmissionDispute", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EvidenceUrls")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Priority")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid>("RaisedById")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid>("SubmissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId");
+
+                    b.HasIndex("SubmissionId");
+
+                    b.ToTable("SubmissionDisputes", (string)null);
+                });
+
             modelBuilder.Entity("ArtCommission.Domain.Entities.Event.CriteriaScore", b =>
                 {
                     b.Property<Guid>("EventCriteriaId")
@@ -2208,7 +2269,12 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("EventId", "Score", "VoteCount");
 
-                    b.ToTable("EventSubmissions", (string)null);
+                    b.ToTable("EventSubmissions", null, t =>
+                        {
+                            t.HasTrigger("TR_EventSubmissions_PreventJurySubmission");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.Event.EventVote", b =>
@@ -2226,7 +2292,12 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("VoterId");
 
-                    b.ToTable("EventVotes", (string)null);
+                    b.ToTable("EventVotes", null, t =>
+                        {
+                            t.HasTrigger("TR_EventVotes_PreventSelfVote");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.Event.Invitation", b =>
@@ -2343,12 +2414,20 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<DateTimeOffset?>("HeadJurySignedOffAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
                     b.Property<bool>("IsFeatured")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("IsHeadJurySignedOff")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
@@ -4017,17 +4096,6 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Navigation("Message");
                 });
 
-            modelBuilder.Entity("ArtCommission.Domain.Entities.Commission.Dispute", b =>
-                {
-                    b.HasOne("ArtCommission.Domain.Entities.Commission.Commission", "Commission")
-                        .WithMany("Disputes")
-                        .HasForeignKey("CommissionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Commission");
-                });
-
             modelBuilder.Entity("ArtCommission.Domain.Entities.Commission.Milestone", b =>
                 {
                     b.HasOne("ArtCommission.Domain.Entities.Commission.Commission", "Commission")
@@ -4066,6 +4134,36 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Navigation("Applicant");
 
                     b.Navigation("ReviewedByMod");
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.Dispute.CommissionDispute", b =>
+                {
+                    b.HasOne("ArtCommission.Domain.Entities.Commission.Commission", "Commission")
+                        .WithMany("Disputes")
+                        .HasForeignKey("CommissionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Commission");
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.Dispute.SubmissionDispute", b =>
+                {
+                    b.HasOne("ArtCommission.Domain.Entities.Event.PlatformEvent", "Event")
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ArtCommission.Domain.Entities.Event.EventSubmission", "Submission")
+                        .WithMany("Disputes")
+                        .HasForeignKey("SubmissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Event");
+
+                    b.Navigation("Submission");
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.Event.CriteriaScore", b =>
@@ -4471,6 +4569,8 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.Event.EventSubmission", b =>
                 {
+                    b.Navigation("Disputes");
+
                     b.Navigation("Votes");
                 });
 

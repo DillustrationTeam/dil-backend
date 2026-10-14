@@ -106,7 +106,9 @@ public class CreateEventCommandHandler
             TotalVoteCount = 0,
             CreatedAt = platformEvent.CreatedAt,
             UpdatedAt = platformEvent.UpdatedAt,
-            IsOpenForSubmission = platformEvent.Status == EventStatus.Open && platformEvent.SubmissionStartAt <= now && platformEvent.SubmissionEndAt >= now
+            IsOpenForSubmission = platformEvent.Status == EventStatus.Open && platformEvent.SubmissionStartAt <= now && platformEvent.SubmissionEndAt >= now,
+            IsHeadJurySignedOff = platformEvent.IsHeadJurySignedOff,
+            HeadJurySignedOffAt = platformEvent.HeadJurySignedOffAt
         };
 
         return (true, data, Array.Empty<string>());

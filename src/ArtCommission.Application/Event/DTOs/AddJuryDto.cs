@@ -4,5 +4,5 @@ public sealed record AddJuryDto
 {
     public Guid CreatorId { get; set; }
 
-    public bool IsHeadJury { get; set; } = false;
+    public bool? IsHeadJury { get; set; }
 }

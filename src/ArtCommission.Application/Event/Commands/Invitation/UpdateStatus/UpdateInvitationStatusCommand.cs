@@ -83,6 +83,22 @@ public class UpdateInvitationStatusCommandHandler
                 var existingJury = await _db.Juries
                     .FirstOrDefaultAsync(j => j.EventId == invitation.EventId && j.CreatorId == invitation.SentToCreatorId && !j.IsDeleted, cancellationToken);
 
+                var hasHeadJury = await _db.Juries
+                    .AnyAsync(j => j.EventId == invitation.EventId && j.IsHeadJury && !j.IsDeleted, cancellationToken);
+
+                var hasAnyJury = await _db.Juries
+                    .AnyAsync(j => j.EventId == invitation.EventId && !j.IsDeleted, cancellationToken);
+
+                bool isHeadJuryToSet = invitation.IsHeadJury;
+                if (!hasAnyJury && !hasHeadJury)
+                {
+                    isHeadJuryToSet = true;
+                }
+                else if (isHeadJuryToSet && hasHeadJury)
+                {
+                    isHeadJuryToSet = false;
+                }
+
                 if (existingJury == null)
                 {
                     var jury = new Jury
@@ -90,13 +106,13 @@ public class UpdateInvitationStatusCommandHandler
                         Id = Guid.NewGuid(),
                         EventId = invitation.EventId,
                         CreatorId = invitation.SentToCreatorId,
-                        IsHeadJury = invitation.IsHeadJury,
+                        IsHeadJury = isHeadJuryToSet,
                         CreatedAt = now,
                         IsDeleted = false
                     };
                     _db.Juries.Add(jury);
                 }
-                else if (invitation.IsHeadJury && !existingJury.IsHeadJury)
+                else if (isHeadJuryToSet && !existingJury.IsHeadJury)
                 {
                     existingJury.IsHeadJury = true;
                     existingJury.UpdatedAt = now;

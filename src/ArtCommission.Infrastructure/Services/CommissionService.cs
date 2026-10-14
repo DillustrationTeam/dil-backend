@@ -2,9 +2,11 @@ using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Commission.DTOs;
 using ArtCommission.Application.Commission.Interfaces;
 using ArtCommission.Application.Commission.Validators;
+using ArtCommission.Application.Dispute.CommissionDispute.DTOs;
 using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
 using ArtCommission.Domain.Entities.Commission;
+using ArtCommission.Domain.Entities.Dispute;
 using ArtCommission.Domain.Entities.Payment;
 using ArtCommission.Domain.Enums;
 using ArtCommission.Infrastructure.Persistence;
@@ -719,7 +721,7 @@ public class CommissionService : ICommissionService
         commission.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
-    public async Task<DisputeDto> CreateDisputeAsync(Guid id, CreateDisputeRequest request, Guid raisedById, CancellationToken cancellationToken = default)
+    public async Task<CommissionDisputeDto> CreateDisputeAsync(Guid id, CreateDisputeRequest request, Guid raisedById, CancellationToken cancellationToken = default)
     {
         var validation = new CreateDisputeRequestValidator().Validate(request);
         if (!validation.IsValid) throw new ArgumentException(string.Join(" ", validation.Errors.Select(e => e.ErrorMessage)));
@@ -729,7 +731,7 @@ public class CommissionService : ICommissionService
             throw new InvalidOperationException("Commission cannot be disputed in this state.");
         if (await _dbContext.Disputes.AnyAsync(d => d.CommissionId == id, cancellationToken))
             throw new InvalidOperationException("Commission already has a dispute.");
-        var dispute = new Dispute
+        var dispute = new CommissionDispute
         {
             CommissionId = id,
             RaisedById = raisedById,
@@ -757,7 +759,7 @@ public class CommissionService : ICommissionService
         return MapToDisputeDto(dispute);
     }
 
-    public async Task<DisputeDto?> GetDisputeByCommissionIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
+    public async Task<CommissionDisputeDto?> GetDisputeByCommissionIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
         await PartyCommissionAsync(id, userId, cancellationToken);
         var dispute = await _dbContext.Disputes.AsNoTracking().FirstOrDefaultAsync(d => d.CommissionId == id, cancellationToken);
@@ -987,9 +989,9 @@ public class CommissionService : ICommissionService
         };
     }
 
-    private static DisputeDto MapToDisputeDto(Dispute d)
+    private static CommissionDisputeDto MapToDisputeDto(CommissionDispute d)
     {
-        return new DisputeDto
+        return new CommissionDisputeDto
         {
             Id = d.Id,
             CommissionId = d.CommissionId,

@@ -38,5 +38,5 @@ public class Commission : BaseEntity
     // Navigation properties
     public ICollection<Milestone> Milestones { get; set; } = new List<Milestone>();
     public ICollection<Review> Reviews { get; set; } = new List<Review>();
-    public ICollection<Dispute> Disputes { get; set; } = new List<Dispute>();
+    public ICollection<Dispute.CommissionDispute> Disputes { get; set; } = new List<Dispute.CommissionDispute>();
 }

@@ -44,6 +44,11 @@ public class PlatformEventConfiguration : IEntityTypeConfiguration<PlatformEvent
         builder.Property(e => e.IsFeatured)
             .HasDefaultValue(false);
 
+        builder.Property(e => e.IsHeadJurySignedOff)
+            .HasDefaultValue(false);
+
+        builder.Property(e => e.HeadJurySignedOffAt);
+
         builder.Property(e => e.SubmissionStartAt)
             .IsRequired();
 
