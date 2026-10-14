@@ -1,0 +1,117 @@
+classDiagram
+    direction TB
+
+        class CreateCommissionRequest { <<dto>> +Guid CreatorId +Guid PackageId +string LicenseType +string Title +string? Description +DateTimeOffset? DeadlineAt +string? VoucherCode }
+        class RequestRevisionRequest { <<dto>> +string FeedbackComment +List~string~? ReferenceImages }
+        class CreateDisputeRequest { <<dto>> +string Reason +List~string~? EvidenceUrls }
+        class CommissionDto { <<dto>> +Guid Id +string Title +decimal FinalPrice +decimal EscrowHeldAmount +decimal DisbursedAmount +string EscrowStatus +string Status }
+        class MilestoneDto { <<dto>> +Guid Id +Guid CommissionId +int Sequence +string Title +decimal Price +string Status +string? WipPreviewUrl }
+        class DisputeDto { <<dto>> +Guid Id +Guid CommissionId +Guid RaisedById +string Reason +string Status +string? Resolution }
+        class CommissionsController {
+            <<controller>>
+            -ICommissionService commissionService
+            +CreateCommission(request)
+            +DepositEscrow(id, paymentMethod)
+            +SubmitMilestoneWip(commissionId, milestoneId, file)
+            +ApproveMilestone(commissionId, milestoneId)
+            +RequestMilestoneRevision(commissionId, milestoneId, request)
+            +CompleteCommission(id)
+            +CancelCommission(id, request)
+            +CreateDispute(id, request)
+        }
+        class ICommissionService {
+            <<interface>>
+            +CreateCommissionAsync(request, clientId)
+            +DepositEscrowAsync(id, clientId, paymentMethod)
+            +SubmitMilestoneWipAsync(commissionId, milestoneId, file, creatorId)
+            +ApproveMilestoneAsync(commissionId, milestoneId, clientId)
+            +RequestMilestoneRevisionAsync(commissionId, milestoneId, request, clientId)
+            +CompleteCommissionAsync(id, clientId)
+            +CancelCommissionAsync(id, request, userId)
+            +CreateDisputeAsync(id, request, raisedById)
+        }
+        class CommissionService {
+            <<service>>
+            -ICommissionRepository commissionRepository
+            -IWalletRepository walletRepository
+            -IWatermarkService watermarkService
+            -IStorageService storageService
+            -IVoucherCheckService voucherCheckService
+            -INotificationPublisher notificationPublisher
+            -ILogger logger
+        }
+        class IWatermarkService { <<interface>> +ApplyWatermarkAsync(stream, text) }
+        class IStorageService { <<interface>> +UploadPublicAsync(stream, key, contentType) +UploadPrivateAsync(stream, key, contentType) +GeneratePresignedDownloadUrl(key, expiry) }
+        class ICommissionRepository {
+            <<interface>>
+            +GetByIdAsync(id)
+            +GetDetailAsync(id)
+            +GetByUserAsync(userId, role, status, page, pageSize)
+            +AddAsync(commission)
+            +SaveChangesAsync()
+            +BeginTransactionAsync()
+        }
+        class IWalletRepository {
+            <<interface>>
+            +GetOrCreateByUserIdAsync(userId)
+            +HoldFundsAsync(wallet, amount, refId)
+            +ReleaseFundsAsync(sourceWallet, targetWallet, amount, refId)
+            +RefundHeldFundsAsync(wallet, amount, refId)
+            +SaveChangesAsync()
+        }
+        class CommissionRepository { <<repository>> -CommissionDAO commissionDAO +GetByIdAsync(id) +GetDetailAsync(id) +AddAsync(commission) +SaveChangesAsync() }
+        class WalletRepository { <<repository>> -WalletDAO walletDAO +GetOrCreateByUserIdAsync(userId) +HoldFundsAsync(wallet, amount, refId) +ReleaseFundsAsync(sourceWallet, targetWallet, amount, refId) +RefundHeldFundsAsync(wallet, amount, refId) }
+        class BaseRepository~T~ { <<abstract>> #BaseDAO~T~ dao +GetByIdAsync(id) +AddAsync(entity) +Update(entity) +SaveChangesAsync() }
+        class CommissionDAO { <<dao>> +GetByIdAsync(id) +GetDetailAsync(id) +GetAllQuery() +AddAsync(commission) }
+        class WalletDAO { <<dao>> +GetByUserIdAsync(userId) +GetTransactionsQuery(walletId) +AddTransactionAsync(transaction) }
+        class BaseDAO~T~ { <<abstract>> #AppDbContext context #DbSet~T~ entities +GetByIdAsync(id) +GetAllQuery() +AddAsync(entity) +Update(entity) }
+        class AppDbContext {
+            <<dbcontext>>
+            +DbSet~Commission~ Commissions
+            +DbSet~Milestone~ Milestones
+            +DbSet~Dispute~ Disputes
+            +DbSet~Wallet~ Wallets
+            +DbSet~WalletTransaction~ WalletTransactions
+            +SaveChangesAsync()
+            +BeginTransactionAsync()
+        }
+        class BaseEntity { <<abstract>> +Guid Id +DateTimeOffset CreatedAt +DateTimeOffset? UpdatedAt +bool IsDeleted }
+        class Commission { <<entity>> +string Title +Guid ClientId +Guid CreatorId +decimal TotalPrice +decimal FinalPrice +decimal EscrowHeldAmount +decimal DisbursedAmount +EscrowStatus EscrowStatus +int CurrentStage +CommissionStatus Status }
+        class Milestone { <<entity>> +Guid CommissionId +int Sequence +string Title +decimal Price +MilestoneStatus Status +string? WipPreviewUrl +string? FinalDeliverableUrl +int RevisionCount +int MaxRevisions }
+        class Dispute { <<entity>> +Guid CommissionId +Guid RaisedById +string Reason +string Status +string? Resolution +decimal? ClientRefundAmount +decimal? ArtistPayAmount }
+        class Wallet { <<entity>> +Guid UserId +decimal Balance +decimal LockedBalance +string Currency +WalletStatus Status }
+        class WalletTransaction { <<entity>> +Guid WalletId +WalletTransactionType Type +WalletTransactionDirection Direction +decimal Amount +decimal BalanceAfter +decimal LockedBalanceAfter +string? RefType +Guid? RefId }
+    CreateCommissionRequest --> CommissionsController : input
+    RequestRevisionRequest --> CommissionsController : input
+    CreateDisputeRequest --> CommissionsController : input
+    CommissionsController --> CommissionDto : output
+    CommissionsController --> MilestoneDto : output
+    CommissionsController --> DisputeDto : output
+    CommissionsController ..> ICommissionService : uses
+
+    CommissionService ..|> ICommissionService : implements
+    CommissionService --> ICommissionRepository : injects
+    CommissionService --> IWalletRepository : injects
+    CommissionService --> IWatermarkService : injects
+    CommissionService --> IStorageService : injects
+
+    CommissionRepository ..|> ICommissionRepository : implements
+    WalletRepository ..|> IWalletRepository : implements
+    CommissionRepository --|> BaseRepository~Commission~
+    WalletRepository --|> BaseRepository~Wallet~
+    CommissionRepository --> CommissionDAO : uses
+    WalletRepository --> WalletDAO : uses
+
+    CommissionDAO --|> BaseDAO~Commission~
+    WalletDAO --|> BaseDAO~Wallet~
+    BaseDAO --> AppDbContext : uses
+
+    Commission --|> BaseEntity
+    Milestone --|> BaseEntity
+    Dispute --|> BaseEntity
+    Wallet --|> BaseEntity
+    WalletTransaction --|> BaseEntity
+    Commission "1" *-- "1..*" Milestone : has
+    Commission "1" o-- "0..1" Dispute : has
+    Wallet "1" *-- "0..*" WalletTransaction : records
+    WalletTransaction "0..*" ..> Commission : references
