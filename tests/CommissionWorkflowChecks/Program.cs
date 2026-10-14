@@ -60,7 +60,7 @@ async Task Denied(Func<Task> action, string name)
     throw new Exception($"{name}: unauthorized action was accepted");
 }
 
-async Task<(Guid Id, Guid[] Milestones)> Create(string title)
+async Task<(Guid Id, Guid[] Milestones)> Create(string title, bool acceptTerms = true)
 {
     var created = await service.CreateCommissionAsync(new CreateCommissionRequest
     {
@@ -68,11 +68,16 @@ async Task<(Guid Id, Guid[] Milestones)> Create(string title)
         Title = title,
         PackageId = packageId
     }, clientId);
+    if (acceptTerms)
+    {
+        await service.AcceptWorkroomTermsAsync(created.Id, clientId);
+        await service.AcceptWorkroomTermsAsync(created.Id, creatorId);
+    }
     var detail = await service.GetCommissionByIdAsync(created.Id, clientId);
     return (created.Id, detail!.Milestones.OrderBy(m => m.Sequence).Select(m => m.Id).ToArray());
 }
 
-var normal = await Create("normal");
+var normal = await Create("normal", acceptTerms: false);
 Equal((creatorId, NotificationType.CommissionStatusChanged),
     (notifications.Items[^1].UserId, notifications.Items[^1].Type), "new request notifies creator");
 Equal("CreatorCommissionRequests", notifications.Items[^1].RefType, "new request opens creator request queue");
@@ -84,6 +89,8 @@ Equal((clientId, NotificationType.CommissionStatusChanged),
     (notifications.Items[^1].UserId, notifications.Items[^1].Type), "creator response notifies client");
 await Rejected(() => service.SubmitMilestoneWipAsync(normal.Id, normal.Milestones[0],
     null, new MemoryStream(new byte[] { 1, 2, 3 }), "image/png", creatorId), "submit before deposit");
+var clientTerms = await service.AcceptWorkroomTermsAsync(normal.Id, clientId);
+Equal("1.0", clientTerms.ClientTermsVersion, "client terms acceptance persisted");
 await service.DepositEscrowAsync(normal.Id, clientId, "Wallet");
 Equal((creatorId, NotificationType.EscrowStatusChanged),
     (notifications.Items[^1].UserId, notifications.Items[^1].Type), "escrow deposit notifies creator");
@@ -94,6 +101,8 @@ await Rejected(() => service.RequestMilestoneRevisionAsync(normal.Id, normal.Mil
 await Rejected(() => service.DeliverFinalWorkAsync(normal.Id, new MemoryStream(new byte[] { 1, 2, 3 }), "image/png", "final.png", creatorId), "deliver early");
 await Rejected(() => service.CompleteCommissionAsync(normal.Id, clientId), "complete early");
 await Rejected(() => service.CreateReviewAsync(normal.Id, new CreateReviewRequest { Rating = 5 }, clientId), "review early");
+var creatorTerms = await service.AcceptWorkroomTermsAsync(normal.Id, creatorId);
+Equal("1.0", creatorTerms.CreatorTermsVersion, "creator terms acceptance persisted");
 
 for (var i = 0; i < normal.Milestones.Length; i++)
 {
@@ -179,6 +188,55 @@ Equal("budget changed", cancelledDetail.CancellationDetails, "cancellation detai
 var cancelledState = await service.GetCommissionByIdAsync(cancelled.Id, clientId);
 Equal(EscrowStatus.Pending.ToString(), cancelledState!.EscrowStatus, "no false refund");
 await Rejected(() => service.DepositEscrowAsync(cancelled.Id, clientId, "Wallet"), "deposit cancelled");
+
+var mutualCancellation = await Create("mutual cancellation");
+await service.RespondCommissionAsync(mutualCancellation.Id, new RespondCommissionRequest { Action = "Accept" }, creatorId);
+await service.DepositEscrowAsync(mutualCancellation.Id, clientId, "Wallet");
+var requestedByCreator = await service.CancelCommissionAsync(mutualCancellation.Id,
+    new CancelWithPolicyRequest { CancellationReason = "Creator unavailable" }, creatorId);
+Equal("Pending", requestedByCreator.CancellationRequestStatus, "started work creates cancellation request");
+await Denied(() => service.RespondCancellationRequestAsync(mutualCancellation.Id, true, creatorId),
+    "requester cannot approve own cancellation request");
+var mutuallyCancelled = await service.RespondCancellationRequestAsync(mutualCancellation.Id, true, clientId);
+Equal(CommissionStatus.Cancelled.ToString(), mutuallyCancelled.Status, "counterparty approval cancels commission");
+Equal(0m, mutuallyCancelled.EscrowHeldAmount, "mutual cancellation refunds remaining escrow");
+
+var clientTimeout = await Create("client cancellation timeout");
+await service.RespondCommissionAsync(clientTimeout.Id, new RespondCommissionRequest { Action = "Accept" }, creatorId);
+await service.DepositEscrowAsync(clientTimeout.Id, clientId, "Wallet");
+await service.CancelCommissionAsync(clientTimeout.Id,
+    new CancelWithPolicyRequest { CancellationReason = "Changed requirements" }, clientId);
+var clientTimeoutEntity = await db.Commissions.FindAsync(clientTimeout.Id);
+clientTimeoutEntity!.CancellationRequestExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+await db.SaveChangesAsync();
+await service.ProcessCancellationDeadlinesAsync();
+var expiredClientRequest = await service.GetCommissionByIdAsync(clientTimeout.Id, clientId);
+Equal("Expired", expiredClientRequest!.CancellationRequestStatus, "silent creator expires client request for dispute");
+Equal(CommissionStatus.InProgress.ToString(), expiredClientRequest.Status, "client timeout does not auto cancel active work");
+
+var creatorTimeout = await Create("creator cancellation timeout");
+await service.RespondCommissionAsync(creatorTimeout.Id, new RespondCommissionRequest { Action = "Accept" }, creatorId);
+await service.DepositEscrowAsync(creatorTimeout.Id, clientId, "Wallet");
+await service.CancelCommissionAsync(creatorTimeout.Id,
+    new CancelWithPolicyRequest { CancellationReason = "Cannot continue" }, creatorId);
+var creatorTimeoutEntity = await db.Commissions.FindAsync(creatorTimeout.Id);
+creatorTimeoutEntity!.CancellationRequestExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+await db.SaveChangesAsync();
+await service.ProcessCancellationDeadlinesAsync();
+var autoCancelledCreatorRequest = await service.GetCommissionByIdAsync(creatorTimeout.Id, clientId);
+Equal(CommissionStatus.Cancelled.ToString(), autoCancelledCreatorRequest!.Status, "silent client auto accepts creator request");
+Equal(0m, autoCancelledCreatorRequest.EscrowHeldAmount, "creator timeout refunds remaining escrow");
+
+var overdue = await Create("overdue cancellation");
+await service.RespondCommissionAsync(overdue.Id, new RespondCommissionRequest { Action = "Accept" }, creatorId);
+await service.DepositEscrowAsync(overdue.Id, clientId, "Wallet");
+var overdueEntity = await db.Commissions.FindAsync(overdue.Id);
+overdueEntity!.DeadlineAt = DateTimeOffset.UtcNow.AddHours(-25);
+await db.SaveChangesAsync();
+var overdueCancellation = await service.CancelCommissionAsync(overdue.Id,
+    new CancelWithPolicyRequest { CancellationReason = "Creator ghosting after deadline" }, clientId);
+Equal(CommissionStatus.Cancelled.ToString(), overdueCancellation.Status, "overdue grace expiry auto cancels");
+Equal(0m, overdueCancellation.EscrowHeldAmount, "overdue auto cancellation refunds escrow");
 
 await Rejected(() => service.CreateCommissionAsync(new CreateCommissionRequest
 {

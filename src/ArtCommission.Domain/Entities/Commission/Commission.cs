@@ -25,6 +25,15 @@ public class Commission : BaseEntity
     public DateTimeOffset? DeadlineAt { get; set; }
     public string? CancellationReason { get; set; }
     public string? CancellationDetails { get; set; }
+    public Guid? CancellationRequestedById { get; set; }
+    public string? CancellationRequestedByRole { get; set; }
+    public string? CancellationRequestStatus { get; set; }
+    public DateTimeOffset? CancellationRequestedAt { get; set; }
+    public DateTimeOffset? CancellationRequestExpiresAt { get; set; }
+    public DateTimeOffset? ClientTermsAcceptedAt { get; set; }
+    public string? ClientTermsVersion { get; set; }
+    public DateTimeOffset? CreatorTermsAcceptedAt { get; set; }
+    public string? CreatorTermsVersion { get; set; }
 
     // Navigation properties
     public ICollection<Milestone> Milestones { get; set; } = new List<Milestone>();

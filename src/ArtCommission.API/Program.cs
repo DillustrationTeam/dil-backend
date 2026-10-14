@@ -513,6 +513,10 @@ if (!isDocumentGeneration)
             "auction-lifecycle",
             job => job.RunAsync(CancellationToken.None),
             Cron.Minutely);
+        recurringJobManager.AddOrUpdate<CommissionCancellationJob>(
+            "commission-cancellation-lifecycle",
+            job => job.RunAsync(CancellationToken.None),
+            Cron.Minutely);
     }
     catch (Exception ex)
     {

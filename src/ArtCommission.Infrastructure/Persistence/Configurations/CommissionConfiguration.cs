@@ -24,6 +24,18 @@ public class CommissionConfiguration : IEntityTypeConfiguration<Commission>
         builder.Property(c => c.CancellationDetails)
             .HasMaxLength(2000);
 
+        builder.Property(c => c.CancellationRequestedByRole)
+            .HasMaxLength(20);
+
+        builder.Property(c => c.CancellationRequestStatus)
+            .HasMaxLength(20);
+
+        builder.Property(c => c.ClientTermsVersion)
+            .HasMaxLength(20);
+
+        builder.Property(c => c.CreatorTermsVersion)
+            .HasMaxLength(20);
+
         builder.Property(c => c.DiscountAmount)
             .HasPrecision(18, 2);
 

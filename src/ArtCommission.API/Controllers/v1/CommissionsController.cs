@@ -126,6 +126,16 @@ public class CommissionsController : ControllerBase
     }
 
     /// <summary>
+    /// Ghi nhận người tham gia đã đồng ý phiên bản điều khoản Workroom hiện hành.
+    /// </summary>
+    [HttpPost("{id:guid}/workroom-terms/accept")]
+    public async Task<IActionResult> AcceptWorkroomTerms(Guid id, CancellationToken ct)
+    {
+        var result = await _commissionService.AcceptWorkroomTermsAsync(id, GetCurrentUserId(), ct);
+        return Ok(new ApiResponse<CommissionDto>(result));
+    }
+
+    /// <summary>
     /// POST /api/v1/commissions/{commissionId}/milestones/{milestoneId}/submit
     /// Creator nộp sản phẩm bản phác thảo/lineart (WIP)
     /// </summary>
@@ -238,6 +248,19 @@ public class CommissionsController : ControllerBase
     {
         var userId = GetCurrentUserId();
         var result = await _commissionService.CancelCommissionAsync(id, request, userId, ct);
+        return Ok(new ApiResponse<CommissionDto>(result));
+    }
+
+    /// <summary>
+    /// PATCH /api/v1/commissions/{id}/cancellation-request
+    /// Bên còn lại chấp thuận hoặc từ chối yêu cầu hủy đang chờ.
+    /// </summary>
+    [HttpPatch("{id:guid}/cancellation-request")]
+    public async Task<IActionResult> RespondCancellationRequest(
+        Guid id, [FromBody] RespondCancellationRequest request, CancellationToken ct)
+    {
+        var result = await _commissionService.RespondCancellationRequestAsync(
+            id, request.Approve, GetCurrentUserId(), ct);
         return Ok(new ApiResponse<CommissionDto>(result));
     }
 
