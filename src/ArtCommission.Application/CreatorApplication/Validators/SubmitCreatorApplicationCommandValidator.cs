@@ -18,8 +18,25 @@ public class SubmitCreatorApplicationCommandValidator : AbstractValidator<Submit
             .Must(IsValidUrl).WithMessage("Social links must be a valid URL.");
 
         RuleFor(c => c.IdProofUrl)
-            .NotEmpty().WithMessage("Identification card image is required.")
-            .Must(IsValidUrl).WithMessage("Identification card image must be a valid URL.");
+            .NotEmpty().WithMessage("Front-side identification card image is required.")
+            .Must(IsValidUrl).WithMessage("Front-side identification card image must be a valid URL.");
+
+        RuleFor(c => c.IdProofBackUrl)
+            .NotEmpty().WithMessage("Back-side identification card image is required.")
+            .Must(IsValidUrl).WithMessage("Back-side identification card image must be a valid URL.");
+
+        RuleFor(c => c.PrimaryStyle)
+            .NotEmpty().WithMessage("Primary art style is required.")
+            .MaximumLength(100).WithMessage("Primary art style must not exceed 100 characters.");
+
+        RuleFor(c => c.SpeedpaintVideoUrls)
+            .NotNull().WithMessage("Please provide at least one speedpaint video link.")
+            .Must(urls => urls != null && urls.Any(u => !string.IsNullOrWhiteSpace(u)))
+            .WithMessage("Please provide at least one speedpaint video link.");
+
+        RuleForEach(c => c.SpeedpaintVideoUrls)
+            .NotEmpty().WithMessage("Speedpaint video link cannot be blank.")
+            .Must(IsValidUrl).WithMessage("Speedpaint video link must be a valid URL.");
 
         When(c => c.SocialLinks != null && c.SocialLinks.Count > 0, () =>
         {
