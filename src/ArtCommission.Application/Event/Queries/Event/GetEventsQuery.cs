@@ -46,6 +46,11 @@ public class GetEventsQueryHandler
             query = query.Where(e => e.Status == request.Status.Value);
         }
 
+        if (request.IsFeatured.HasValue)
+        {
+            query = query.Where(e => e.IsFeatured == request.IsFeatured.Value);
+        }
+
         var keyword = !string.IsNullOrWhiteSpace(request.Title) 
             ? request.Title.Trim() 
             : request.Search?.Trim();
@@ -65,19 +70,13 @@ public class GetEventsQueryHandler
             query = query.Where(e => e.Submissions.Count <= request.MaxSubmissions.Value);
         }
 
-        if (request.IsFeatured.HasValue)
-        {
-            query = query.Where(e => e.IsFeatured == request.IsFeatured.Value);
-        }
-
         var totalCount = await query.CountAsync(cancellationToken);
 
         query = request.SortBy?.Trim().ToLowerInvariant() switch
         {
-            "title" or "title_asc" or "a-z" => query.OrderBy(e => e.Title),
-            "ending_soon" or "ending-soon" or "ending soon" or "end date" => query.OrderBy(e => e.SubmissionEndAt),
-            "most_submissions" or "submissions" or "popularity" => query.OrderByDescending(e => e.Submissions.Count).ThenByDescending(e => e.CreatedAt),
-            "most_votes" or "votes" => query.OrderByDescending(e => e.Submissions.SelectMany(s => s.Votes).Count()).ThenByDescending(e => e.CreatedAt),
+            "a-z" => query.OrderBy(e => e.Title),
+            "popularity" => query.OrderByDescending(e => e.Submissions.Count).ThenByDescending(e => e.CreatedAt),
+            "end date" => query.OrderByDescending(e => e.ResultAnnouncementAt),
             "latest" => query.OrderByDescending(e => e.CreatedAt),
             _ => query.OrderByDescending(e => e.CreatedAt)
         };
@@ -93,9 +92,9 @@ public class GetEventsQueryHandler
                 Description = e.Description,
                 Rules = e.Rules,
                 Prize = e.Prize,
+                IsFeatured = e.IsFeatured,
                 MaxVote = e.MaxVote,
                 Status = e.Status,
-                IsFeatured = e.IsFeatured,
                 SubmissionStartAt = e.SubmissionStartAt,
                 SubmissionEndAt = e.SubmissionEndAt,
                 JudgingStartAt = e.JudgingStartAt,
@@ -106,12 +105,9 @@ public class GetEventsQueryHandler
                 CreatedByAdminId = e.CreatedByAdminId,
                 CreatedByAdminName = e.CreatedByAdmin != null ? e.CreatedByAdmin.FullName : null,
                 SubmissionCount = e.Submissions.Count,
-                TotalVoteCount = e.Submissions.SelectMany(s => s.Votes).Count(),
                 CreatedAt = e.CreatedAt,
                 UpdatedAt = e.UpdatedAt,
-                IsActive = e.Status == EventStatus.Open && e.SubmissionStartAt <= now && e.ResultAnnouncementAt >= now,
-                IsHeadJurySignedOff = e.IsHeadJurySignedOff,
-                HeadJurySignedOffAt = e.HeadJurySignedOffAt
+                IsActive = e.Status == EventStatus.Open && e.SubmissionStartAt <= now && e.ResultAnnouncementAt >= now
             })
             .ToListAsync(cancellationToken);
 

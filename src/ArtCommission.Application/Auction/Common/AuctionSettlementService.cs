@@ -168,20 +168,16 @@ public class AuctionSettlementService : IAuctionSettlementService
 
             if (buyerWallet is not null)
             {
-                var refundAmount = Math.Min(Math.Max(0m, buyerWallet.LockedBalance), -shortfall);
-                if (refundAmount > 0m)
-                {
-                    // Phần cọc vượt giá chốt vẫn đang nằm trong LockedBalance ⇒ hoàn về
-                    // số dư khả dụng đúng bằng RefundFromHold.
-                    await _walletService.RefundHeldFundsAsync(
-                        buyerWallet,
-                        WalletTransactionType.RefundFromHold,
-                        refundAmount,
-                        AuctionRefTypes.BidShortfall,
-                        winningBid.Id,
-                        $"Hoàn phần cọc vượt giá chốt phiên {auction.Id}",
-                        cancellationToken);
-                }
+                // Phần cọc vượt giá chốt vẫn đang nằm trong LockedBalance ⇒ hoàn về
+                // số dư khả dụng đúng bằng RefundFromHold.
+                await _walletService.RefundHeldFundsAsync(
+                    buyerWallet,
+                    WalletTransactionType.RefundFromHold,
+                    -shortfall,
+                    AuctionRefTypes.BidShortfall,
+                    winningBid.Id,
+                    $"Hoàn phần cọc vượt giá chốt phiên {auction.Id}",
+                    cancellationToken);
             }
         }
 

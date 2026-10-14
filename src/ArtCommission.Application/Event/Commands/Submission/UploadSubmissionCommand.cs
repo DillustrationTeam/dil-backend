@@ -77,39 +77,12 @@ public class UploadSubmissionCommandHandler
             return (false, null, [$"Thời gian nhận bài thi đã kết thúc (Kết thúc lúc: {platformEvent.SubmissionEndAt:u})."]);
         }
 
-        // 4. Kiểm tra quyền Creator (Chỉ Creator mới có thể tham gia nộp bài dự thi sự kiện)
-        var creatorProfile = await _db.CreatorProfiles
-            .FirstOrDefaultAsync(cp => cp.UserId == request.SubmitterId && !cp.IsDeleted, cancellationToken);
-
-        if (creatorProfile == null)
-        {
-            return (false, null, ["Chỉ Creator (Họa sĩ) mới có thể tham gia nộp bài dự thi sự kiện. Vui lòng thiết lập hồ sơ Creator để tham gia."]);
-        }
-
-        // 4a. Kiểm tra Creator có phải Jury của sự kiện này không
-        var isJuryForEvent = await _db.Juries
-            .AnyAsync(j => j.EventId == request.EventId && j.CreatorId == creatorProfile.Id && !j.IsDeleted, cancellationToken);
-
-        if (isJuryForEvent)
-        {
-            return (false, null, ["Thành viên Ban giám khảo (Jury) của sự kiện không được tham gia nộp bài dự thi trong chính sự kiện đó."]);
-        }
-
-        // 4b. Kiểm tra quy tắc 1 Creator chỉ được nộp duy nhất 1 bài dự thi cho mỗi sự kiện
-        var hasExistingSubmission = await _db.EventSubmissions
-            .AnyAsync(s => s.EventId == request.EventId && s.SubmitterId == request.SubmitterId, cancellationToken);
-
-        if (hasExistingSubmission)
-        {
-            return (false, null, ["Mỗi Creator chỉ được nộp một bài dự thi cho mỗi sự kiện. Bạn đã có bài nộp trong sự kiện này, vui lòng chỉnh sửa bài dự thi hiện có."]);
-        }
-
         Guid targetArtworkId;
         string submissionTitle;
         string? submissionDesc = request.Description;
         bool aiScanPassed;
 
-        // 5. Xử lý tác phẩm (Artwork)
+        // 4. Xử lý tác phẩm (Artwork)
         if (request.ArtworkId.HasValue)
         {
             // Case A: Chọn tranh có sẵn trong kho
@@ -163,13 +136,6 @@ public class UploadSubmissionCommandHandler
             targetArtworkId = artData.Id;
             submissionTitle = request.Title!.Trim();
             aiScanPassed = !request.IsAiGenerated && (request.AiDetectionScore == null || request.AiDetectionScore < 0.5m);
-
-            // Tác phẩm upload phục vụ cuộc thi -> đặt ModerationStatus = "Approved" để hiển thị công khai trên trang tranh
-            var createdArtwork = await _db.Artworks.FirstOrDefaultAsync(a => a.Id == targetArtworkId, cancellationToken);
-            if (createdArtwork != null && createdArtwork.ModerationStatus != "Approved")
-            {
-                createdArtwork.ModerationStatus = "Approved";
-            }
         }
 
         // 5. Tạo bản ghi EventSubmission

@@ -2,7 +2,6 @@ using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Commission.DTOs;
 using ArtCommission.Application.Commission.Interfaces;
 using ArtCommission.Application.Commission.Validators;
-using ArtCommission.Application.Dispute.CommissionDispute.DTOs;
 using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
 using ArtCommission.Domain.Entities.Commission;
@@ -524,8 +523,8 @@ public class CommissionService : ICommissionService
     public async Task<string> GetFinalDownloadUrlAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
         var commission = await PartyCommissionAsync(id, userId, cancellationToken);
-        if (commission.Status != CommissionStatus.Completed)
-            throw new InvalidOperationException("Can only download final files when commission is completed.");
+        if (commission.Status != CommissionStatus.Delivered && commission.Status != CommissionStatus.Completed)
+            throw new InvalidOperationException("Final files are available after delivery.");
 
         await _dbContext.Entry(commission).Collection(c => c.Milestones).LoadAsync(cancellationToken);
         var lastMilestone = commission.Milestones.OrderByDescending(m => m.Sequence).FirstOrDefault();
@@ -546,6 +545,9 @@ public class CommissionService : ICommissionService
 
     public async Task<CommissionDto> CancelCommissionAsync(Guid id, CancelWithPolicyRequest request, Guid userId, CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(request.CancellationReason))
+            throw new ArgumentException("Cancellation reason is required.");
+
         await using var tx = await BeginTransactionAsync(cancellationToken);
         var commission = await PartyCommissionAsync(id, userId, cancellationToken);
         if (commission.Status is CommissionStatus.Completed or CommissionStatus.Cancelled or CommissionStatus.Disputed)
@@ -554,6 +556,8 @@ public class CommissionService : ICommissionService
             throw new InvalidOperationException("Funded commissions must be resolved through a dispute.");
 
         commission.Status = CommissionStatus.Cancelled;
+        commission.CancellationReason = request.CancellationReason.Trim();
+        commission.CancellationDetails = string.IsNullOrWhiteSpace(request.Details) ? null : request.Details.Trim();
         commission.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -563,7 +567,7 @@ public class CommissionService : ICommissionService
         return MapToDto(commission);
     }
 
-    public async Task<CommissionDisputeDto> CreateDisputeAsync(Guid id, CreateDisputeRequest request, Guid raisedById, CancellationToken cancellationToken = default)
+    public async Task<DisputeDto> CreateDisputeAsync(Guid id, CreateDisputeRequest request, Guid raisedById, CancellationToken cancellationToken = default)
     {
         var validation = new CreateDisputeRequestValidator().Validate(request);
         if (!validation.IsValid) throw new ArgumentException(string.Join(" ", validation.Errors.Select(e => e.ErrorMessage)));
@@ -601,7 +605,7 @@ public class CommissionService : ICommissionService
         return MapToDisputeDto(dispute);
     }
 
-    public async Task<CommissionDisputeDto?> GetDisputeByCommissionIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
+    public async Task<DisputeDto?> GetDisputeByCommissionIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
         await PartyCommissionAsync(id, userId, cancellationToken);
         var dispute = await _dbContext.Disputes.AsNoTracking().FirstOrDefaultAsync(d => d.CommissionId == id, cancellationToken);
@@ -731,6 +735,8 @@ public class CommissionService : ICommissionService
             CurrentStage = c.CurrentStage,
             Status = c.Status.ToString(),
             DeadlineAt = c.DeadlineAt,
+            CancellationReason = c.CancellationReason,
+            CancellationDetails = c.CancellationDetails,
             CreatedAt = c.CreatedAt
         };
     }
@@ -802,9 +808,9 @@ public class CommissionService : ICommissionService
         };
     }
 
-    private static CommissionDisputeDto MapToDisputeDto(CommissionDispute d)
+    private static DisputeDto MapToDisputeDto(CommissionDispute d)
     {
-        return new CommissionDisputeDto
+        return new DisputeDto
         {
             Id = d.Id,
             CommissionId = d.CommissionId,

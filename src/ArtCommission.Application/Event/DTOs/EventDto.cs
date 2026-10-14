@@ -16,11 +16,11 @@ public sealed record EventDto
 
     public string? Prize { get; set; }
 
+    public bool IsFeatured { get; set; }
+
     public int MaxVote { get; set; }
 
     public EventStatus Status { get; set; } = EventStatus.Draft;
-
-    public bool IsFeatured { get; set; }
 
     public DateTimeOffset SubmissionStartAt { get; set; }
 
@@ -42,15 +42,9 @@ public sealed record EventDto
 
     public int SubmissionCount { get; set; }
 
-    public int TotalVoteCount { get; set; }
-
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset? UpdatedAt { get; set; }
 
     public bool IsActive { get; set; }
-
-    public bool IsHeadJurySignedOff { get; set; }
-
-    public DateTimeOffset? HeadJurySignedOffAt { get; set; }
 }

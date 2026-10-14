@@ -24,7 +24,7 @@ public record UpdateEventCommand(
     DateTimeOffset VotingEndAt,
     DateTimeOffset ResultAnnouncementAt,
     Guid AdminId,
-    bool? IsFeatured = null
+    bool IsFeatured = false
 ) : IRequest<(bool Success, EventDetailDto? Data, string[] Errors)>;
 
 public class UpdateEventCommandHandler
@@ -71,6 +71,7 @@ public class UpdateEventCommandHandler
         platformEvent.BannerUrl = string.IsNullOrWhiteSpace(request.BannerUrl) ? null : request.BannerUrl.Trim();
         platformEvent.Rules = string.IsNullOrWhiteSpace(request.Rules) ? null : request.Rules.Trim();
         platformEvent.Prize = string.IsNullOrWhiteSpace(request.Prize) ? null : request.Prize.Trim();
+        platformEvent.IsFeatured = request.IsFeatured;
         platformEvent.MaxVote = request.MaxVote > 0 ? request.MaxVote : 1;
         platformEvent.Status = request.Status;
         platformEvent.SubmissionStartAt = request.SubmissionStartAt;
@@ -80,10 +81,6 @@ public class UpdateEventCommandHandler
         platformEvent.VotingStartAt = request.VotingStartAt;
         platformEvent.VotingEndAt = request.VotingEndAt;
         platformEvent.ResultAnnouncementAt = request.ResultAnnouncementAt;
-        if (request.IsFeatured.HasValue)
-        {
-            platformEvent.IsFeatured = request.IsFeatured.Value;
-        }
         platformEvent.UpdatedAt = now;
 
         await _db.SaveChangesAsync(cancellationToken);
@@ -96,9 +93,9 @@ public class UpdateEventCommandHandler
             Description = platformEvent.Description,
             Rules = platformEvent.Rules,
             Prize = platformEvent.Prize,
+            IsFeatured = platformEvent.IsFeatured,
             MaxVote = platformEvent.MaxVote,
             Status = platformEvent.Status.ToString(),
-            IsFeatured = platformEvent.IsFeatured,
             SubmissionStartAt = platformEvent.SubmissionStartAt,
             SubmissionEndAt = platformEvent.SubmissionEndAt,
             JudgingStartAt = platformEvent.JudgingStartAt,
@@ -112,9 +109,7 @@ public class UpdateEventCommandHandler
             TotalVoteCount = platformEvent.Submissions.Sum(s => (int?)s.VoteCount) ?? 0,
             CreatedAt = platformEvent.CreatedAt,
             UpdatedAt = platformEvent.UpdatedAt,
-            IsOpenForSubmission = platformEvent.Status == EventStatus.Open && platformEvent.SubmissionStartAt <= now && platformEvent.SubmissionEndAt >= now,
-            IsHeadJurySignedOff = platformEvent.IsHeadJurySignedOff,
-            HeadJurySignedOffAt = platformEvent.HeadJurySignedOffAt
+            IsOpenForSubmission = platformEvent.Status == EventStatus.Open && platformEvent.SubmissionStartAt <= now && platformEvent.SubmissionEndAt >= now
         };
 
         return (true, data, Array.Empty<string>());

@@ -2,7 +2,6 @@ using System.Security.Claims;
 using ArtCommission.API.Common;
 using ArtCommission.Application.Commission.DTOs;
 using ArtCommission.Application.Commission.Interfaces;
-using ArtCommission.Application.Dispute.CommissionDispute.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -142,7 +141,6 @@ public class CommissionsController : ControllerBase
         CancellationToken ct)
     {
         ValidateUpload(file, MaxWipFileSize, WipContentTypes, "WIP");
-        if (creatorNote?.Length > 2000) throw new ArgumentException("Creator note must be 2000 characters or fewer.");
         var creatorId = GetCurrentUserId();
         var stream = file?.OpenReadStream();
         var contentType = file?.ContentType;
@@ -251,7 +249,7 @@ public class CommissionsController : ControllerBase
     {
         var raisedById = GetCurrentUserId();
         var result = await _commissionService.CreateDisputeAsync(id, request, raisedById, ct);
-        return Ok(new ApiResponse<CommissionDisputeDto>(result));
+        return Ok(new ApiResponse<DisputeDto>(result));
     }
 
     /// <summary>
@@ -263,7 +261,7 @@ public class CommissionsController : ControllerBase
     {
         var result = await _commissionService.GetDisputeByCommissionIdAsync(id, GetCurrentUserId(), ct);
         if (result == null) return NotFound(ApiErrors.Create(404, "Not Found", "Chưa có tranh chấp cho đơn hàng này.", HttpContext.TraceIdentifier));
-        return Ok(new ApiResponse<CommissionDisputeDto>(result));
+        return Ok(new ApiResponse<DisputeDto>(result));
     }
 
     /// <summary>
