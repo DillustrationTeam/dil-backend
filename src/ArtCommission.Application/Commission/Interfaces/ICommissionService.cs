@@ -11,6 +11,7 @@ public interface ICommissionService
     Task<CommissionDto> RespondCommissionAsync(Guid id, RespondCommissionRequest request, Guid creatorId, CancellationToken cancellationToken = default);
     Task<CommissionDto> RespondToCounterofferAsync(Guid id, bool accept, Guid clientId, CancellationToken cancellationToken = default);
     Task<CommissionDto> DepositEscrowAsync(Guid id, Guid clientId, string paymentMethod, CancellationToken cancellationToken = default);
+    Task<CommissionDto> AcceptWorkroomTermsAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
     
     Task<MilestoneDto> SubmitMilestoneWipAsync(Guid commissionId, Guid milestoneId, string? creatorNote, Stream? fileStream, string? contentType, Guid creatorId, CancellationToken cancellationToken = default);
     Task<string> GetMilestoneWipPreviewUrlAsync(Guid commissionId, Guid milestoneId, Guid userId, CancellationToken cancellationToken = default);
@@ -20,12 +21,14 @@ public interface ICommissionService
     
     Task<CommissionDto> DeliverFinalWorkAsync(Guid id, Stream fileStream, string contentType, string fileName, Guid creatorId, CancellationToken cancellationToken = default);
     Task<CommissionDto> CompleteCommissionAsync(Guid id, Guid clientId, CancellationToken cancellationToken = default);
-    Task<string> GetFinalDownloadUrlAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
+    Task<FinalDownloadDto> GetFinalDownloadUrlAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
     
     Task<CommissionDto> CancelCommissionAsync(Guid id, CancelWithPolicyRequest request, Guid userId, CancellationToken cancellationToken = default);
+    Task<CommissionDto> RespondCancellationRequestAsync(Guid id, bool approve, Guid userId, CancellationToken cancellationToken = default);
+    Task ProcessCancellationDeadlinesAsync(CancellationToken cancellationToken = default);
     
-    Task<DisputeDto> CreateDisputeAsync(Guid id, CreateDisputeRequest request, Guid raisedById, CancellationToken cancellationToken = default);
-    Task<DisputeDto?> GetDisputeByCommissionIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
+    Task<ArtCommission.Application.Dispute.CommissionDispute.DTOs.CommissionDisputeDto> CreateDisputeAsync(Guid id, CreateDisputeRequest request, Guid raisedById, CancellationToken cancellationToken = default);
+    Task<ArtCommission.Application.Dispute.CommissionDispute.DTOs.CommissionDisputeDto?> GetDisputeByCommissionIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
     Task<ReviewDto> CreateReviewAsync(Guid id, CreateReviewRequest request, Guid reviewerId, CancellationToken cancellationToken = default);
     Task<ReviewDto> ReplyReviewAsync(Guid id, string replyComment, Guid creatorId, CancellationToken cancellationToken = default);
 }

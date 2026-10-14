@@ -23,6 +23,18 @@ public class CommissionDto
     public DateTimeOffset? DeadlineAt { get; set; }
     public string? CancellationReason { get; set; }
     public string? CancellationDetails { get; set; }
+    public Guid? CancellationRequestedById { get; set; }
+    public string? CancellationRequestedByRole { get; set; }
+    public string? CancellationRequestStatus { get; set; }
+    public DateTimeOffset? CancellationRequestedAt { get; set; }
+    public DateTimeOffset? CancellationRequestExpiresAt { get; set; }
+    public bool IsOverdue { get; set; }
+    public DateTimeOffset? OverdueGraceEndsAt { get; set; }
+    public DateTimeOffset? ClientTermsAcceptedAt { get; set; }
+    public string? ClientTermsVersion { get; set; }
+    public DateTimeOffset? CreatorTermsAcceptedAt { get; set; }
+    public string? CreatorTermsVersion { get; set; }
+    public string CurrentWorkroomTermsVersion { get; set; } = "1.0";
     public DateTimeOffset CreatedAt { get; set; }
 }
 
@@ -30,5 +42,9 @@ public class CommissionDetailDto : CommissionDto
 {
     public List<MilestoneDto> Milestones { get; set; } = new();
     public ReviewDto? Review { get; set; }
-    public DisputeDto? Dispute { get; set; }
+    public ArtCommission.Application.Dispute.CommissionDispute.DTOs.CommissionDisputeDto? Dispute { get; set; }
 }
+
+public sealed record FinalDownloadDto(string DownloadUrl, DateTimeOffset ExpiresAt);
+
+public sealed record RespondCancellationRequest(bool Approve);

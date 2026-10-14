@@ -31,6 +31,7 @@ public record DisputeArbitrationDetailDto
     public string? Resolution { get; init; } // ClientWin100, ArtistWin100, SplitCustom
     public decimal? ClientRefundAmount { get; init; }
     public decimal? ArtistPayAmount { get; init; }
+    public decimal? ClientRefundPercent { get; init; }
     public string? AdminNote { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? ResolvedAt { get; init; }

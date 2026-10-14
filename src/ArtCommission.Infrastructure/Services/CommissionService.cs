@@ -2,6 +2,7 @@ using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Commission.DTOs;
 using ArtCommission.Application.Commission.Interfaces;
 using ArtCommission.Application.Commission.Validators;
+using ArtCommission.Application.Dispute.CommissionDispute.DTOs;
 using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
 using ArtCommission.Domain.Entities.Commission;
@@ -17,6 +18,7 @@ namespace ArtCommission.Infrastructure.Services;
 
 public class CommissionService : ICommissionService
 {
+    private const string CurrentWorkroomTermsVersion = "1.0";
     private readonly AppDbContext _dbContext;
     private readonly IWalletService _walletService;
     private readonly IWatermarkService _watermarkService;
@@ -317,6 +319,8 @@ public class CommissionService : ICommissionService
             throw new ArgumentException("Only wallet escrow is supported.");
         await using var tx = await BeginTransactionAsync(cancellationToken);
         var commission = await OwnedCommissionAsync(id, clientId, creator: false, cancellationToken);
+        if (commission.ClientTermsAcceptedAt is null || commission.ClientTermsVersion != CurrentWorkroomTermsVersion)
+            throw new InvalidOperationException("Client must accept the current Workroom terms before depositing escrow.");
         if (commission.Status != CommissionStatus.InProgress || commission.EscrowStatus != EscrowStatus.Pending)
             throw new InvalidOperationException("Commission is not ready for escrow deposit.");
         if (commission.VoucherId.HasValue)
@@ -379,9 +383,34 @@ public class CommissionService : ICommissionService
         return MapToDto(commission);
     }
 
+    public async Task<CommissionDto> AcceptWorkroomTermsAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
+    {
+        var commission = await PartyCommissionAsync(id, userId, cancellationToken);
+        if (commission.Status is CommissionStatus.Completed or CommissionStatus.Cancelled)
+            throw new InvalidOperationException("Workroom terms cannot be accepted for a closed commission.");
+
+        var now = DateTimeOffset.UtcNow;
+        if (commission.ClientId == userId)
+        {
+            commission.ClientTermsAcceptedAt = now;
+            commission.ClientTermsVersion = CurrentWorkroomTermsVersion;
+        }
+        else
+        {
+            commission.CreatorTermsAcceptedAt = now;
+            commission.CreatorTermsVersion = CurrentWorkroomTermsVersion;
+        }
+
+        commission.UpdatedAt = now;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return MapToDto(commission);
+    }
+
     public async Task<MilestoneDto> SubmitMilestoneWipAsync(Guid commissionId, Guid milestoneId, string? creatorNote, Stream? fileStream, string? contentType, Guid creatorId, CancellationToken cancellationToken = default)
     {
         var commission = await OwnedCommissionAsync(commissionId, creatorId, creator: true, cancellationToken);
+        if (commission.CreatorTermsAcceptedAt is null || commission.CreatorTermsVersion != CurrentWorkroomTermsVersion)
+            throw new InvalidOperationException("Creator must accept the current Workroom terms before submitting milestone work.");
         if (commission.Status != CommissionStatus.InProgress || commission.EscrowStatus is not (EscrowStatus.Deposited or EscrowStatus.PartialReleased))
             throw new InvalidOperationException("Commission is not funded and in progress.");
         if (fileStream == null || contentType == null) throw new ArgumentException("WIP file is required.");
@@ -520,7 +549,7 @@ public class CommissionService : ICommissionService
         return MapToDto(commission);
     }
 
-    public async Task<string> GetFinalDownloadUrlAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
+    public async Task<FinalDownloadDto> GetFinalDownloadUrlAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
         var commission = await PartyCommissionAsync(id, userId, cancellationToken);
         if (commission.Status != CommissionStatus.Delivered && commission.Status != CommissionStatus.Completed)
@@ -531,7 +560,10 @@ public class CommissionService : ICommissionService
         if (lastMilestone?.FinalDeliverableUrl == null)
             throw new InvalidOperationException("Final deliverable not found.");
 
-        return _storageService.GeneratePresignedDownloadUrl(lastMilestone.FinalDeliverableUrl, TimeSpan.FromMinutes(15));
+        var expiresIn = TimeSpan.FromMinutes(15);
+        var expiresAt = DateTimeOffset.UtcNow.Add(expiresIn);
+        var downloadUrl = _storageService.GeneratePresignedDownloadUrl(lastMilestone.FinalDeliverableUrl, expiresIn);
+        return new FinalDownloadDto(downloadUrl, expiresAt);
     }
 
     public async Task<string> GetMilestoneWipPreviewUrlAsync(Guid commissionId, Guid milestoneId, Guid userId, CancellationToken cancellationToken = default)
@@ -545,20 +577,55 @@ public class CommissionService : ICommissionService
 
     public async Task<CommissionDto> CancelCommissionAsync(Guid id, CancelWithPolicyRequest request, Guid userId, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(request.CancellationReason))
-            throw new ArgumentException("Cancellation reason is required.");
+        if (string.IsNullOrWhiteSpace(request.CancellationReason) || request.CancellationReason.Length > 500
+            || request.Details?.Length > 2000)
+            throw new ArgumentException("Cancellation reason is required and cancellation details are too long.");
 
         await using var tx = await BeginTransactionAsync(cancellationToken);
         var commission = await PartyCommissionAsync(id, userId, cancellationToken);
         if (commission.Status is CommissionStatus.Completed or CommissionStatus.Cancelled or CommissionStatus.Disputed)
             throw new InvalidOperationException("Commission cannot be cancelled in this state.");
-        if (commission.EscrowHeldAmount > 0 || commission.Status == CommissionStatus.Delivered)
-            throw new InvalidOperationException("Funded commissions must be resolved through a dispute.");
-
-        commission.Status = CommissionStatus.Cancelled;
         commission.CancellationReason = request.CancellationReason.Trim();
         commission.CancellationDetails = string.IsNullOrWhiteSpace(request.Details) ? null : request.Details.Trim();
-        commission.UpdatedAt = DateTimeOffset.UtcNow;
+
+        if (commission.Status is CommissionStatus.PendingAcceptance or CommissionStatus.Negotiating)
+        {
+            await FinalizeCancellationAsync(commission, "Cancelled before work started.", cancellationToken);
+        }
+        else
+        {
+            if (commission.CancellationRequestStatus == "Pending")
+                throw new InvalidOperationException("A cancellation request is already pending.");
+
+            var now = DateTimeOffset.UtcNow;
+            var creatorUserId = await CreatorUserIdAsync(commission.CreatorId, cancellationToken);
+            var requesterRole = commission.ClientId == userId ? "Client" : "Creator";
+            var overdueGraceEndsAt = commission.DeadlineAt?.AddHours(24);
+
+            commission.CancellationRequestedById = userId;
+            commission.CancellationRequestedByRole = requesterRole;
+            commission.CancellationRequestedAt = now;
+            commission.CancellationRequestStatus = "Pending";
+            commission.CancellationRequestExpiresAt = requesterRole == "Client"
+                && commission.DeadlineAt <= now
+                ? overdueGraceEndsAt
+                : now.AddHours(48);
+            commission.UpdatedAt = now;
+
+            if (requesterRole == "Client" && overdueGraceEndsAt <= now)
+            {
+                await FinalizeCancellationAsync(commission, "Automatically cancelled after the overdue grace period.", cancellationToken);
+            }
+            else
+            {
+                var recipientId = requesterRole == "Client" ? creatorUserId : commission.ClientId;
+                await PublishSafeAsync(
+                    recipientId, NotificationType.DisputeStatusChanged,
+                    "Yêu cầu hủy đơn mới",
+                    $"{requesterRole} đã gửi yêu cầu hủy “{commission.Title}”. Vui lòng phản hồi trước {commission.CancellationRequestExpiresAt:dd/MM/yyyy HH:mm} UTC.",
+                    commission.Id, $"CancellationRequested:{commission.Id}:{commission.CancellationRequestedAt:O}", cancellationToken);
+            }
+        }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         if (tx is not null)
@@ -567,7 +634,94 @@ public class CommissionService : ICommissionService
         return MapToDto(commission);
     }
 
-    public async Task<DisputeDto> CreateDisputeAsync(Guid id, CreateDisputeRequest request, Guid raisedById, CancellationToken cancellationToken = default)
+    public async Task<CommissionDto> RespondCancellationRequestAsync(Guid id, bool approve, Guid userId, CancellationToken cancellationToken = default)
+    {
+        await using var tx = await BeginTransactionAsync(cancellationToken);
+        var commission = await PartyCommissionAsync(id, userId, cancellationToken);
+        if (commission.CancellationRequestStatus != "Pending" || commission.CancellationRequestedById is null)
+            throw new InvalidOperationException("There is no pending cancellation request.");
+        if (commission.CancellationRequestedById == userId)
+            throw new UnauthorizedAccessException("The requester cannot respond to their own cancellation request.");
+        if (commission.CancellationRequestExpiresAt <= DateTimeOffset.UtcNow)
+            throw new InvalidOperationException("The cancellation request has expired.");
+
+        if (approve)
+        {
+            commission.CancellationRequestStatus = "Approved";
+            await FinalizeCancellationAsync(commission, "Cancellation approved by both participants.", cancellationToken);
+        }
+        else
+        {
+            commission.CancellationRequestStatus = "Rejected";
+            commission.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        if (tx is not null)
+            await tx.CommitAsync(cancellationToken);
+
+        return MapToDto(commission);
+    }
+
+    public async Task ProcessCancellationDeadlinesAsync(CancellationToken cancellationToken = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var dueIds = await _dbContext.Commissions.AsNoTracking()
+            .Where(c => !c.IsDeleted && c.CancellationRequestStatus == "Pending"
+                && c.CancellationRequestExpiresAt <= now
+                && c.Status != CommissionStatus.Cancelled && c.Status != CommissionStatus.Completed
+                && c.Status != CommissionStatus.Disputed)
+            .Select(c => c.Id)
+            .ToListAsync(cancellationToken);
+
+        foreach (var commissionId in dueIds)
+        {
+            await using var tx = await BeginTransactionAsync(cancellationToken);
+            var commission = await _dbContext.Commissions.FirstAsync(c => c.Id == commissionId, cancellationToken);
+            if (commission.CancellationRequestStatus != "Pending" || commission.CancellationRequestExpiresAt > now)
+                continue;
+
+            var overdueAutoRefund = commission.CancellationRequestedByRole == "Client"
+                && commission.DeadlineAt?.AddHours(24) <= now;
+            if (commission.CancellationRequestedByRole == "Creator" || overdueAutoRefund)
+            {
+                await FinalizeCancellationAsync(
+                    commission,
+                    overdueAutoRefund
+                        ? "Automatically cancelled after the overdue grace period."
+                        : "Automatically cancelled because the client did not respond within 48 hours.",
+                    cancellationToken);
+            }
+            else
+            {
+                commission.CancellationRequestStatus = "Expired";
+                commission.UpdatedAt = now;
+            }
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            if (tx is not null)
+                await tx.CommitAsync(cancellationToken);
+        }
+    }
+
+    private async Task FinalizeCancellationAsync(Commission commission, string note, CancellationToken cancellationToken)
+    {
+        if (commission.EscrowHeldAmount > 0)
+        {
+            var clientWallet = await _walletService.GetOrCreateWalletAsync(commission.ClientId, cancellationToken);
+            await _walletService.RefundHeldFundsAsync(
+                clientWallet, WalletTransactionType.RefundFromHold, commission.EscrowHeldAmount,
+                "Commission", commission.Id, note, cancellationToken);
+            commission.EscrowHeldAmount = 0m;
+            commission.EscrowStatus = EscrowStatus.Refunded;
+        }
+
+        commission.Status = CommissionStatus.Cancelled;
+        commission.CancellationRequestStatus ??= "Approved";
+        commission.UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
+    public async Task<CommissionDisputeDto> CreateDisputeAsync(Guid id, CreateDisputeRequest request, Guid raisedById, CancellationToken cancellationToken = default)
     {
         var validation = new CreateDisputeRequestValidator().Validate(request);
         if (!validation.IsValid) throw new ArgumentException(string.Join(" ", validation.Errors.Select(e => e.ErrorMessage)));
@@ -605,7 +759,7 @@ public class CommissionService : ICommissionService
         return MapToDisputeDto(dispute);
     }
 
-    public async Task<DisputeDto?> GetDisputeByCommissionIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
+    public async Task<CommissionDisputeDto?> GetDisputeByCommissionIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
         await PartyCommissionAsync(id, userId, cancellationToken);
         var dispute = await _dbContext.Disputes.AsNoTracking().FirstOrDefaultAsync(d => d.CommissionId == id, cancellationToken);
@@ -737,6 +891,19 @@ public class CommissionService : ICommissionService
             DeadlineAt = c.DeadlineAt,
             CancellationReason = c.CancellationReason,
             CancellationDetails = c.CancellationDetails,
+            CancellationRequestedById = c.CancellationRequestedById,
+            CancellationRequestedByRole = c.CancellationRequestedByRole,
+            CancellationRequestStatus = c.CancellationRequestStatus,
+            CancellationRequestedAt = c.CancellationRequestedAt,
+            CancellationRequestExpiresAt = c.CancellationRequestExpiresAt,
+            IsOverdue = c.DeadlineAt < DateTimeOffset.UtcNow
+                && c.Status is not (CommissionStatus.Completed or CommissionStatus.Cancelled),
+            OverdueGraceEndsAt = c.DeadlineAt?.AddHours(24),
+            ClientTermsAcceptedAt = c.ClientTermsAcceptedAt,
+            ClientTermsVersion = c.ClientTermsVersion,
+            CreatorTermsAcceptedAt = c.CreatorTermsAcceptedAt,
+            CreatorTermsVersion = c.CreatorTermsVersion,
+            CurrentWorkroomTermsVersion = CurrentWorkroomTermsVersion,
             CreatedAt = c.CreatedAt
         };
     }
@@ -763,6 +930,20 @@ public class CommissionService : ICommissionService
             CurrentStage = dto.CurrentStage,
             Status = dto.Status,
             DeadlineAt = dto.DeadlineAt,
+            CancellationReason = dto.CancellationReason,
+            CancellationDetails = dto.CancellationDetails,
+            CancellationRequestedById = dto.CancellationRequestedById,
+            CancellationRequestedByRole = dto.CancellationRequestedByRole,
+            CancellationRequestStatus = dto.CancellationRequestStatus,
+            CancellationRequestedAt = dto.CancellationRequestedAt,
+            CancellationRequestExpiresAt = dto.CancellationRequestExpiresAt,
+            IsOverdue = dto.IsOverdue,
+            OverdueGraceEndsAt = dto.OverdueGraceEndsAt,
+            ClientTermsAcceptedAt = dto.ClientTermsAcceptedAt,
+            ClientTermsVersion = dto.ClientTermsVersion,
+            CreatorTermsAcceptedAt = dto.CreatorTermsAcceptedAt,
+            CreatorTermsVersion = dto.CreatorTermsVersion,
+            CurrentWorkroomTermsVersion = dto.CurrentWorkroomTermsVersion,
             CreatedAt = dto.CreatedAt,
             Milestones = c.Milestones.Select(MapToMilestoneDto).ToList(),
             Review = c.Reviews.FirstOrDefault() != null ? MapToReviewDto(c.Reviews.First()) : null,
@@ -808,9 +989,9 @@ public class CommissionService : ICommissionService
         };
     }
 
-    private static DisputeDto MapToDisputeDto(CommissionDispute d)
+    private static CommissionDisputeDto MapToDisputeDto(CommissionDispute d)
     {
-        return new DisputeDto
+        return new CommissionDisputeDto
         {
             Id = d.Id,
             CommissionId = d.CommissionId,
@@ -821,10 +1002,19 @@ public class CommissionService : ICommissionService
             Resolution = d.Resolution,
             ClientRefundAmount = d.ClientRefundAmount,
             ArtistPayAmount = d.ArtistPayAmount,
+            ClientRefundPercent = ParseClientRefundPercent(d.Resolution),
             AdminNote = d.AdminNote,
             ResolvedAt = d.ResolvedAt,
             CreatedAt = d.CreatedAt
         };
+    }
+
+    private static decimal? ParseClientRefundPercent(string? resolution)
+    {
+        if (resolution == "ClientWin100") return 100m;
+        if (resolution == "ArtistWin100") return 0m;
+        var value = resolution?.Split('_');
+        return value is { Length: 3 } && decimal.TryParse(value[1], out var percent) ? percent : null;
     }
     #endregion
 }
