@@ -8,11 +8,7 @@ public class EventSubmissionConfiguration : IEntityTypeConfiguration<EventSubmis
 {
     public void Configure(EntityTypeBuilder<EventSubmission> builder)
     {
-        builder.ToTable("EventSubmissions", tb =>
-        {
-            tb.HasTrigger("TR_EventSubmissions_PreventJurySubmission");
-            tb.UseSqlOutputClause(false);
-        });
+        builder.ToTable("EventSubmissions");
 
         builder.HasKey(s => s.Id);
 

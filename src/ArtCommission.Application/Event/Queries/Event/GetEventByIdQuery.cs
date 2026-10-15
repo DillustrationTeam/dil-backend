@@ -39,7 +39,6 @@ public class GetEventByIdQueryHandler
                 Prize = e.Prize,
                 MaxVote = e.MaxVote,
                 Status = e.Status.ToString(),
-                IsFeatured = e.IsFeatured,
                 SubmissionStartAt = e.SubmissionStartAt,
                 SubmissionEndAt = e.SubmissionEndAt,
                 JudgingStartAt = e.JudgingStartAt,
@@ -53,9 +52,7 @@ public class GetEventByIdQueryHandler
                 TotalVoteCount = e.Submissions.Sum(s => (int?)s.VoteCount) ?? 0,
                 CreatedAt = e.CreatedAt,
                 UpdatedAt = e.UpdatedAt,
-                IsOpenForSubmission = e.Status == EventStatus.Open && e.SubmissionStartAt <= now && e.SubmissionEndAt >= now,
-                IsHeadJurySignedOff = e.IsHeadJurySignedOff,
-                HeadJurySignedOffAt = e.HeadJurySignedOffAt
+                IsOpenForSubmission = e.Status == EventStatus.Open && e.SubmissionStartAt <= now && e.SubmissionEndAt >= now
             })
             .FirstOrDefaultAsync(cancellationToken);
     }

@@ -552,8 +552,8 @@ public class CommissionService : ICommissionService
     public async Task<FinalDownloadDto> GetFinalDownloadUrlAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
         var commission = await PartyCommissionAsync(id, userId, cancellationToken);
-        if (commission.Status != CommissionStatus.Completed)
-            throw new InvalidOperationException("Can only download final files when commission is completed.");
+        if (commission.Status != CommissionStatus.Delivered && commission.Status != CommissionStatus.Completed)
+            throw new InvalidOperationException("Final files are available after delivery.");
 
         await _dbContext.Entry(commission).Collection(c => c.Milestones).LoadAsync(cancellationToken);
         var lastMilestone = commission.Milestones.OrderByDescending(m => m.Sequence).FirstOrDefault();

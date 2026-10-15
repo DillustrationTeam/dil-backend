@@ -7,7 +7,7 @@ public record MarketplaceHomeFeedDto(IReadOnlyList<BannerDto> FeaturedBanners, I
 public record ArtworkDetailDto(ArtworkDto Artwork, string LicenseType, decimal? StartingPrice, bool IsFavorited, int FavoriteCount);
 public record ArtworkCommentDto(Guid Id, Guid UserId, string AuthorName, string Body, DateTimeOffset CreatedAt);
 public record CommissionServiceDto(Guid Id, string Title, string? Description, decimal StartingPrice, int DeliveryDays, int MaxRevisions, bool IsActive);
-public record CreatorReviewDto(Guid Id, Guid ReviewerUserId, int Rating, string? Comment, DateTimeOffset CreatedAt);
+public record CreatorReviewDto(Guid Id, Guid ReviewerUserId, int Rating, string? Comment, DateTimeOffset CreatedAt, string? ReviewerReply = null);
 public record PersonalCollectionDto(Guid Id, string Name, bool IsPublic, int ArtworkCount, DateTimeOffset CreatedAt);
 public record CreateCollectionRequest(string Name, bool IsPublic);
 public record CreateCommentRequest(string Body);

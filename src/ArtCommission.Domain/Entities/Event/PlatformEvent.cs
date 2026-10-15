@@ -16,15 +16,11 @@ public class PlatformEvent : BaseEntity
 
     public string? Prize { get; set; }
 
+    public bool IsFeatured { get; set; }
+
     public int MaxVote { get; set; } = 1;
 
     public EventStatus Status { get; set; } = EventStatus.Draft;
-
-    public bool IsFeatured { get; set; } = false;
-
-    public bool IsHeadJurySignedOff { get; set; } = false;
-
-    public DateTimeOffset? HeadJurySignedOffAt { get; set; }
 
     public DateTimeOffset SubmissionStartAt { get; set; }
 
@@ -39,6 +35,10 @@ public class PlatformEvent : BaseEntity
     public DateTimeOffset VotingEndAt { get; set; }
 
     public DateTimeOffset ResultAnnouncementAt { get; set; }
+
+    public bool IsHeadJurySignedOff { get; set; }
+
+    public DateTimeOffset? HeadJurySignedOffAt { get; set; }
 
     public Guid CreatedByAdminId { get; set; }
 

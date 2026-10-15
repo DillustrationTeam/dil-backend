@@ -14,11 +14,11 @@ public sealed record EventRequestDto
 
     public string? Prize { get; set; }
 
+    public bool IsFeatured { get; set; }
+
     public int MaxVote { get; set; } = 1;
 
     public EventStatus Status { get; set; } = EventStatus.Draft;
-
-    public bool IsFeatured { get; set; } = false;
 
     public DateTimeOffset SubmissionStartAt { get; set; }
 
