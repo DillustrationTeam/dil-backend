@@ -210,12 +210,20 @@ public class CommissionService : ICommissionService
         var clientNames = await _dbContext.Users.AsNoTracking()
             .Where(user => clientIds.Contains(user.Id))
             .ToDictionaryAsync(user => user.Id, user => user.FullName, cancellationToken);
+        var creatorIds = items.Select(item => item.CreatorId).Distinct().ToArray();
+        var creatorNames = await _dbContext.CreatorProfiles.AsNoTracking()
+            .Where(profile => creatorIds.Contains(profile.Id) && !profile.IsDeleted)
+            .ToDictionaryAsync(profile => profile.Id, profile => profile.DisplayName, cancellationToken);
 
         foreach (var item in items)
         {
             if (clientNames.TryGetValue(item.ClientId, out var clientName))
             {
                 item.ClientName = clientName;
+            }
+            if (creatorNames.TryGetValue(item.CreatorId, out var creatorName))
+            {
+                item.CreatorName = creatorName;
             }
         }
 
@@ -236,6 +244,10 @@ public class CommissionService : ICommissionService
         if (commission == null) return null;
 
         var detailDto = MapToDetailDto(commission);
+        detailDto.CreatorName = await _dbContext.CreatorProfiles.AsNoTracking()
+            .Where(profile => profile.Id == commission.CreatorId && !profile.IsDeleted)
+            .Select(profile => profile.DisplayName)
+            .FirstOrDefaultAsync(cancellationToken);
         return detailDto;
     }
 

@@ -78,6 +78,10 @@ async Task<(Guid Id, Guid[] Milestones)> Create(string title, bool acceptTerms =
 }
 
 var normal = await Create("normal", acceptTerms: false);
+var normalDetail = await service.GetCommissionByIdAsync(normal.Id, clientId);
+Equal("Test creator", normalDetail!.CreatorName, "commission detail includes creator display name");
+var (clientCommissions, _) = await service.GetCommissionsAsync(null, "Client", clientId);
+Equal("Test creator", clientCommissions.Single(x => x.Id == normal.Id).CreatorName, "commission list includes creator display name");
 Equal((creatorId, NotificationType.CommissionStatusChanged),
     (notifications.Items[^1].UserId, notifications.Items[^1].Type), "new request notifies creator");
 Equal("CreatorCommissionRequests", notifications.Items[^1].RefType, "new request opens creator request queue");
