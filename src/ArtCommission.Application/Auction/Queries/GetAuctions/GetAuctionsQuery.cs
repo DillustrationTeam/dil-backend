@@ -220,7 +220,7 @@ public class GetAuctionsQueryHandler
 /// <summary>
 /// Mã hoá / giải mã cursor keyset cho danh sách đấu giá.
 ///
-/// Cursor được ký base64 để client không tự sửa được nội dung — nếu client gửi
+/// Cursor được mã hóa base64 để truyền mốc sắp xếp — nếu client gửi
 /// mốc sai, phân trang sẽ nhảy cóc và bỏ sót dữ liệu mà không ai phát hiện.
 /// </summary>
 public static class AuctionCursor
@@ -234,9 +234,11 @@ public static class AuctionCursor
     {
         var payload = string.Join('|',
             sort,
-            endAt.ToUnixTimeMilliseconds().ToString(System.Globalization.CultureInfo.InvariantCulture),
+            // Giữ đủ 7 chữ số phần lẻ như datetimeoffset(7) của SQL Server.
+            // Làm tròn xuống mili giây khiến cùng dòng lại nằm sau cursor.
+            endAt.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
             currentPrice.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            createdAt.ToUnixTimeMilliseconds().ToString(System.Globalization.CultureInfo.InvariantCulture),
+            createdAt.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
             id.ToString("N"));
 
         return Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(payload));
@@ -262,8 +264,9 @@ public static class AuctionCursor
                 return false;
             }
 
-            if (!long.TryParse(parts[1], System.Globalization.NumberStyles.Integer,
-                    System.Globalization.CultureInfo.InvariantCulture, out var endAtMs))
+            if (!DateTimeOffset.TryParseExact(parts[1], "O",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var endAt))
             {
                 return false;
             }
@@ -274,8 +277,9 @@ public static class AuctionCursor
                 return false;
             }
 
-            if (!long.TryParse(parts[3], System.Globalization.NumberStyles.Integer,
-                    System.Globalization.CultureInfo.InvariantCulture, out var createdMs))
+            if (!DateTimeOffset.TryParseExact(parts[3], "O",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var createdAt))
             {
                 return false;
             }
@@ -288,9 +292,9 @@ public static class AuctionCursor
             sort = parts[0];
 
             values = new AuctionCursorValues(
-                DateTimeOffset.FromUnixTimeMilliseconds(endAtMs),
+                endAt,
                 price,
-                DateTimeOffset.FromUnixTimeMilliseconds(createdMs));
+                createdAt);
 
             id = parsedId;
             return true;
