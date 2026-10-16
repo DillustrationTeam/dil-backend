@@ -46,4 +46,9 @@ public abstract class ApiControllerBase : ControllerBase
     {
         return NotFound(ApiErrors.Create(404, "Not Found", string.Join(" ", errors), HttpContext.TraceIdentifier));
     }
+
+    protected IActionResult ConflictEnvelope(params string[] errors)
+    {
+        return StatusCode(StatusCodes.Status409Conflict, ApiErrors.Create(409, "Conflict", string.Join(" ", errors), HttpContext.TraceIdentifier));
+    }
 }

@@ -1,3 +1,4 @@
+using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.Dispute.CommissionDispute.Commands;
 using ArtCommission.Application.Dispute.CommissionDispute.DTOs;
 using ArtCommission.Application.Dispute.CommissionDispute.Queries;
@@ -7,6 +8,7 @@ using ArtCommission.Application.Dispute.SubmissionDispute.Queries;
 using ArtCommission.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace ArtCommission.API.Controllers;
 
@@ -73,6 +75,26 @@ public class AdminDisputesController : ApiControllerBase
         if (result == null)
         {
             return NotFoundEnvelope("Không tìm thấy vụ việc tranh chấp yêu cầu.");
+        }
+
+        if (result.Creator != null && (result.Creator.FullName == "Unknown" || string.IsNullOrEmpty(result.Creator.Email)))
+        {
+            var db = HttpContext.RequestServices.GetRequiredService<IApplicationDbContext>();
+            var creatorProfile = await db.CreatorProfiles
+                .AsNoTracking()
+                .Include(cp => cp.User)
+                .FirstOrDefaultAsync(cp => cp.Id == result.Creator.UserId || cp.UserId == result.Creator.UserId, cancellationToken);
+
+            if (creatorProfile != null)
+            {
+                var enrichedCreator = result.Creator with
+                {
+                    FullName = creatorProfile.User?.FullName ?? creatorProfile.DisplayName,
+                    UserName = creatorProfile.User?.UserName ?? result.Creator.UserName,
+                    Email = creatorProfile.User?.Email ?? result.Creator.Email
+                };
+                result = result with { Creator = enrichedCreator };
+            }
         }
 
         return OkEnvelope(result);
