@@ -66,9 +66,9 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
     public async Task<IReadOnlyList<CreatorReviewDto>> Handle(GetCreatorReviewsQuery q, CancellationToken ct)
     {
         var direct = await _db.CreatorReviews.AsNoTracking().Where(x => x.CreatorProfileId == q.CreatorId && !x.IsDeleted)
-            .Select(x => new CreatorReviewDto(x.Id, x.ReviewerUserId, x.Rating, x.Comment, x.CreatedAt, null)).ToListAsync(ct);
+            .Select(x => new CreatorReviewDto(x.Id, x.ReviewerUserId, x.Rating, x.Comment, x.CreatedAt, null, null)).ToListAsync(ct);
         var commissions = await _db.Reviews.AsNoTracking().Where(x => !x.IsDeleted && x.IsVisible && !x.Commission.IsDeleted && x.Commission.CreatorId == q.CreatorId)
-            .Select(x => new CreatorReviewDto(x.Id, x.ReviewerId, x.Rating, x.Comment, x.CreatedAt, x.ReviewerReply)).ToListAsync(ct);
+            .Select(x => new CreatorReviewDto(x.Id, x.ReviewerId, x.Rating, x.Comment, x.CreatedAt, x.ReviewerReply, x.CommissionId)).ToListAsync(ct);
         return direct.Concat(commissions).OrderByDescending(x => x.CreatedAt).ToList();
     }
     public async Task<IReadOnlyList<PersonalCollectionDto>> Handle(GetMyCollectionsQuery q, CancellationToken ct) => await _db.PersonalCollections.AsNoTracking().Where(x => x.OwnerUserId == q.UserId && !x.IsDeleted).OrderByDescending(x => x.CreatedAt).Select(x => new PersonalCollectionDto(x.Id, x.Name, x.IsPublic, x.CollectionArtworks.Count(a => !a.Artwork!.IsDeleted && a.Artwork.ModerationStatus == "Approved" && !a.Artwork.CreatorProfile!.IsDeleted), x.CreatedAt)).ToListAsync(ct);

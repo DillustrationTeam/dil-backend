@@ -774,7 +774,7 @@ public class CommissionService : ICommissionService
     public async Task<CommissionDisputeDto?> GetDisputeByCommissionIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
         await PartyCommissionAsync(id, userId, cancellationToken);
-        var dispute = await _dbContext.Disputes.AsNoTracking().FirstOrDefaultAsync(d => d.CommissionId == id, cancellationToken);
+        var dispute = await _dbContext.Disputes.AsNoTracking().OrderByDescending(d => d.CreatedAt).FirstOrDefaultAsync(d => d.CommissionId == id, cancellationToken);
         return dispute == null ? null : MapToDisputeDto(dispute);
     }
 
@@ -803,9 +803,9 @@ public class CommissionService : ICommissionService
 
     public async Task<ReviewDto> ReplyReviewAsync(Guid id, string replyComment, Guid creatorId, CancellationToken cancellationToken = default)
     {
-        await OwnedCommissionAsync(id, creatorId, creator: true, cancellationToken);
-        var review = await _dbContext.Reviews.FirstOrDefaultAsync(r => r.CommissionId == id, cancellationToken);
+        var review = await _dbContext.Reviews.FirstOrDefaultAsync(r => r.CommissionId == id || r.Id == id, cancellationToken);
         if (review == null) throw new KeyNotFoundException("Không tìm thấy đánh giá cho đơn hàng này.");
+        await OwnedCommissionAsync(review.CommissionId, creatorId, creator: true, cancellationToken);
         if (review.ReviewerReply is not null) throw new InvalidOperationException("Review already has a reply.");
 
         review.ReviewerReply = replyComment;
@@ -959,7 +959,7 @@ public class CommissionService : ICommissionService
             CreatedAt = dto.CreatedAt,
             Milestones = c.Milestones.Select(MapToMilestoneDto).ToList(),
             Review = c.Reviews.FirstOrDefault() != null ? MapToReviewDto(c.Reviews.First()) : null,
-            Dispute = c.Disputes.FirstOrDefault() != null ? MapToDisputeDto(c.Disputes.First()) : null
+            Dispute = c.Disputes.OrderByDescending(d => d.CreatedAt).FirstOrDefault() != null ? MapToDisputeDto(c.Disputes.OrderByDescending(d => d.CreatedAt).First()) : null
         };
     }
 
