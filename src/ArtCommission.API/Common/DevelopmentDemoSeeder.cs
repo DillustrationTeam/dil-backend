@@ -275,6 +275,13 @@ internal static class DevelopmentDemoSeeder
             if (!result.Succeeded)
                 throw new InvalidOperationException($"Could not create demo user {email}: {string.Join("; ", result.Errors.Select(error => error.Description))}");
         }
+        else if (!await userManager.CheckPasswordAsync(user, Password))
+        {
+            var token = await userManager.GeneratePasswordResetTokenAsync(user);
+            var result = await userManager.ResetPasswordAsync(user, token, Password);
+            if (!result.Succeeded)
+                throw new InvalidOperationException($"Could not reset demo user {email}: {string.Join("; ", result.Errors.Select(error => error.Description))}");
+        }
 
         foreach (var role in roles)
         {
