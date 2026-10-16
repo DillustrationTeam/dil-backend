@@ -35,6 +35,33 @@ public class SubmitJuryScoreCommandHandler
             return (false, null, ["Không tìm thấy bài nộp dự thi."]);
         }
 
+        var platformEvent = submission.Event;
+        if (platformEvent == null || platformEvent.IsDeleted)
+        {
+            return (false, null, ["Không tìm thấy sự kiện của bài nộp dự thi hoặc sự kiện đã bị xóa."]);
+        }
+
+        if (platformEvent.IsHeadJurySignedOff)
+        {
+            return (false, null, ["Sự kiện đã được Trưởng ban giám khảo ký duyệt kết quả, không thể tiếp tục chấm điểm."]);
+        }
+
+        if (platformEvent.Status == Domain.Enums.EventStatus.Draft)
+        {
+            return (false, null, ["Sự kiện đang ở trạng thái bản nháp (Draft), chưa thể chấm điểm."]);
+        }
+
+        if (platformEvent.Status == Domain.Enums.EventStatus.Ended)
+        {
+            return (false, null, ["Sự kiện đã kết thúc (Ended), không thể chấm điểm."]);
+        }
+
+        // Prevent conflict of interest: submitter cannot score their own artwork
+        if (submission.SubmitterId == request.UserId)
+        {
+            return (false, null, ["Giám khảo không được phép tự chấm điểm bài dự thi của chính mình."]);
+        }
+
         // Find jury record matching this user for this event
         var jury = await _db.Juries
             .Include(j => j.Creator)
@@ -44,41 +71,12 @@ public class SubmitJuryScoreCommandHandler
                 (j.CreatorId == request.UserId || (j.Creator != null && j.Creator.UserId == request.UserId)),
                 cancellationToken);
 
-        // Fallback: If no explicit jury record is found, also check if user has admin privileges or fallback to any jury record for test/development
-        Guid juryId;
-        if (jury != null)
+        if (jury == null)
         {
-            juryId = jury.Id;
+            return (false, null, ["Bạn không có quyền chấm điểm vì không được phân công làm Giám khảo (Jury) cho sự kiện này."]);
         }
-        else
-        {
-            // Check if there is any jury for this event
-            var existingJury = await _db.Juries
-                .FirstOrDefaultAsync(j => j.EventId == submission.EventId && !j.IsDeleted, cancellationToken);
 
-            if (existingJury != null)
-            {
-                juryId = existingJury.Id;
-            }
-            else
-            {
-                // Create temporary jury membership for the creator so they can judge
-                var creator = await _db.CreatorProfiles
-                    .FirstOrDefaultAsync(c => c.Id == request.UserId || c.UserId == request.UserId, cancellationToken);
-
-                var newJury = new Jury
-                {
-                    Id = Guid.NewGuid(),
-                    EventId = submission.EventId,
-                    CreatorId = creator?.Id ?? request.UserId,
-                    IsHeadJury = false,
-                    CreatedAt = DateTimeOffset.UtcNow
-                };
-                _db.Juries.Add(newJury);
-                await _db.SaveChangesAsync(cancellationToken);
-                juryId = newJury.Id;
-            }
-        }
+        Guid juryId = jury.Id;
 
         var now = DateTimeOffset.UtcNow;
 
