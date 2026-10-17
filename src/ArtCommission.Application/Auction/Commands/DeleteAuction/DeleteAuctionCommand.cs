@@ -17,7 +17,8 @@ namespace ArtCommission.Application.Auction.Commands.DeleteAuction;
 public record DeleteAuctionCommand(
     Guid UserId,
     Guid AuctionId,
-    string? Reason = null
+    string? Reason = null,
+    bool IsAdministrator = false
 ) : IRequest<(bool Success, string[] Errors)>;
 
 public class DeleteAuctionCommandHandler
@@ -58,9 +59,9 @@ public class DeleteAuctionCommandHandler
             return (false, ["Không tìm thấy phiên đấu giá."]);
         }
 
-        if (auction.SellerId != request.UserId)
+        if (!request.IsAdministrator && auction.SellerId != request.UserId)
         {
-            return (false, ["Chỉ người bán mới được huỷ phiên này."]);
+            return (false, ["Chỉ người bán hoặc quản trị viên mới được huỷ phiên này."]);
         }
 
         // Đã chốt thì không huỷ: quyền sở hữu đã chuyển, huỷ ở đây sẽ tạo trạng thái

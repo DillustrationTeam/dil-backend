@@ -123,6 +123,11 @@ public class SettleAuctionCommandHandler
 
             await PublishEndedAsync(auction, !isLifecycleWorker, cancellationToken);
 
+            if (request.Force && request.IsAdministrator)
+            {
+                return (true, new AuctionSettlementDto(auction.Id, null, 0, now, null, null), Array.Empty<string>());
+            }
+
             return (false, null, ["Phiên không có lượt đặt giá hợp lệ nên không có người thắng."]);
         }
 
@@ -169,6 +174,11 @@ public class SettleAuctionCommandHandler
             await tx.CommitAsync(cancellationToken);
 
             await PublishEndedAsync(auction, !isLifecycleWorker, cancellationToken);
+
+            if (request.Force && request.IsAdministrator)
+            {
+                return (true, new AuctionSettlementDto(auction.Id, null, winningBid.Amount, now, null, null), Array.Empty<string>());
+            }
 
             return (false, null,
                 [$"Giá cao nhất chưa đạt giá sàn {auction.ReservePrice.Value:N0} VND nên phiên không bán được."]);
