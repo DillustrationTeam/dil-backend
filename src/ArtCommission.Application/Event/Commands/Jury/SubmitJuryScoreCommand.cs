@@ -83,10 +83,21 @@ public class SubmitJuryScoreCommandHandler
         // Process Criteria Scores if criteria provided
         if (request.Dto.CriteriaScores != null && request.Dto.CriteriaScores.Count > 0)
         {
+            var validCriteria = await _db.EventCriteria
+                .Where(c => c.EventId == submission.EventId && !c.IsDeleted)
+                .ToDictionaryAsync(c => c.Id, cancellationToken);
+
             foreach (var item in request.Dto.CriteriaScores)
             {
                 if (item.CriteriaId.HasValue && item.CriteriaId.Value != Guid.Empty)
                 {
+                    if (!validCriteria.TryGetValue(item.CriteriaId.Value, out var criterion))
+                    {
+                        return (false, null, ["Tiêu chí chấm điểm không thuộc sự kiện của bài dự thi này."]);
+                    }
+
+                    var scoreValue = Math.Clamp(item.Score, 0, criterion.MaxScore);
+
                     var existingScore = await _db.CriteriaScores
                         .FirstOrDefaultAsync(cs =>
                             cs.EventCriteriaId == item.CriteriaId.Value &&
@@ -96,7 +107,7 @@ public class SubmitJuryScoreCommandHandler
 
                     if (existingScore != null)
                     {
-                        existingScore.Score = item.Score;
+                        existingScore.Score = scoreValue;
                         existingScore.UpdatedAt = now;
                     }
                     else
@@ -106,7 +117,7 @@ public class SubmitJuryScoreCommandHandler
                             EventCriteriaId = item.CriteriaId.Value,
                             SubmissionId = submission.Id,
                             GradedByJuryId = juryId,
-                            Score = item.Score,
+                            Score = scoreValue,
                             UpdatedAt = now
                         };
                         _db.CriteriaScores.Add(newScore);

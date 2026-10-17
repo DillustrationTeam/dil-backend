@@ -10,6 +10,10 @@ public sealed record JuryDto
 
     public Guid CreatorId { get; set; }
 
+    public Guid? CreatorUserId { get; set; }
+
+    public Guid? UserId { get; set; }
+
     public string? CreatorName { get; set; }
 
     public string? CreatorDisplayName { get; set; }

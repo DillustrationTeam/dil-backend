@@ -123,6 +123,8 @@ public class AddJuryCommandHandler
             EventId = jury.EventId,
             EventTitle = platformEvent.Title,
             CreatorId = creator.Id,
+            CreatorUserId = creator.UserId,
+            UserId = creator.UserId,
             CreatorName = creator.User?.FullName,
             CreatorDisplayName = creator.DisplayName,
             CreatorAvatarUrl = null,
