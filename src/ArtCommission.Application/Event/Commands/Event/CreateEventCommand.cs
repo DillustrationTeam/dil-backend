@@ -80,6 +80,45 @@ public class CreateEventCommandHandler
         };
 
         _db.PlatformEvents.Add(platformEvent);
+
+        var defaultCriteria = new List<EventCriteria>
+        {
+            new()
+            {
+                Id = Guid.NewGuid(),
+                EventId = platformEvent.Id,
+                Name = "Sáng tạo và ý tưởng",
+                Description = "Độ độc đáo, tính nguyên bản và thông điệp truyền tải của tác phẩm",
+                MaxScore = 40.0m,
+                Weight = 0.40m,
+                DisplayOrder = 1,
+                CreatedAt = now
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                EventId = platformEvent.Id,
+                Name = "Kỹ thuật thể hiện",
+                Description = "Bố cục, xử lý ánh sáng, màu sắc, chi tiết nét vẽ và độ hoàn thiện",
+                MaxScore = 35.0m,
+                Weight = 0.35m,
+                DisplayOrder = 2,
+                CreatedAt = now
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                EventId = platformEvent.Id,
+                Name = "Bám sát chủ đề",
+                Description = "Sự phù hợp và thể hiện đúng tinh thần thể lệ sự kiện đặt ra",
+                MaxScore = 25.0m,
+                Weight = 0.25m,
+                DisplayOrder = 3,
+                CreatedAt = now
+            }
+        };
+        _db.EventCriteria.AddRange(defaultCriteria);
+
         await _db.SaveChangesAsync(cancellationToken);
 
         var data = new EventDetailDto
