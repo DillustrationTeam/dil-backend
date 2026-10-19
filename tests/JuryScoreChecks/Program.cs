@@ -227,4 +227,90 @@ void Assert(bool condition, string message)
     Assert(updated!.Score == 80, "Submission Score must be updated in DB");
 }
 
+// 7. Rejects editing score when already submitted and locked
+{
+    var dto = new SubmitScoreDto
+    {
+        SubmissionId = submission1.Id,
+        TotalScore = 90,
+        CriteriaScores = new List<CriteriaScoreItemDto>
+        {
+            new() { CriteriaId = crit1A.Id, Score = 40 },
+            new() { CriteriaId = crit1B.Id, Score = 50 }
+        }
+    };
+    var result = await handler.Handle(new SubmitJuryScoreCommand(submission1.Id, juryUserId, dto), default);
+    Assert(!result.Success, "Must reject modifying an already locked score");
+    Assert(result.Errors.Any(e => e.Contains("khóa")), "Error must mention score is locked");
+}
+
+// 8. Rejects when judging period has ended
+{
+    var pastEvent = new PlatformEvent
+    {
+        Id = Guid.NewGuid(),
+        Title = "Past Event",
+        Description = "Past Event Desc",
+        Status = EventStatus.Open,
+        CreatedByAdminId = adminId,
+        SubmissionStartAt = now.AddDays(-20),
+        SubmissionEndAt = now.AddDays(-15),
+        JudgingStartAt = now.AddDays(-14),
+        JudgingEndAt = now.AddDays(-1),
+        VotingStartAt = now.AddDays(1),
+        VotingEndAt = now.AddDays(5),
+        ResultAnnouncementAt = now.AddDays(6),
+        CreatedAt = now.AddDays(-25),
+        IsDeleted = false
+    };
+    db.PlatformEvents.Add(pastEvent);
+
+    var pastCrit = new EventCriteria
+    {
+        Id = Guid.NewGuid(),
+        EventId = pastEvent.Id,
+        Name = "Crit Past",
+        MaxScore = 100,
+        Weight = 1.0m,
+        CreatedAt = now
+    };
+    db.EventCriteria.Add(pastCrit);
+
+    var pastJury = new Jury
+    {
+        Id = Guid.NewGuid(),
+        EventId = pastEvent.Id,
+        CreatorId = juryCreator.Id,
+        Creator = juryCreator,
+        CreatedAt = now,
+        IsDeleted = false
+    };
+    db.Juries.Add(pastJury);
+
+    var pastSub = new EventSubmission
+    {
+        Id = Guid.NewGuid(),
+        EventId = pastEvent.Id,
+        SubmitterId = submitterId,
+        ArtworkId = Guid.NewGuid(),
+        Title = "Past Sub",
+        SubmittedAt = now.AddDays(-16)
+    };
+    db.EventSubmissions.Add(pastSub);
+    await db.SaveChangesAsync();
+
+    var dto = new SubmitScoreDto
+    {
+        SubmissionId = pastSub.Id,
+        TotalScore = 85,
+        CriteriaScores = new List<CriteriaScoreItemDto>
+        {
+            new() { CriteriaId = pastCrit.Id, Score = 85 }
+        }
+    };
+    var result = await handler.Handle(new SubmitJuryScoreCommand(pastSub.Id, juryUserId, dto), default);
+    Assert(!result.Success, "Must reject scoring after judging period ended");
+    Assert(result.Errors.Any(e => e.Contains("kết thúc") || e.Contains("khóa")), "Error must mention judging ended / locked");
+}
+
 Console.WriteLine("ALL JURY SCORE CHECKS PASSED!");

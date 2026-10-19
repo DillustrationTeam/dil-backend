@@ -93,6 +93,25 @@ public class SubmitJuryScoreCommandHandler
 
         var now = DateTimeOffset.UtcNow;
 
+        if (now < platformEvent.JudgingStartAt)
+        {
+            return (false, null, ["Thời gian chấm điểm của sự kiện chưa bắt đầu."]);
+        }
+
+        if (now > platformEvent.JudgingEndAt)
+        {
+            return (false, null, ["Thời gian chấm điểm của sự kiện đã kết thúc, điểm số đã được khóa."]);
+        }
+
+        // Check if this jury member already graded this submission (scores are locked once submitted)
+        var alreadyScored = await _db.CriteriaScores
+            .AnyAsync(cs => cs.SubmissionId == submission.Id && cs.GradedByJuryId == juryId, cancellationToken);
+
+        if (alreadyScored)
+        {
+            return (false, null, ["Điểm số của bạn cho bài dự thi này đã được gửi và khóa, không thể chỉnh sửa."]);
+        }
+
         // Process Criteria Scores if criteria provided
         if (request.Dto.CriteriaScores != null && request.Dto.CriteriaScores.Count > 0)
         {
@@ -211,13 +230,33 @@ public class SubmitJuryScoreCommandHandler
 
         // Calculate and update submission overall score
         var criteriaSum = request.Dto.CriteriaScores?.Sum(c => c.Score) ?? 0;
-        var finalScore = request.Dto.TotalScore > 0 
+        var currentJuryScore = request.Dto.TotalScore > 0 
             ? request.Dto.TotalScore 
             : (criteriaSum > 0 ? criteriaSum : request.Dto.TotalScore);
 
-        if (finalScore >= 0)
+        // Save criteria scores first to database so they can be accurately aggregated
+        await _db.SaveChangesAsync(cancellationToken);
+
+        // Calculate average score across all juries who have graded this submission
+        var juryScores = await _db.CriteriaScores
+            .Where(cs => cs.SubmissionId == submission.Id)
+            .GroupBy(cs => cs.GradedByJuryId)
+            .Select(g => g.Sum(cs => cs.Score))
+            .ToListAsync(cancellationToken);
+
+        var hasCriteriaScores = request.Dto.CriteriaScores != null && request.Dto.CriteriaScores.Count > 0;
+        if (!hasCriteriaScores && currentJuryScore >= 0)
         {
-            submission.Score = finalScore;
+            juryScores.Add(currentJuryScore);
+        }
+
+        if (juryScores.Count > 0)
+        {
+            submission.Score = Math.Round(juryScores.Average(), 2, MidpointRounding.AwayFromZero);
+        }
+        else if (currentJuryScore >= 0)
+        {
+            submission.Score = currentJuryScore;
         }
 
         if (!string.IsNullOrWhiteSpace(request.Dto.Notes))
@@ -230,7 +269,7 @@ public class SubmitJuryScoreCommandHandler
         var result = new SubmissionScoreResultDto
         {
             SubmissionId = submission.Id,
-            Score = finalScore,
+            Score = currentJuryScore,
             TotalAverageScore = submission.Score,
             Notes = submission.AdminNote,
             GradedAt = now,
