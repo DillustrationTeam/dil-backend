@@ -1,4 +1,5 @@
 using ArtCommission.Application.Common.Interfaces;
+using ArtCommission.Application.Concurrency;
 using ArtCommission.Application.Event.DTOs;
 using ArtCommission.Application.Event.Validators;
 using ArtCommission.Domain.Entities.Event;
@@ -72,49 +73,88 @@ public class CreateVoteCommandHandler
             return (false, null, ["Creator (tác giả) không thể tự bình chọn cho bài dự thi của chính mình."]);
         }
 
-        // Rule 1: 1 User chỉ được vote cho 1 bức tranh 1 lần
-        var alreadyVoted = await _db.EventVotes
-            .AnyAsync(v => v.SubmissionId == request.SubmissionId && v.VoterId == request.VoterId, cancellationToken);
+        var lockKey = $"event_vote_{submission.EventId:D}_{request.VoterId:D}";
 
-        if (alreadyVoted)
+        using (await AsyncKeyedLockManager.LockAsync(lockKey, cancellationToken))
         {
-            return (false, null, ["You have already voted for this submission. Each user can only vote for a submission once."]);
+            var isSqlServer = _db.Database.IsRelational() &&
+                              _db.Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true;
+
+            await using var tx = isSqlServer
+                ? await _db.Database.BeginTransactionAsync(cancellationToken)
+                : null;
+
+            try
+            {
+                if (isSqlServer)
+                {
+                    await _db.Database.ExecuteSqlInterpolatedAsync(
+                        $"EXEC sp_getapplock @Resource = {lockKey}, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;",
+                        cancellationToken);
+                }
+
+                // Rule 1: 1 User chỉ được vote cho 1 bức tranh 1 lần (kiểm tra bên trong lock để chống race condition)
+                var alreadyVoted = await _db.EventVotes
+                    .AnyAsync(v => v.SubmissionId == request.SubmissionId && v.VoterId == request.VoterId, cancellationToken);
+
+                if (alreadyVoted)
+                {
+                    return (false, null, ["You have already voted for this submission. Each user can only vote for a submission once."]);
+                }
+
+                // Rule 2: Tổng số vote của 1 User trong 1 event không được vượt quá MaxVote của event đó
+                var userVoteCountInEvent = await _db.EventVotes
+                    .CountAsync(v => v.Submission != null && v.Submission.EventId == submission.EventId && v.VoterId == request.VoterId, cancellationToken);
+
+                if (userVoteCountInEvent >= platformEvent.MaxVote)
+                {
+                    return (false, null, [$"You have reached the maximum allowed votes ({platformEvent.MaxVote}) for this event."]);
+                }
+
+                var vote = new EventVote
+                {
+                    SubmissionId = request.SubmissionId,
+                    VoterId = request.VoterId,
+                    VotedAt = now
+                };
+
+                _db.EventVotes.Add(vote);
+                await _db.SaveChangesAsync(cancellationToken);
+
+                var actualVoteCount = await _db.EventVotes
+                    .CountAsync(v => v.SubmissionId == request.SubmissionId, cancellationToken);
+
+                submission.VoteCount = actualVoteCount;
+                await _db.SaveChangesAsync(cancellationToken);
+
+                if (tx != null)
+                {
+                    await tx.CommitAsync(cancellationToken);
+                }
+
+                var remainingVotes = Math.Max(0, platformEvent.MaxVote - (userVoteCountInEvent + 1));
+
+                var result = new EventVoteResultDto
+                {
+                    SubmissionId = request.SubmissionId,
+                    VoterId = request.VoterId,
+                    VotedAt = now,
+                    UpdatedVoteCount = submission.VoteCount,
+                    IsVoted = true,
+                    RemainingVotesInEvent = remainingVotes
+                };
+
+                return (true, result, Array.Empty<string>());
+            }
+            catch (DbUpdateException)
+            {
+                if (tx != null)
+                {
+                    await tx.RollbackAsync(cancellationToken);
+                }
+
+                return (false, null, ["You have already voted for this submission or reached the maximum allowed votes."]);
+            }
         }
-
-        // Rule 2: Tổng số vote của 1 User trong 1 event không được vượt quá MaxVote của event đó
-        var userVoteCountInEvent = await _db.EventVotes
-            .CountAsync(v => v.Submission != null && v.Submission.EventId == submission.EventId && v.VoterId == request.VoterId, cancellationToken);
-
-        if (userVoteCountInEvent >= platformEvent.MaxVote)
-        {
-            return (false, null, [$"You have reached the maximum allowed votes ({platformEvent.MaxVote}) for this event."]);
-        }
-
-        var vote = new EventVote
-        {
-            SubmissionId = request.SubmissionId,
-            VoterId = request.VoterId,
-            VotedAt = now
-        };
-
-        _db.EventVotes.Add(vote);
-
-        submission.VoteCount += 1;
-
-        await _db.SaveChangesAsync(cancellationToken);
-
-        var remainingVotes = Math.Max(0, platformEvent.MaxVote - (userVoteCountInEvent + 1));
-
-        var result = new EventVoteResultDto
-        {
-            SubmissionId = request.SubmissionId,
-            VoterId = request.VoterId,
-            VotedAt = now,
-            UpdatedVoteCount = submission.VoteCount,
-            IsVoted = true,
-            RemainingVotesInEvent = remainingVotes
-        };
-
-        return (true, result, Array.Empty<string>());
     }
 }
