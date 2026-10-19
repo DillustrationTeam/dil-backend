@@ -13,7 +13,9 @@ public record GetSubmissionsQuery(
     bool? AiScanPassed = null,
     string? SortBy = "date",
     int Page = 1,
-    int PageSize = 10
+    int PageSize = 10,
+    Guid? CurrentUserId = null,
+    bool IsAdmin = false
 ) : IRequest<(IReadOnlyList<EventSubmissionDto> Items, int TotalCount)>;
 
 public class GetSubmissionsQueryHandler 
@@ -89,6 +91,12 @@ public class GetSubmissionsQueryHandler
             sortField = sortField[..^4];
         }
 
+        // If not admin, do not allow sorting globally by secret scores
+        if (!request.IsAdmin && sortField == "score")
+        {
+            sortField = "votes";
+        }
+
         // Quy tắc: thứ tự sort luôn là descending
         query = sortField switch
         {
@@ -98,11 +106,34 @@ public class GetSubmissionsQueryHandler
             _ => query.OrderByDescending(s => s.SubmittedAt)
         };
 
-
-        var items = await query
+        var rawItems = await query
+            .Include(s => s.Event)
+            .Include(s => s.Submitter)
+            .Include(s => s.Artwork)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(s => new EventSubmissionDto
+            .ToListAsync(cancellationToken);
+
+        List<Guid> userJuryEventIds = new();
+        if (!request.IsAdmin && request.CurrentUserId.HasValue && request.CurrentUserId.Value != Guid.Empty)
+        {
+            userJuryEventIds = await _db.Juries
+                .Where(j => !j.IsDeleted && (j.CreatorId == request.CurrentUserId.Value || (j.Creator != null && j.Creator.UserId == request.CurrentUserId.Value)))
+                .Select(j => j.EventId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var items = rawItems.Select(s =>
+        {
+            var isAnnounced = s.Event != null &&
+                              (s.Event.Status == Domain.Enums.EventStatus.Ended ||
+                               (s.Event.ResultAnnouncementAt != default && now >= s.Event.ResultAnnouncementAt));
+            var isJuryOfThisEvent = s.EventId != Guid.Empty && userJuryEventIds.Contains(s.EventId);
+            var canViewScores = request.IsAdmin || isAnnounced || isJuryOfThisEvent;
+
+            return new EventSubmissionDto
             {
                 Id = s.Id,
                 EventId = s.EventId,
@@ -119,11 +150,11 @@ public class GetSubmissionsQueryHandler
                 ArtworkThumbnailUrl = s.Artwork != null ? s.Artwork.ThumbnailUrl : null,
                 AiScanPassed = s.AiScanPassed,
                 VoteCount = s.VoteCount,
-                Score = s.Score,
-                AdminNote = s.AdminNote,
+                Score = canViewScores ? s.Score : null,
+                AdminNote = canViewScores ? s.AdminNote : null,
                 SubmittedAt = s.SubmittedAt
-            })
-            .ToListAsync(cancellationToken);
+            };
+        }).ToList();
 
         return (items, totalCount);
     }

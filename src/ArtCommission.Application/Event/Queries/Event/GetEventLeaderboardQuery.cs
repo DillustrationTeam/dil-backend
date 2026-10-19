@@ -9,7 +9,9 @@ public record GetEventLeaderboardQuery(
     Guid EventId,
     string? SortBy = "votes",
     int Page = 1,
-    int PageSize = 10
+    int PageSize = 10,
+    Guid? CurrentUserId = null,
+    bool IsAdmin = false
 ) : IRequest<(IReadOnlyList<EventLeaderboardItemDto> Items, int TotalCount, string? EventTitle)>;
 
 public class GetEventLeaderboardQueryHandler
@@ -35,6 +37,24 @@ public class GetEventLeaderboardQueryHandler
             return (Array.Empty<EventLeaderboardItemDto>(), 0, null);
         }
 
+        var now = DateTimeOffset.UtcNow;
+        var isAnnounced = platformEvent.Status == Domain.Enums.EventStatus.Ended || 
+                          (platformEvent.ResultAnnouncementAt != default && now >= platformEvent.ResultAnnouncementAt);
+
+        var canViewSecretScores = request.IsAdmin;
+        if (!canViewSecretScores && request.CurrentUserId.HasValue && request.CurrentUserId.Value != Guid.Empty)
+        {
+            canViewSecretScores = await _db.Juries
+                .Include(j => j.Creator)
+                .AnyAsync(j =>
+                    j.EventId == request.EventId &&
+                    !j.IsDeleted &&
+                    (j.CreatorId == request.CurrentUserId.Value || (j.Creator != null && j.Creator.UserId == request.CurrentUserId.Value)),
+                    cancellationToken);
+        }
+
+        var canViewScores = isAnnounced || canViewSecretScores;
+
         var query = _db.EventSubmissions
             .AsNoTracking()
             .Include(s => s.Submitter)
@@ -47,6 +67,12 @@ public class GetEventLeaderboardQueryHandler
         var pageSize = Math.Clamp(request.PageSize, 1, 100);
 
         var sortBy = request.SortBy?.Trim().ToLowerInvariant() ?? "votes";
+
+        // If cannot view scores and requested sort is score, do not leak ranking by sorting by secret score
+        if (!canViewScores && sortBy == "score")
+        {
+            sortBy = "votes";
+        }
 
         query = sortBy switch
         {
@@ -96,7 +122,7 @@ public class GetEventLeaderboardQueryHandler
             ArtworkTitle = s.ArtworkTitle,
             ArtworkThumbnailUrl = s.ArtworkThumbnailUrl,
             ArtworkImageUrl = s.ArtworkImageUrl,
-            Score = s.Score,
+            Score = canViewScores ? s.Score : null,
             VoteCount = s.VoteCount,
             SubmittedAt = s.SubmittedAt
         }).ToList();

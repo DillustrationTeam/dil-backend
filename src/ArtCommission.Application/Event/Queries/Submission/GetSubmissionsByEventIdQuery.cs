@@ -13,7 +13,9 @@ public record GetSubmissionsByEventIdQuery(
     bool? AiScanPassed = null,
     string? SortBy = "date",
     int Page = 1,
-    int PageSize = 10
+    int PageSize = 10,
+    Guid? CurrentUserId = null,
+    bool IsAdmin = false
 ) : IRequest<(IReadOnlyList<EventSubmissionDto> Items, int TotalCount)>;
 
 public class GetSubmissionsByEventIdQueryHandler 
@@ -31,6 +33,33 @@ public class GetSubmissionsByEventIdQueryHandler
         GetSubmissionsByEventIdQuery request,
         CancellationToken cancellationToken)
     {
+        var platformEvent = await _db.PlatformEvents
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == request.EventId && !e.IsDeleted, cancellationToken);
+
+        if (platformEvent == null)
+        {
+            return (Array.Empty<EventSubmissionDto>(), 0);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var isAnnounced = platformEvent.Status == Domain.Enums.EventStatus.Ended || 
+                          (platformEvent.ResultAnnouncementAt != default && now >= platformEvent.ResultAnnouncementAt);
+
+        var canViewSecretScores = request.IsAdmin;
+        if (!canViewSecretScores && request.CurrentUserId.HasValue && request.CurrentUserId.Value != Guid.Empty)
+        {
+            canViewSecretScores = await _db.Juries
+                .Include(j => j.Creator)
+                .AnyAsync(j =>
+                    j.EventId == request.EventId &&
+                    !j.IsDeleted &&
+                    (j.CreatorId == request.CurrentUserId.Value || (j.Creator != null && j.Creator.UserId == request.CurrentUserId.Value)),
+                    cancellationToken);
+        }
+
+        var canViewScores = isAnnounced || canViewSecretScores;
+
         var page = request.Page <= 0 ? 1 : request.Page;
         var pageSize = request.PageSize <= 0 ? 10 : Math.Min(request.PageSize, MaxPageSize);
 
@@ -84,6 +113,12 @@ public class GetSubmissionsByEventIdQueryHandler
             sortField = sortField[..^4];
         }
 
+        // If user is not authorized to view scores, do not leak ranking by sorting by secret score
+        if (!canViewScores && sortField == "score")
+        {
+            sortField = "votes";
+        }
+
         // Quy tắc: thứ tự sort luôn là descending
         query = sortField switch
         {
@@ -113,8 +148,8 @@ public class GetSubmissionsByEventIdQueryHandler
                 ArtworkThumbnailUrl = s.Artwork != null ? s.Artwork.ThumbnailUrl : null,
                 AiScanPassed = s.AiScanPassed,
                 VoteCount = s.VoteCount,
-                Score = s.Score,
-                AdminNote = s.AdminNote,
+                Score = canViewScores ? s.Score : null,
+                AdminNote = canViewScores ? s.AdminNote : null,
                 SubmittedAt = s.SubmittedAt
             })
             .ToListAsync(cancellationToken);

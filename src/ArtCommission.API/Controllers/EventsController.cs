@@ -108,11 +108,14 @@ public class EventsController : ApiControllerBase
         [FromQuery] int pageSize = 10,
         CancellationToken cancellationToken = default)
     {
+        var isAdmin = User.IsInRole(UserRoleNames.Administrator) || User.IsInRole(UserRoleNames.Moderator);
         var query = new GetEventLeaderboardQuery(
             EventId: id,
             SortBy: sortBy,
             Page: page,
-            PageSize: pageSize
+            PageSize: pageSize,
+            CurrentUserId: CurrentUserId == Guid.Empty ? null : CurrentUserId,
+            IsAdmin: isAdmin
         );
 
         var (items, totalCount, eventTitle) = await Mediator.Send(query, cancellationToken);
@@ -347,6 +350,7 @@ public class EventsController : ApiControllerBase
         [FromQuery] int pageSize = 10,
         CancellationToken cancellationToken = default)
     {
+        var isAdmin = User.IsInRole(UserRoleNames.Administrator) || User.IsInRole(UserRoleNames.Moderator);
         var query = new GetSubmissionsByEventIdQuery(
             EventId: id,
             Title: title,
@@ -355,7 +359,9 @@ public class EventsController : ApiControllerBase
             AiScanPassed: aiScanPassed,
             SortBy: sortBy,
             Page: page,
-            PageSize: pageSize
+            PageSize: pageSize,
+            CurrentUserId: CurrentUserId == Guid.Empty ? null : CurrentUserId,
+            IsAdmin: isAdmin
         );
 
         var (items, totalCount) = await Mediator.Send(query, cancellationToken);
@@ -468,6 +474,7 @@ public class EventsController : ApiControllerBase
         [FromQuery] int pageSize = 10,
         CancellationToken cancellationToken = default)
     {
+        var isAdmin = User.IsInRole(UserRoleNames.Administrator) || User.IsInRole(UserRoleNames.Moderator);
         var query = new GetSubmissionsQuery(
             SubmitterId: submitterId,
             Title: title,
@@ -476,7 +483,9 @@ public class EventsController : ApiControllerBase
             AiScanPassed: aiScanPassed,
             SortBy: sortBy,
             Page: page,
-            PageSize: pageSize
+            PageSize: pageSize,
+            CurrentUserId: CurrentUserId == Guid.Empty ? null : CurrentUserId,
+            IsAdmin: isAdmin
         );
 
         var (items, totalCount) = await Mediator.Send(query, cancellationToken);
@@ -501,7 +510,12 @@ public class EventsController : ApiControllerBase
         Guid submissionId,
         CancellationToken cancellationToken = default)
     {
-        var query = new GetSubmissionByIdQuery(submissionId);
+        var isAdmin = User.IsInRole(UserRoleNames.Administrator) || User.IsInRole(UserRoleNames.Moderator);
+        var query = new GetSubmissionByIdQuery(
+            submissionId,
+            CurrentUserId == Guid.Empty ? null : CurrentUserId,
+            isAdmin
+        );
         var result = await Mediator.Send(query, cancellationToken);
 
         if (result == null)

@@ -1,6 +1,7 @@
 using ArtCommission.Application.Event.Commands;
 using ArtCommission.Application.Event.DTOs;
 using ArtCommission.Application.Event.Queries;
+using ArtCommission.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -140,6 +141,7 @@ public class EventSubmissionsController : ApiControllerBase
         [FromQuery] int pageSize = 10,
         CancellationToken cancellationToken = default)
     {
+        var isAdmin = User.IsInRole(UserRoleNames.Administrator) || User.IsInRole(UserRoleNames.Moderator);
         var query = new GetSubmissionsQuery(
             SubmitterId: submitterId,
             Title: title,
@@ -148,7 +150,9 @@ public class EventSubmissionsController : ApiControllerBase
             AiScanPassed: aiScanPassed,
             SortBy: sortBy,
             Page: page,
-            PageSize: pageSize
+            PageSize: pageSize,
+            CurrentUserId: CurrentUserId == Guid.Empty ? null : CurrentUserId,
+            IsAdmin: isAdmin
         );
 
         var (items, totalCount) = await Mediator.Send(query, cancellationToken);
@@ -173,7 +177,12 @@ public class EventSubmissionsController : ApiControllerBase
         Guid id,
         CancellationToken cancellationToken = default)
     {
-        var query = new GetSubmissionByIdQuery(id);
+        var isAdmin = User.IsInRole(UserRoleNames.Administrator) || User.IsInRole(UserRoleNames.Moderator);
+        var query = new GetSubmissionByIdQuery(
+            id,
+            CurrentUserId == Guid.Empty ? null : CurrentUserId,
+            isAdmin
+        );
         var result = await Mediator.Send(query, cancellationToken);
 
         if (result == null)
