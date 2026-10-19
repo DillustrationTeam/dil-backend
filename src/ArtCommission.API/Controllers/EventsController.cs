@@ -435,9 +435,12 @@ public class EventsController : ApiControllerBase
             return UnauthorizedEnvelope();
         }
 
+        var targetEventId = id ?? dto.EventId;
+
         var command = new UpdateSubmissionCommand(
             SubmissionId: submissionId,
             UserId: CurrentUserId,
+            EventId: targetEventId,
             Title: dto.Title,
             Description: dto.Description,
             ArtworkId: dto.ArtworkId,
@@ -455,6 +458,35 @@ public class EventsController : ApiControllerBase
         }
 
         return OkEnvelope(data);
+    }
+
+    /// <summary>
+    /// Rút bài dự thi khỏi sự kiện (Dành cho Creator rút bài thi của mình trong thời hạn nhận bài).
+    /// </summary>
+    [HttpDelete("{id:guid}/submissions/{submissionId:guid}")]
+    [HttpDelete("submissions/{submissionId:guid}")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> WithdrawEventSubmission(
+        Guid? id,
+        Guid submissionId,
+        CancellationToken cancellationToken = default)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var command = new WithdrawSubmissionCommand(submissionId, CurrentUserId, id);
+        var (success, errors) = await Mediator.Send(command, cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(new { message = "Đã rút bài dự thi khỏi sự kiện thành công." });
     }
 
     /// <summary>
@@ -502,11 +534,13 @@ public class EventsController : ApiControllerBase
     /// <summary>
     /// Lấy chi tiết một bài nộp sự kiện theo Id (Công khai).
     /// </summary>
+    [HttpGet("{id:guid}/submissions/{submissionId:guid}")]
     [HttpGet("submissions/{submissionId:guid}")]
     [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetSubmissionById(
+        Guid? id,
         Guid submissionId,
         CancellationToken cancellationToken = default)
     {
@@ -521,6 +555,11 @@ public class EventsController : ApiControllerBase
         if (result == null)
         {
             return NotFoundEnvelope("Không tìm thấy bài nộp hoặc sự kiện đã bị xóa.");
+        }
+
+        if (id.HasValue && id.Value != Guid.Empty && result.EventId != id.Value)
+        {
+            return NotFoundEnvelope("Bài dự thi không thuộc sự kiện này.");
         }
 
         return OkEnvelope(result);

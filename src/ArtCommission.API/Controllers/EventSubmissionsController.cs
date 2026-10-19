@@ -64,6 +64,7 @@ public class EventSubmissionsController : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> UpdateSubmission(
         Guid id,
+        [FromQuery] Guid? eventId,
         [FromBody] UpdateSubmissionDto dto,
         CancellationToken cancellationToken = default)
     {
@@ -72,9 +73,12 @@ public class EventSubmissionsController : ApiControllerBase
             return UnauthorizedEnvelope();
         }
 
+        var targetEventId = eventId ?? dto.EventId;
+
         var command = new UpdateSubmissionCommand(
             SubmissionId: id,
             UserId: CurrentUserId,
+            EventId: targetEventId,
             Title: dto.Title,
             Description: dto.Description,
             ArtworkId: dto.ArtworkId,
@@ -104,6 +108,7 @@ public class EventSubmissionsController : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> WithdrawSubmission(
         Guid id,
+        [FromQuery] Guid? eventId,
         CancellationToken cancellationToken = default)
     {
         if (CurrentUserId == Guid.Empty)
@@ -111,7 +116,7 @@ public class EventSubmissionsController : ApiControllerBase
             return UnauthorizedEnvelope();
         }
 
-        var command = new WithdrawSubmissionCommand(id, CurrentUserId);
+        var command = new WithdrawSubmissionCommand(id, CurrentUserId, eventId);
         var (success, errors) = await Mediator.Send(command, cancellationToken);
         if (!success)
         {
@@ -175,6 +180,7 @@ public class EventSubmissionsController : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetSubmissionById(
         Guid id,
+        [FromQuery] Guid? eventId = null,
         CancellationToken cancellationToken = default)
     {
         var isAdmin = User.IsInRole(UserRoleNames.Administrator) || User.IsInRole(UserRoleNames.Moderator);
@@ -188,6 +194,11 @@ public class EventSubmissionsController : ApiControllerBase
         if (result == null)
         {
             return NotFoundEnvelope("Không tìm thấy bài nộp hoặc sự kiện đã bị xóa.");
+        }
+
+        if (eventId.HasValue && eventId.Value != Guid.Empty && result.EventId != eventId.Value)
+        {
+            return NotFoundEnvelope("Bài dự thi không thuộc sự kiện này.");
         }
 
         return OkEnvelope(result);

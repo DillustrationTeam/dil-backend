@@ -33,7 +33,25 @@ await using (var seedDb = CreateDb())
 
     seedDb.Users.AddRange(adminUser, voterAUser, voterBUser, submitterUser);
 
+    var creatorProfile = new CreatorProfile
+    {
+        Id = Guid.NewGuid(),
+        UserId = submitterId,
+        DisplayName = "Submitter Creator"
+    };
+    seedDb.CreatorProfiles.Add(creatorProfile);
+
     var artworkId = Guid.NewGuid();
+    var artwork = new Artwork
+    {
+        Id = artworkId,
+        CreatorProfileId = creatorProfile.Id,
+        Title = "Sample Art",
+        Description = "Sample Desc",
+        ImageUrl = "https://example.com/art.jpg",
+        CreatedAt = now
+    };
+    seedDb.Artworks.Add(artwork);
 
     // Event 1: MaxVote = 1
     var event1 = new PlatformEvent
@@ -107,6 +125,72 @@ await using (var seedDb = CreateDb())
         });
     }
 
+    // Open Event A (In active submission period)
+    var openEventA = new PlatformEvent
+    {
+        Id = Guid.NewGuid(),
+        Title = "Open Event A",
+        Description = "Open Event A Desc",
+        Status = EventStatus.Open,
+        MaxVote = 1,
+        CreatedByAdminId = adminId,
+        SubmissionStartAt = now.AddDays(-2),
+        SubmissionEndAt = now.AddDays(5),
+        JudgingStartAt = now.AddDays(6),
+        JudgingEndAt = now.AddDays(10),
+        VotingStartAt = now.AddDays(11),
+        VotingEndAt = now.AddDays(15),
+        ResultAnnouncementAt = now.AddDays(16),
+        CreatedAt = now
+    };
+
+    // Open Event B (In active submission period)
+    var openEventB = new PlatformEvent
+    {
+        Id = Guid.NewGuid(),
+        Title = "Open Event B",
+        Description = "Open Event B Desc",
+        Status = EventStatus.Open,
+        MaxVote = 1,
+        CreatedByAdminId = adminId,
+        SubmissionStartAt = now.AddDays(-2),
+        SubmissionEndAt = now.AddDays(5),
+        JudgingStartAt = now.AddDays(6),
+        JudgingEndAt = now.AddDays(10),
+        VotingStartAt = now.AddDays(11),
+        VotingEndAt = now.AddDays(15),
+        ResultAnnouncementAt = now.AddDays(16),
+        CreatedAt = now
+    };
+
+    seedDb.PlatformEvents.AddRange(openEventA, openEventB);
+
+    var subA = new EventSubmission
+    {
+        Id = Guid.NewGuid(),
+        EventId = openEventA.Id,
+        SubmitterId = submitterId,
+        ArtworkId = artworkId,
+        Title = "Original Title Sub A",
+        AiScanPassed = true,
+        VoteCount = 0,
+        SubmittedAt = now.AddDays(-1)
+    };
+
+    var subB = new EventSubmission
+    {
+        Id = Guid.NewGuid(),
+        EventId = openEventB.Id,
+        SubmitterId = submitterId,
+        ArtworkId = artworkId,
+        Title = "Original Title Sub B",
+        AiScanPassed = true,
+        VoteCount = 0,
+        SubmittedAt = now.AddDays(-1)
+    };
+
+    seedDb.EventSubmissions.AddRange(subA, subB);
+
     await seedDb.SaveChangesAsync();
 }
 
@@ -114,15 +198,25 @@ List<Guid> e1Submissions;
 List<Guid> e2Submissions;
 Guid e1Id;
 Guid e2Id;
+Guid eventAId;
+Guid eventBId;
+Guid submissionAId;
+Guid submissionBId;
 
 await using (var queryDb = CreateDb())
 {
-    var e1 = await queryDb.PlatformEvents.FirstAsync(e => e.MaxVote == 1);
-    var e2 = await queryDb.PlatformEvents.FirstAsync(e => e.MaxVote == 3);
+    var e1 = await queryDb.PlatformEvents.FirstAsync(e => e.MaxVote == 1 && e.Title == "Event MaxVote 1");
+    var e2 = await queryDb.PlatformEvents.FirstAsync(e => e.MaxVote == 3 && e.Title == "Event MaxVote 3");
+    var evA = await queryDb.PlatformEvents.FirstAsync(e => e.Title == "Open Event A");
+    var evB = await queryDb.PlatformEvents.FirstAsync(e => e.Title == "Open Event B");
     e1Id = e1.Id;
     e2Id = e2.Id;
+    eventAId = evA.Id;
+    eventBId = evB.Id;
     e1Submissions = await queryDb.EventSubmissions.Where(s => s.EventId == e1.Id).Select(s => s.Id).ToListAsync();
     e2Submissions = await queryDb.EventSubmissions.Where(s => s.EventId == e2.Id).Select(s => s.Id).ToListAsync();
+    submissionAId = (await queryDb.EventSubmissions.FirstAsync(s => s.EventId == evA.Id)).Id;
+    submissionBId = (await queryDb.EventSubmissions.FirstAsync(s => s.EventId == evB.Id)).Id;
 }
 
 // -------------------------------------------------------------
@@ -254,4 +348,104 @@ await using (var unvoteDb = CreateDb())
 }
 Console.WriteLine("--> TEST 4 PASSED: Unvote succeeded and remaining votes accurately updated.");
 
-Console.WriteLine("\n=== ALL CONCURRENT VOTE CHECKS PASSED SUCCESSFULLY! ===");
+// -------------------------------------------------------------
+// TEST 5: Cross-event submission modification prevention
+// Route Event B cannot edit or withdraw submission belonging to Event A
+// -------------------------------------------------------------
+Console.WriteLine("\n[TEST 5] Verifying Route of Event B cannot edit or withdraw submission belonging to Event A...");
+
+// 5A: Edit submission A (belongs to Event A) with EventId = Event B (Mismatch)
+await using (var editDb = CreateDb())
+{
+    var updateHandler = new UpdateSubmissionCommandHandler(editDb, null!);
+    var mismatchCommand = new UpdateSubmissionCommand(
+        SubmissionId: submissionAId,
+        UserId: submitterId,
+        EventId: eventBId, // Intentional mismatch: submissionAId belongs to eventAId
+        Title: "Hacked Title"
+    );
+
+    var (success, data, errors) = await updateHandler.Handle(mismatchCommand, CancellationToken.None);
+    if (success)
+    {
+        throw new Exception("TEST 5A FAILED: Update succeeded when EventId mismatched!");
+    }
+
+    if (!errors.Any(e => e.Contains("Bài dự thi không thuộc sự kiện này.")))
+    {
+        throw new Exception($"TEST 5A FAILED: Error message did not mention event mismatch. Got: {string.Join(", ", errors)}");
+    }
+
+    Console.WriteLine("--> TEST 5A PASSED: Update correctly rejected with 'Bài dự thi không thuộc sự kiện này.'");
+}
+
+// 5B: Edit submission A (belongs to Event A) with EventId = Event A (Match)
+await using (var editDb = CreateDb())
+{
+    var updateHandler = new UpdateSubmissionCommandHandler(editDb, null!);
+    var validCommand = new UpdateSubmissionCommand(
+        SubmissionId: submissionAId,
+        UserId: submitterId,
+        EventId: eventAId, // Matching EventId
+        Title: "Updated Valid Title"
+    );
+
+    var (success, data, errors) = await updateHandler.Handle(validCommand, CancellationToken.None);
+    if (!success)
+    {
+        throw new Exception($"TEST 5B FAILED: Update failed for valid matching event. Errors: {string.Join(", ", errors)}");
+    }
+
+    if (data?.Title != "Updated Valid Title")
+    {
+        throw new Exception($"TEST 5B FAILED: Title was not updated. Got: {data?.Title}");
+    }
+
+    Console.WriteLine("--> TEST 5B PASSED: Update succeeded when EventId matched.");
+}
+
+// 5C: Withdraw submission A (belongs to Event A) with EventId = Event B (Mismatch)
+await using (var withdrawDb = CreateDb())
+{
+    var withdrawHandler = new WithdrawSubmissionCommandHandler(withdrawDb);
+    var mismatchWithdrawCommand = new WithdrawSubmissionCommand(
+        SubmissionId: submissionAId,
+        UserId: submitterId,
+        EventId: eventBId // Intentional mismatch
+    );
+
+    var (success, errors) = await withdrawHandler.Handle(mismatchWithdrawCommand, CancellationToken.None);
+    if (success)
+    {
+        throw new Exception("TEST 5C FAILED: Withdraw succeeded when EventId mismatched!");
+    }
+
+    if (!errors.Any(e => e.Contains("Bài dự thi không thuộc sự kiện này.")))
+    {
+        throw new Exception($"TEST 5C FAILED: Error message did not mention event mismatch. Got: {string.Join(", ", errors)}");
+    }
+
+    Console.WriteLine("--> TEST 5C PASSED: Withdraw correctly rejected with 'Bài dự thi không thuộc sự kiện này.'");
+}
+
+// 5D: Withdraw submission A (belongs to Event A) with EventId = Event A (Match)
+await using (var withdrawDb = CreateDb())
+{
+    var withdrawHandler = new WithdrawSubmissionCommandHandler(withdrawDb);
+    var validWithdrawCommand = new WithdrawSubmissionCommand(
+        SubmissionId: submissionAId,
+        UserId: submitterId,
+        EventId: eventAId // Matching EventId
+    );
+
+    var (success, errors) = await withdrawHandler.Handle(validWithdrawCommand, CancellationToken.None);
+    if (!success)
+    {
+        throw new Exception($"TEST 5D FAILED: Withdraw failed for valid matching event. Errors: {string.Join(", ", errors)}");
+    }
+
+    Console.WriteLine("--> TEST 5D PASSED: Withdraw succeeded when EventId matched.");
+}
+
+Console.WriteLine("\n=== ALL CHECKS (INCLUDING CONCURRENT VOTING & CROSS-EVENT PREVENTION) PASSED SUCCESSFULLY! ===");
+

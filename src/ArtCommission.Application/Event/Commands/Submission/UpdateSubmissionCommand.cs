@@ -10,6 +10,7 @@ namespace ArtCommission.Application.Event.Commands;
 public record UpdateSubmissionCommand(
     Guid SubmissionId,
     Guid UserId,
+    Guid? EventId = null,
     string? Title = null,
     string? Description = null,
     Guid? ArtworkId = null,
@@ -53,6 +54,12 @@ public class UpdateSubmissionCommandHandler
         if (submission == null)
         {
             return (false, null, ["Không tìm thấy bài dự thi."]);
+        }
+
+        // 2.1. Ràng buộc: Bài dự thi phải thuộc đúng sự kiện được chỉ định trên route/tham số
+        if (request.EventId.HasValue && request.EventId.Value != Guid.Empty && submission.EventId != request.EventId.Value)
+        {
+            return (false, null, ["Bài dự thi không thuộc sự kiện này."]);
         }
 
         // 3. Quy tắc cốt lõi: Chỉ chính chủ Creator nộp bài mới có quyền chỉnh sửa
