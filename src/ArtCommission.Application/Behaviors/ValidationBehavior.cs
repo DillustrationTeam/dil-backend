@@ -1,7 +1,7 @@
 using FluentValidation;
 using MediatR;
 
-namespace ArtCommission.Application.Common.Behaviors;
+namespace ArtCommission.Application.Behaviors;
 
 public sealed class ValidationBehavior<TRequest, TResponse>(IEnumerable<IValidator<TRequest>> validators)
     : IPipelineBehavior<TRequest, TResponse>
