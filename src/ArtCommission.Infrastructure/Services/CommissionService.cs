@@ -210,12 +210,20 @@ public class CommissionService : ICommissionService
         var clientNames = await _dbContext.Users.AsNoTracking()
             .Where(user => clientIds.Contains(user.Id))
             .ToDictionaryAsync(user => user.Id, user => user.FullName, cancellationToken);
+        var creatorIds = items.Select(item => item.CreatorId).Distinct().ToArray();
+        var creatorNames = await _dbContext.CreatorProfiles.AsNoTracking()
+            .Where(profile => creatorIds.Contains(profile.Id) && !profile.IsDeleted)
+            .ToDictionaryAsync(profile => profile.Id, profile => profile.DisplayName, cancellationToken);
 
         foreach (var item in items)
         {
             if (clientNames.TryGetValue(item.ClientId, out var clientName))
             {
                 item.ClientName = clientName;
+            }
+            if (creatorNames.TryGetValue(item.CreatorId, out var creatorName))
+            {
+                item.CreatorName = creatorName;
             }
         }
 
@@ -236,6 +244,10 @@ public class CommissionService : ICommissionService
         if (commission == null) return null;
 
         var detailDto = MapToDetailDto(commission);
+        detailDto.CreatorName = await _dbContext.CreatorProfiles.AsNoTracking()
+            .Where(profile => profile.Id == commission.CreatorId && !profile.IsDeleted)
+            .Select(profile => profile.DisplayName)
+            .FirstOrDefaultAsync(cancellationToken);
         return detailDto;
     }
 
@@ -552,8 +564,8 @@ public class CommissionService : ICommissionService
     public async Task<FinalDownloadDto> GetFinalDownloadUrlAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
         var commission = await PartyCommissionAsync(id, userId, cancellationToken);
-        if (commission.Status != CommissionStatus.Completed)
-            throw new InvalidOperationException("Can only download final files when commission is completed.");
+        if (commission.Status != CommissionStatus.Delivered && commission.Status != CommissionStatus.Completed)
+            throw new InvalidOperationException("Final files are available after delivery.");
 
         await _dbContext.Entry(commission).Collection(c => c.Milestones).LoadAsync(cancellationToken);
         var lastMilestone = commission.Milestones.OrderByDescending(m => m.Sequence).FirstOrDefault();
@@ -762,7 +774,7 @@ public class CommissionService : ICommissionService
     public async Task<CommissionDisputeDto?> GetDisputeByCommissionIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
         await PartyCommissionAsync(id, userId, cancellationToken);
-        var dispute = await _dbContext.Disputes.AsNoTracking().FirstOrDefaultAsync(d => d.CommissionId == id, cancellationToken);
+        var dispute = await _dbContext.Disputes.AsNoTracking().OrderByDescending(d => d.CreatedAt).FirstOrDefaultAsync(d => d.CommissionId == id, cancellationToken);
         return dispute == null ? null : MapToDisputeDto(dispute);
     }
 
@@ -791,9 +803,9 @@ public class CommissionService : ICommissionService
 
     public async Task<ReviewDto> ReplyReviewAsync(Guid id, string replyComment, Guid creatorId, CancellationToken cancellationToken = default)
     {
-        await OwnedCommissionAsync(id, creatorId, creator: true, cancellationToken);
-        var review = await _dbContext.Reviews.FirstOrDefaultAsync(r => r.CommissionId == id, cancellationToken);
+        var review = await _dbContext.Reviews.FirstOrDefaultAsync(r => r.CommissionId == id || r.Id == id, cancellationToken);
         if (review == null) throw new KeyNotFoundException("Không tìm thấy đánh giá cho đơn hàng này.");
+        await OwnedCommissionAsync(review.CommissionId, creatorId, creator: true, cancellationToken);
         if (review.ReviewerReply is not null) throw new InvalidOperationException("Review already has a reply.");
 
         review.ReviewerReply = replyComment;
@@ -947,7 +959,7 @@ public class CommissionService : ICommissionService
             CreatedAt = dto.CreatedAt,
             Milestones = c.Milestones.Select(MapToMilestoneDto).ToList(),
             Review = c.Reviews.FirstOrDefault() != null ? MapToReviewDto(c.Reviews.First()) : null,
-            Dispute = c.Disputes.FirstOrDefault() != null ? MapToDisputeDto(c.Disputes.First()) : null
+            Dispute = c.Disputes.OrderByDescending(d => d.CreatedAt).FirstOrDefault() != null ? MapToDisputeDto(c.Disputes.OrderByDescending(d => d.CreatedAt).First()) : null
         };
     }
 

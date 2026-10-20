@@ -64,11 +64,8 @@ public class VerifyTwoFactorLoginCommandHandler : IRequestHandler<VerifyTwoFacto
             return (false, null, false, null, null, new[] { codeAlreadyUsed ? "This recovery code has already been used." : "Invalid verification code." });
         }
 
-        var hasPassword = await _identityService.HasPasswordAsync(user.Id, cancellationToken);
-        if (!hasPassword)
+        if (!await _identityService.HasPasswordAsync(user.Id, cancellationToken))
         {
-            // Tài khoản Google có sẵn, đã bật 2FA, nhưng chưa có mật khẩu — vẫn phải hoàn tất
-            // form username + password trước khi phát token (giống luồng Google login không-2FA).
             var setupTicket = _emailVerificationService.GenerateTicket(user.Email);
             return (true, null, true, setupTicket, user.FullName, Array.Empty<string>());
         }

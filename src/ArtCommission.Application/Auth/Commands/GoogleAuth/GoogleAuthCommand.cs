@@ -51,17 +51,21 @@ public class GoogleAuthCommandHandler : IRequestHandler<GoogleAuthCommand, (bool
 
         if (pendingRegistration != null)
         {
-            // Tài khoản Google hoàn toàn mới -> chưa tạo user, bắt FE hoàn tất username + password trước.
             var registrationTicket = _externalRegistrationTicketService.GenerateTicket(
-                pendingRegistration.Provider, pendingRegistration.ProviderKey, pendingRegistration.Email,
-                pendingRegistration.EmailVerified, pendingRegistration.FullName);
+                pendingRegistration.Provider,
+                pendingRegistration.ProviderKey,
+                pendingRegistration.Email,
+                pendingRegistration.EmailVerified,
+                pendingRegistration.FullName);
 
-            return (true, null, false, null, null, true, registrationTicket, false, null, pendingRegistration.Email, pendingRegistration.FullName, Array.Empty<string>());
+            return (true, null, false, null, null, true, registrationTicket, false, null,
+                pendingRegistration.Email, pendingRegistration.FullName, Array.Empty<string>());
         }
 
         if (user == null)
         {
-            return (false, null, false, null, null, false, null, false, null, null, null, errors);
+            return (false, null, false, null, null, false, null, false, null, null, null,
+                new[] { "Google sign-in failed. Please try again." });
         }
 
         var twoFactorEnabled = await _identityService.IsTwoFactorEnabledAsync(user.Id, cancellationToken);
@@ -73,13 +77,11 @@ public class GoogleAuthCommandHandler : IRequestHandler<GoogleAuthCommand, (bool
             return (true, null, true, ticket, user.Email, false, null, false, null, null, null, Array.Empty<string>());
         }
 
-        var hasPassword = await _identityService.HasPasswordAsync(user.Id, cancellationToken);
-        if (!hasPassword)
+        if (!await _identityService.HasPasswordAsync(user.Id, cancellationToken))
         {
-            // Tài khoản Google có sẵn (vd tạo trước khi tính năng này ra đời) nhưng chưa có mật khẩu —
-            // bắt FE hoàn tất form username + password trước khi phát token, chưa cho vào home.
             var setupTicket = _emailVerificationService.GenerateTicket(user.Email);
-            return (true, null, false, null, null, false, null, true, setupTicket, user.Email, user.FullName, Array.Empty<string>());
+            return (true, null, false, null, null, false, null, true, setupTicket,
+                user.Email, user.FullName, Array.Empty<string>());
         }
 
         var tokens = await _jwtTokenGenerator.GenerateTokensAsync(user, roles, request.ClientIp, request.UserAgent, cancellationToken);

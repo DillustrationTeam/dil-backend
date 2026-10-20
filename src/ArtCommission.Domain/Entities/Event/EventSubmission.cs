@@ -1,4 +1,5 @@
 using ArtCommission.Domain.Entities.ArtistStudio;
+using ArtCommission.Domain.Entities.Dispute;
 using ArtCommission.Domain.Entities.Identity;
 
 namespace ArtCommission.Domain.Entities.Event;
@@ -34,5 +35,6 @@ public class EventSubmission
     public Artwork? Artwork { get; set; }
 
     public ICollection<EventVote> Votes { get; set; } = new List<EventVote>();
-    public ICollection<Dispute.SubmissionDispute> Disputes { get; set; } = new List<Dispute.SubmissionDispute>();
+
+    public ICollection<SubmissionDispute> Disputes { get; set; } = new List<SubmissionDispute>();
 }

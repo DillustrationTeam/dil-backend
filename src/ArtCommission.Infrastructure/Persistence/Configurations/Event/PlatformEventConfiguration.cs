@@ -31,6 +31,10 @@ public class PlatformEventConfiguration : IEntityTypeConfiguration<PlatformEvent
         builder.Property(e => e.Prize)
             .HasMaxLength(1000);
 
+        builder.Property(e => e.IsFeatured)
+            .HasDefaultValue(false)
+            .IsRequired();
+
         builder.Property(e => e.MaxVote)
             .HasDefaultValue(1)
             .IsRequired();
@@ -40,14 +44,6 @@ public class PlatformEventConfiguration : IEntityTypeConfiguration<PlatformEvent
             .HasMaxLength(50)
             .HasDefaultValue(EventStatus.Draft)
             .IsRequired();
-
-        builder.Property(e => e.IsFeatured)
-            .HasDefaultValue(false);
-
-        builder.Property(e => e.IsHeadJurySignedOff)
-            .HasDefaultValue(false);
-
-        builder.Property(e => e.HeadJurySignedOffAt);
 
         builder.Property(e => e.SubmissionStartAt)
             .IsRequired();
@@ -69,6 +65,12 @@ public class PlatformEventConfiguration : IEntityTypeConfiguration<PlatformEvent
 
         builder.Property(e => e.ResultAnnouncementAt)
             .IsRequired();
+
+        builder.Property(e => e.IsHeadJurySignedOff)
+            .HasDefaultValue(false)
+            .IsRequired();
+
+        builder.Property(e => e.HeadJurySignedOffAt);
 
         builder.Property(e => e.CreatedAt)
             .IsRequired();

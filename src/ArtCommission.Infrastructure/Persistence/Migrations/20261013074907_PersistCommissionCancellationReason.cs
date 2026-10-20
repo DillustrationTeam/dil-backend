@@ -10,19 +10,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
-                name: "CancellationDetails",
-                table: "Commissions",
-                type: "nvarchar(2000)",
-                maxLength: 2000,
-                nullable: true);
-
-            migrationBuilder.AddColumn<string>(
-                name: "CancellationReason",
-                table: "Commissions",
-                type: "nvarchar(500)",
-                maxLength: 500,
-                nullable: true);
+            // Older local builds may already have these columns from the cancellation fix.
+            migrationBuilder.Sql("IF COL_LENGTH('Commissions', 'CancellationDetails') IS NULL ALTER TABLE [Commissions] ADD [CancellationDetails] nvarchar(2000) NULL;");
+            migrationBuilder.Sql("IF COL_LENGTH('Commissions', 'CancellationReason') IS NULL ALTER TABLE [Commissions] ADD [CancellationReason] nvarchar(500) NULL;");
         }
 
         /// <inheritdoc />

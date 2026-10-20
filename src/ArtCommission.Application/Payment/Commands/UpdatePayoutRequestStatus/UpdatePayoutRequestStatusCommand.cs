@@ -139,12 +139,14 @@ public class UpdatePayoutRequestStatusCommandHandler
                     : request.PayoutNote.Trim();
                 if (desc.Length > 25) desc = desc[..25];
 
+                var toBin = ResolveBankBin(bankAccount);
+
                 var payoutResult = await _payOsPayoutService.CreatePayoutAsync(
                     new PayOsPayoutRequest(
                         ReferenceId: refId,
                         Amount: (long)payout.Amount,
                         Description: desc,
-                        ToBin: bankAccount.BankBin ?? "970418",
+                        ToBin: toBin,
                         ToAccountNumber: bankAccount.AccountNumber
                     ),
                     cancellationToken);
@@ -192,5 +194,30 @@ public class UpdatePayoutRequestStatusCommandHandler
 
         return ArtCommission.Application.Payment.Commands.CreatePayoutRequest
             .CreatePayoutRequestCommandHandler.MapToDto(payout, bankAccount);
+    }
+
+    private static string ResolveBankBin(BankAccount bankAccount)
+    {
+        if (!string.IsNullOrWhiteSpace(bankAccount.BankBin))
+        {
+            return bankAccount.BankBin.Trim();
+        }
+
+        var name = (bankAccount.BankName ?? "").ToLowerInvariant();
+        if (name.Contains("vietin") || name.Contains("ctg") || name.Contains("icb")) return "970415";
+        if (name.Contains("vietcom") || name.Contains("vcb")) return "970436";
+        if (name.Contains("mb") || name.Contains("quân đội")) return "970422";
+        if (name.Contains("techcom") || name.Contains("tcb")) return "970407";
+        if (name.Contains("acb") || name.Contains("á châu")) return "970416";
+        if (name.Contains("tpbank") || name.Contains("tiên phong") || name.Contains("tpb")) return "970423";
+        if (name.Contains("vpbank") || name.Contains("vpb")) return "970432";
+        if (name.Contains("bidv") || name.Contains("đầu tư")) return "970418";
+        if (name.Contains("agri") || name.Contains("nông nghiệp")) return "970405";
+        if (name.Contains("sacom") || name.Contains("stb")) return "970403";
+        if (name.Contains("hdbank") || name.Contains("hdb")) return "970437";
+        if (name.Contains("vib")) return "970441";
+        if (name.Contains("shb")) return "970443";
+
+        return "970415"; // fallback Vietinbank
     }
 }

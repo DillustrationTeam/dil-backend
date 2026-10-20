@@ -72,6 +72,7 @@ public class AdminModerationController : ApiControllerBase
     [HttpPost("{artworkId:guid}/decision")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> ExecuteModerationDecision(
@@ -94,6 +95,10 @@ public class AdminModerationController : ApiControllerBase
         var (success, message, errors) = await Mediator.Send(command, cancellationToken);
         if (!success)
         {
+            if (errors.Any(e => e.Contains("Xung đột")))
+            {
+                return ConflictEnvelope(errors);
+            }
             return BadRequestEnvelope(errors);
         }
 

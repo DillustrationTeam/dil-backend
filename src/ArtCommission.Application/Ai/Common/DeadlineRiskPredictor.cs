@@ -63,6 +63,18 @@ public class DeadlineRiskPredictor : IDeadlineRiskPredictor
             return null;
         }
 
+        if (commission.Status is CommissionStatus.Completed or CommissionStatus.Cancelled)
+        {
+            return new DeadlineRiskAssessment(
+                commission.Id,
+                0m,
+                DeadlineRiskLevel.Low,
+                commission.DeadlineAt,
+                commission.CurrentStage,
+                CurrentModelVersion,
+                null);
+        }
+
         var milestones = await _db.Milestones
             .AsNoTracking()
             .Where(m => m.CommissionId == commissionId && !m.IsDeleted)

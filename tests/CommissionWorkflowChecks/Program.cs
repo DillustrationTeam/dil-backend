@@ -78,6 +78,10 @@ async Task<(Guid Id, Guid[] Milestones)> Create(string title, bool acceptTerms =
 }
 
 var normal = await Create("normal", acceptTerms: false);
+var normalDetail = await service.GetCommissionByIdAsync(normal.Id, clientId);
+Equal("Test creator", normalDetail!.CreatorName, "commission detail includes creator display name");
+var (clientCommissions, _) = await service.GetCommissionsAsync(null, "Client", clientId);
+Equal("Test creator", clientCommissions.Single(x => x.Id == normal.Id).CreatorName, "commission list includes creator display name");
 Equal((creatorId, NotificationType.CommissionStatusChanged),
     (notifications.Items[^1].UserId, notifications.Items[^1].Type), "new request notifies creator");
 Equal("CreatorCommissionRequests", notifications.Items[^1].RefType, "new request opens creator request queue");
@@ -99,6 +103,7 @@ await Rejected(() => service.ApproveMilestoneAsync(normal.Id, normal.Milestones[
 await Rejected(() => service.RequestMilestoneRevisionAsync(normal.Id, normal.Milestones[0],
     new RequestRevisionRequest { FeedbackComment = "early" }, clientId), "revision before submit");
 await Rejected(() => service.DeliverFinalWorkAsync(normal.Id, new MemoryStream(new byte[] { 1, 2, 3 }), "image/png", "final.png", creatorId), "deliver early");
+await Rejected(() => service.GetFinalDownloadUrlAsync(normal.Id, clientId), "download before delivery");
 await Rejected(() => service.CompleteCommissionAsync(normal.Id, clientId), "complete early");
 await Rejected(() => service.CreateReviewAsync(normal.Id, new CreateReviewRequest { Rating = 5 }, clientId), "review early");
 var creatorTerms = await service.AcceptWorkroomTermsAsync(normal.Id, creatorId);
@@ -125,9 +130,21 @@ var approved = await service.GetCommissionByIdAsync(normal.Id, clientId);
 Equal(0m, approved!.EscrowHeldAmount, "escrow exhausted");
 Equal(EscrowStatus.Released.ToString(), approved.EscrowStatus, "escrow released");
 await service.DeliverFinalWorkAsync(normal.Id, new MemoryStream(new byte[] { 1, 2, 3 }), "image/png", "final.png", creatorId);
+var deliveryDownload = await service.GetFinalDownloadUrlAsync(normal.Id, clientId);
+Equal(true, deliveryDownload.DownloadUrl.StartsWith("https://example.test/"), "client can inspect final delivery before completion");
+try
+{
+    await service.GetFinalDownloadUrlAsync(normal.Id, Guid.NewGuid());
+    throw new Exception("unrelated user can download final delivery");
+}
+catch (KeyNotFoundException) { checks++; }
 await service.CompleteCommissionAsync(normal.Id, clientId);
+Equal(deliveryDownload.DownloadUrl, (await service.GetFinalDownloadUrlAsync(normal.Id, clientId)).DownloadUrl, "delivery remains available after completion");
 await service.CreateReviewAsync(normal.Id, new CreateReviewRequest { Rating = 5 }, clientId);
 await service.ReplyReviewAsync(normal.Id, "Thanks", creatorId);
+var publicReviews = await new ArtCommission.Application.ArtistStudio.Marketplace.MarketplaceQueryHandler(db)
+    .Handle(new ArtCommission.Application.ArtistStudio.Marketplace.GetCreatorReviewsQuery(profile.Id), default);
+Equal("Thanks", publicReviews.Single().ReviewerReply, "public creator profile includes saved reply");
 await Rejected(() => service.ReplyReviewAsync(normal.Id, "Again", creatorId), "duplicate reply");
 await Rejected(() => service.CompleteCommissionAsync(normal.Id, clientId), "duplicate complete");
 await Rejected(() => service.CreateReviewAsync(normal.Id, new CreateReviewRequest { Rating = 4 }, clientId), "duplicate review");

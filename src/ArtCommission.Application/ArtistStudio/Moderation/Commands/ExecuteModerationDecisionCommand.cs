@@ -74,6 +74,11 @@ public class ExecuteModerationDecisionCommandHandler
             return (false, string.Empty, new[] { "Không tìm thấy tác phẩm hoặc tác phẩm đã bị xóa." });
         }
 
+        if (artwork.ModeratedAt != null && artwork.ModerationStatus != "Pending" && artwork.ModerationStatus != "Flagged")
+        {
+            return (false, string.Empty, new[] { "Xung đột kiểm duyệt: Tác phẩm này đã được kiểm duyệt bởi moderator khác trước đó." });
+        }
+
         var action = request.Action.Trim().ToLowerInvariant();
         string resultMessage;
 

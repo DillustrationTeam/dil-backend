@@ -23,7 +23,7 @@ public class GetAdminFinancialKpisQueryHandler : IRequestHandler<GetAdminFinanci
     public async Task<AdminFinancialKpiDto> Handle(GetAdminFinancialKpisQuery request, CancellationToken cancellationToken)
     {
         var totalGmv = await _db.Commissions
-            .Where(c => !c.IsDeleted && c.Status != CommissionStatus.PendingAcceptance)
+            .Where(c => !c.IsDeleted && c.Status == CommissionStatus.Completed)
             .SumAsync(c => (decimal?)c.FinalPrice, cancellationToken) ?? 0m;
 
         var activeEscrowLocked = await _db.Commissions

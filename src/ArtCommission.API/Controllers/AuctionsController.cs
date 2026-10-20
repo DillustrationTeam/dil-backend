@@ -253,7 +253,7 @@ public class AuctionsController : ApiControllerBase
         }
 
         var (success, errors) = await Mediator.Send(
-            new DeleteAuctionCommand(CurrentUserId, auctionId, reason),
+            new DeleteAuctionCommand(CurrentUserId, auctionId, reason, User.IsInRole("Administrator")),
             cancellationToken);
 
         return success
