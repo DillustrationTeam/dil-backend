@@ -48,6 +48,11 @@ public class SubmitJuryScoreCommandHandler
             return (false, null, ["Không tìm thấy bài nộp dự thi."]);
         }
 
+        if (submission.IsDisqualified)
+        {
+            return (false, null, ["Bài dự thi này đã bị truất quyền thi đấu do vi phạm quy chế hoặc khiếu nại."]);
+        }
+
         var platformEvent = submission.Event;
         if (platformEvent == null || platformEvent.IsDeleted)
         {

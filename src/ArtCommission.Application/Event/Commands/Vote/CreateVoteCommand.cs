@@ -44,6 +44,11 @@ public class CreateVoteCommandHandler
             return (false, null, ["Event submission not found."]);
         }
 
+        if (submission.IsDisqualified)
+        {
+            return (false, null, ["Bài dự thi này đã bị truất quyền thi đấu."]);
+        }
+
         var platformEvent = submission.Event;
         if (platformEvent == null || platformEvent.IsDeleted)
         {

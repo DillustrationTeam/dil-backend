@@ -214,6 +214,7 @@ public class UpdateSubmissionCommandHandler
             VoteCount = submission.VoteCount,
             Score = submission.Score,
             AdminNote = submission.AdminNote,
+            IsDisqualified = submission.IsDisqualified,
             SubmittedAt = submission.SubmittedAt
         };
 

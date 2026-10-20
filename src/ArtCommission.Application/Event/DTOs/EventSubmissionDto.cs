@@ -35,6 +35,8 @@ public sealed record EventSubmissionDto
     public decimal? Score { get; set; }
 
     public string? AdminNote { get; set; }
+ 
+    public bool IsDisqualified { get; set; }
 
     public DateTimeOffset SubmittedAt { get; set; }
 }

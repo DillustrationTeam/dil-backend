@@ -75,6 +75,7 @@ public class GetSubmissionByIdQueryHandler
             VoteCount = submission.VoteCount,
             Score = canViewScores ? submission.Score : null,
             AdminNote = canViewScores ? submission.AdminNote : null,
+            IsDisqualified = submission.IsDisqualified,
             SubmittedAt = submission.SubmittedAt
         };
     }

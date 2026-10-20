@@ -59,7 +59,7 @@ public class GetEventLeaderboardQueryHandler
             .AsNoTracking()
             .Include(s => s.Submitter)
             .Include(s => s.Artwork)
-            .Where(s => s.EventId == request.EventId);
+            .Where(s => s.EventId == request.EventId && !s.IsDisqualified);
 
         var totalCount = await query.CountAsync(cancellationToken);
 

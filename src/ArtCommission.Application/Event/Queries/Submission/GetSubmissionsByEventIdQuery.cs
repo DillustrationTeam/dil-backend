@@ -65,7 +65,7 @@ public class GetSubmissionsByEventIdQueryHandler
 
         var query = _db.EventSubmissions
             .AsNoTracking()
-            .Where(s => s.EventId == request.EventId && (s.Event == null || !s.Event.IsDeleted));
+            .Where(s => s.EventId == request.EventId && (s.Event == null || !s.Event.IsDeleted) && !s.IsDisqualified);
 
         if (request.AiScanPassed.HasValue)
         {
@@ -150,6 +150,7 @@ public class GetSubmissionsByEventIdQueryHandler
                 VoteCount = s.VoteCount,
                 Score = canViewScores ? s.Score : null,
                 AdminNote = canViewScores ? s.AdminNote : null,
+                IsDisqualified = s.IsDisqualified,
                 SubmittedAt = s.SubmittedAt
             })
             .ToListAsync(cancellationToken);

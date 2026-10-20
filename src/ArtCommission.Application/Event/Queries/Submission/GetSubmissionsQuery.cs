@@ -38,7 +38,7 @@ public class GetSubmissionsQueryHandler
 
         var query = _db.EventSubmissions
             .AsNoTracking()
-            .Where(s => s.Event == null || !s.Event.IsDeleted);
+            .Where(s => (s.Event == null || !s.Event.IsDeleted) && !s.IsDisqualified);
 
         if (request.SubmitterId.HasValue)
         {
@@ -152,6 +152,7 @@ public class GetSubmissionsQueryHandler
                 VoteCount = s.VoteCount,
                 Score = canViewScores ? s.Score : null,
                 AdminNote = canViewScores ? s.AdminNote : null,
+                IsDisqualified = s.IsDisqualified,
                 SubmittedAt = s.SubmittedAt
             };
         }).ToList();
