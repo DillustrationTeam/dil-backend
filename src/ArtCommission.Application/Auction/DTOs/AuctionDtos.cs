@@ -193,6 +193,27 @@ public sealed record BuyNowResultDto(
     DateTimeOffset? PaymentDeadline
 );
 
+/// <summary>
+/// Chứng nhận quyền sở hữu số 1-of-1 cho tác phẩm thắng đấu giá.
+/// </summary>
+public sealed record AuctionCertificateDto(
+    string CertificateNumber,
+    Guid AuctionId,
+    Guid ArtworkId,
+    string ArtworkTitle,
+    string? ArtworkImageUrl,
+    string? Style,
+    Guid CreatorId,
+    string? CreatorName,
+    Guid OwnerId,
+    string? OwnerName,
+    decimal FinalPrice,
+    DateTimeOffset IssuedAt,
+    string VerificationCode,
+    string DigitalSignature,
+    string LicenseType
+);
+
 // =====================================================================
 // Workroom Chat (UC43)
 // =====================================================================

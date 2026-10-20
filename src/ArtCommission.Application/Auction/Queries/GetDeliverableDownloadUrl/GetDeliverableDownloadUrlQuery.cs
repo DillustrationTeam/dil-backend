@@ -105,7 +105,13 @@ public class GetDeliverableDownloadUrlQueryHandler
                 .AsNoTracking()
                 .FirstOrDefaultAsync(a => a.Id == auction.ArtworkId && !a.IsDeleted, cancellationToken);
 
-            if (artwork is null || string.IsNullOrWhiteSpace(artwork.ImageUrl))
+            var masterUrl = artwork?.ImageUrl;
+            if (string.IsNullOrWhiteSpace(masterUrl))
+            {
+                masterUrl = artwork?.WatermarkedUrl;
+            }
+
+            if (artwork is null || string.IsNullOrWhiteSpace(masterUrl))
             {
                 return (false, null, 404, ["Không tìm thấy file gốc của tranh."]);
             }
@@ -115,8 +121,8 @@ public class GetDeliverableDownloadUrlQueryHandler
                 AuctionId = auction.Id,
                 RecipientId = request.UserId,
                 FileName = artwork.Title,
-                FileUrl = artwork.ImageUrl,
-                MimeType = "image/jpeg",
+                FileUrl = masterUrl,
+                MimeType = masterUrl.Contains(".png", StringComparison.OrdinalIgnoreCase) ? "image/png" : "image/jpeg",
                 FileSizeBytes = artwork.FileSizeBytes
             };
 

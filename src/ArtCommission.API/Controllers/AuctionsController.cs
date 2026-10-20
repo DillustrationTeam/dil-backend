@@ -472,6 +472,30 @@ public class AuctionsController : ApiControllerBase
         };
     }
 
+    /// <summary>Lấy chứng nhận sở hữu số 1-of-1 Certificate cho phiên đấu giá đã chốt (UC35).</summary>
+    [HttpGet("{auctionId:guid}/certificate")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetCertificate(Guid auctionId, CancellationToken cancellationToken)
+    {
+        var (success, data, statusCode, errors) = await Mediator.Send(
+            new ArtCommission.Application.Auction.Queries.GetAuctionCertificate.GetAuctionCertificateQuery(auctionId),
+            cancellationToken);
+
+        if (success)
+        {
+            return OkEnvelope(data);
+        }
+
+        return statusCode switch
+        {
+            404 => NotFoundEnvelope(errors),
+            _ => BadRequestEnvelope(errors)
+        };
+    }
+
     /// <summary>Xử lý winner quá hạn thanh toán — huỷ kết quả và đề xuất bidder kế tiếp (UC35).</summary>
     [HttpPost("{auctionId:guid}/settlement/expire")]
     [ProducesResponseType(StatusCodes.Status200OK)]
