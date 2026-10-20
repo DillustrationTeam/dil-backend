@@ -64,6 +64,7 @@ public class CreateEventCommandHandler
             Description = request.Description.Trim(),
             Rules = string.IsNullOrWhiteSpace(request.Rules) ? null : request.Rules.Trim(),
             Prize = string.IsNullOrWhiteSpace(request.Prize) ? null : request.Prize.Trim(),
+            IsFeatured = request.IsFeatured,
             MaxVote = request.MaxVote > 0 ? request.MaxVote : 1,
             Status = request.Status,
             SubmissionStartAt = request.SubmissionStartAt,
@@ -74,7 +75,6 @@ public class CreateEventCommandHandler
             VotingEndAt = request.VotingEndAt,
             ResultAnnouncementAt = request.ResultAnnouncementAt,
             CreatedByAdminId = request.AdminId,
-            IsFeatured = request.IsFeatured,
             CreatedAt = now,
             IsDeleted = false
         };
@@ -129,9 +129,9 @@ public class CreateEventCommandHandler
             Description = platformEvent.Description,
             Rules = platformEvent.Rules,
             Prize = platformEvent.Prize,
+            IsFeatured = platformEvent.IsFeatured,
             MaxVote = platformEvent.MaxVote,
             Status = platformEvent.Status.ToString(),
-            IsFeatured = platformEvent.IsFeatured,
             SubmissionStartAt = platformEvent.SubmissionStartAt,
             SubmissionEndAt = platformEvent.SubmissionEndAt,
             JudgingStartAt = platformEvent.JudgingStartAt,
@@ -145,9 +145,7 @@ public class CreateEventCommandHandler
             TotalVoteCount = 0,
             CreatedAt = platformEvent.CreatedAt,
             UpdatedAt = platformEvent.UpdatedAt,
-            IsOpenForSubmission = platformEvent.Status == EventStatus.Open && platformEvent.SubmissionStartAt <= now && platformEvent.SubmissionEndAt >= now,
-            IsHeadJurySignedOff = platformEvent.IsHeadJurySignedOff,
-            HeadJurySignedOffAt = platformEvent.HeadJurySignedOffAt
+            IsOpenForSubmission = platformEvent.Status == EventStatus.Open && platformEvent.SubmissionStartAt <= now && platformEvent.SubmissionEndAt >= now
         };
 
         return (true, data, Array.Empty<string>());

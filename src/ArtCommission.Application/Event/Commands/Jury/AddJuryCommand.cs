@@ -13,7 +13,7 @@ public record AddJuryCommand(
     Guid EventId,
     Guid CreatorId,
     Guid AdminId,
-    bool? IsHeadJury = null
+    bool IsHeadJury = false
 ) : IRequest<(bool Success, JuryDto? Data, string[] Errors)>;
 
 public class AddJuryCommandHandler
@@ -83,21 +83,11 @@ public class AddJuryCommandHandler
             return (false, null, ["This creator is already a jury member for this event."]);
         }
 
-        var hasAnyJury = await _db.Juries
-            .AnyAsync(j => j.EventId == request.EventId && !j.IsDeleted, cancellationToken);
-
-        var hasHeadJury = await _db.Juries
-            .AnyAsync(j => j.EventId == request.EventId && j.IsHeadJury && !j.IsDeleted, cancellationToken);
-
-        bool isHeadJury = request.IsHeadJury ?? false;
-
-        if (!hasAnyJury && !hasHeadJury)
+        if (request.IsHeadJury)
         {
-            isHeadJury = true;
-        }
+            var hasHeadJury = await _db.Juries
+                .AnyAsync(j => j.EventId == request.EventId && j.IsHeadJury && !j.IsDeleted, cancellationToken);
 
-        if (isHeadJury)
-        {
             if (hasHeadJury)
             {
                 return (false, null, ["This event already has a Head Jury. An event can only have one Head Jury."]);
@@ -109,7 +99,7 @@ public class AddJuryCommandHandler
             Id = Guid.NewGuid(),
             EventId = request.EventId,
             CreatorId = creator.Id,
-            IsHeadJury = isHeadJury,
+            IsHeadJury = request.IsHeadJury,
             CreatedAt = now,
             IsDeleted = false
         };

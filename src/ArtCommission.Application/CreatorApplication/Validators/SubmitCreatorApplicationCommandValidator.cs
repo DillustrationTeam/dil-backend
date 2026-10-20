@@ -21,6 +21,17 @@ public class SubmitCreatorApplicationCommandValidator : AbstractValidator<Submit
             .NotEmpty().WithMessage("Identification card image is required.")
             .Must(IsValidUrl).WithMessage("Identification card image must be a valid URL.");
 
+        RuleFor(c => c.IdProofBackUrl)
+            .NotEmpty().WithMessage("The back-side identification image is required.")
+            .Must(IsValidUrl).WithMessage("The back-side identification image must be a valid URL.");
+
+        RuleFor(c => c.SpeedpaintVideoUrls)
+            .NotEmpty().WithMessage("Please provide at least one speedpaint video URL.");
+
+        RuleForEach(c => c.SpeedpaintVideoUrls)
+            .Must(IsValidUrl).WithMessage("Speedpaint links must be a valid URL.")
+            .When(c => c.SpeedpaintVideoUrls is not null);
+
         When(c => c.SocialLinks != null && c.SocialLinks.Count > 0, () =>
         {
             RuleForEach(c => c.SocialLinks)

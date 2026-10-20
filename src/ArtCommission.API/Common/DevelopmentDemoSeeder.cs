@@ -198,6 +198,56 @@ internal static class DevelopmentDemoSeeder
             });
         }
 
+        var reviewClient = await dbContext.Users.FirstOrDefaultAsync(
+            user => user.FullName == "Gladiaa",
+            cancellationToken) ?? client;
+        var hasCompletedUnreviewedDemo = await dbContext.Commissions.AnyAsync(
+            commission => commission.ClientId == reviewClient.Id && commission.CreatorId == creatorProfile.Id &&
+                          commission.Title == "Completed commission — Ready for review",
+            cancellationToken);
+
+        if (!hasCompletedUnreviewedDemo)
+        {
+            var completedAt = DateTimeOffset.UtcNow.AddDays(-1);
+            dbContext.Commissions.Add(new Commission
+            {
+                Title = "Completed commission — Ready for review",
+                Description = "Đơn demo đã hoàn thành và bàn giao, dành để kiểm thử bước đánh giá Creator.",
+                ClientId = reviewClient.Id,
+                CreatorId = creatorProfile.Id,
+                TotalPrice = 600_000m,
+                FinalPrice = 600_000m,
+                EscrowHeldAmount = 0m,
+                DisbursedAmount = 600_000m,
+                EscrowStatus = EscrowStatus.Released,
+                Status = CommissionStatus.Completed,
+                CurrentStage = 2,
+                DeadlineAt = completedAt,
+                Milestones =
+                [
+                    new Milestone
+                    {
+                        Sequence = 1,
+                        Title = "Phác thảo và duyệt bố cục",
+                        Price = 180_000m,
+                        Status = MilestoneStatus.Approved,
+                        SubmittedAt = completedAt.AddDays(-4),
+                        ApprovedAt = completedAt.AddDays(-3)
+                    },
+                    new Milestone
+                    {
+                        Sequence = 2,
+                        Title = "Hoàn thiện và bàn giao",
+                        Price = 420_000m,
+                        Status = MilestoneStatus.Approved,
+                        SubmittedAt = completedAt.AddDays(-1),
+                        ApprovedAt = completedAt,
+                        FinalDeliverableUrl = "demo/completed-commission/final.zip"
+                    }
+                ]
+            });
+        }
+
 
         await dbContext.SaveChangesAsync(cancellationToken);
     }
@@ -224,6 +274,13 @@ internal static class DevelopmentDemoSeeder
             var result = await userManager.CreateAsync(user, Password);
             if (!result.Succeeded)
                 throw new InvalidOperationException($"Could not create demo user {email}: {string.Join("; ", result.Errors.Select(error => error.Description))}");
+        }
+        else if (!await userManager.CheckPasswordAsync(user, Password))
+        {
+            var token = await userManager.GeneratePasswordResetTokenAsync(user);
+            var result = await userManager.ResetPasswordAsync(user, token, Password);
+            if (!result.Succeeded)
+                throw new InvalidOperationException($"Could not reset demo user {email}: {string.Join("; ", result.Errors.Select(error => error.Description))}");
         }
 
         foreach (var role in roles)

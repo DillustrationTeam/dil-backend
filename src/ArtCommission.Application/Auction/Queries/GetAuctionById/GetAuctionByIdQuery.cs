@@ -45,7 +45,9 @@ public class GetAuctionByIdQueryHandler
         var auction = await _db.Auctions
             .AsNoTracking()
             .Include(a => a.Artwork)
-            .FirstOrDefaultAsync(a => a.Id == request.AuctionId && !a.IsDeleted, cancellationToken);
+            // Hủy phiên dùng xóa mềm, nhưng chi tiết Cancelled vẫn cần tra cứu được.
+            .FirstOrDefaultAsync(a => a.Id == request.AuctionId
+                                     && (!a.IsDeleted || a.Status == AuctionStatus.Cancelled), cancellationToken);
 
         if (auction is null)
         {

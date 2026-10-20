@@ -69,6 +69,11 @@ public class PredictDeadlineRiskCommandHandler
             return (false, null, ["Không tìm thấy đơn đặt vẽ."]);
         }
 
+        if (commission.Status is CommissionStatus.Completed or CommissionStatus.Cancelled)
+        {
+            return (false, null, ["Đơn hàng đã kết thúc, không thể dự đoán rủi ro trễ hạn."]);
+        }
+
         var creatorProfileId = await _db.CreatorProfiles
             .AsNoTracking()
             .Where(p => p.UserId == request.UserId && !p.IsDeleted)

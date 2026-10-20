@@ -13,6 +13,7 @@ public class CommissionDisputeDto
     public string? Resolution { get; set; }          // ClientWin100, ArtistWin100, SplitCustom
     public decimal? ClientRefundAmount { get; set; }
     public decimal? ArtistPayAmount { get; set; }
+    public decimal? ClientRefundPercent { get; set; }
     public string? AdminNote { get; set; }
     public DateTimeOffset? ResolvedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }

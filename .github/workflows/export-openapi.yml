@@ -44,15 +44,21 @@ jobs:
       - name: 🔧 Install Netlify CLI
         run: npm install -g netlify-cli
 
-      - name: 🔐 Validate Netlify deploy secrets
+      - name: 🔐 Kiểm tra cấu hình triển khai Netlify
+        id: netlify_secrets
+        env:
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
         run: |
-          if [ -z "${{ secrets.NETLIFY_SITE_ID }}" ] || [ -z "${{ secrets.NETLIFY_AUTH_TOKEN }}" ]; then
-            echo "Skipping Netlify deploy because NETLIFY_SITE_ID or NETLIFY_AUTH_TOKEN is missing from GitHub repository secrets."
-            exit 0
+          if [ -z "$NETLIFY_SITE_ID" ] || [ -z "$NETLIFY_AUTH_TOKEN" ]; then
+            echo "Bỏ qua triển khai Netlify vì thiếu NETLIFY_SITE_ID hoặc NETLIFY_AUTH_TOKEN."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: 🌐 Deploy to Netlify
-        if: ${{ secrets.NETLIFY_SITE_ID != '' && secrets.NETLIFY_AUTH_TOKEN != '' }}
+        if: ${{ steps.netlify_secrets.outputs.enabled == 'true' }}
         run: |
           echo "Deploying Scalar Docs to Netlify..."
           netlify deploy \
