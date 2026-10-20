@@ -11,9 +11,12 @@ using ArtCommission.Domain.Enums;
 using ArtCommission.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
-await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
-    .UseInMemoryDatabase(Guid.NewGuid().ToString())
-    .Options);
+var inMemoryDbName = Guid.NewGuid().ToString();
+var dbOptions = new DbContextOptionsBuilder<AppDbContext>()
+    .UseInMemoryDatabase(inMemoryDbName)
+    .Options;
+await using var db = new AppDbContext(dbOptions);
+AppDbContext CreateDb() => new(dbOptions);
 
 var now = DateTimeOffset.UtcNow;
 var adminId = Guid.NewGuid();
@@ -349,5 +352,71 @@ if (updatedPortfolioArtwork.IsDeleted)
 }
 Console.WriteLine("PASS: Portfolio artwork with external collection was NOT deleted.");
 
-Console.WriteLine("ALL DISQUALIFY CHECKS PASSED SUCCESSFULLY!");
+// =====================================================================
+// CONCURRENCY CHECK: Concurrent resolution of the SAME submission dispute
+// =====================================================================
+Console.WriteLine("\n[CONCURRENCY CHECK] Testing concurrent dispute resolution on the same dispute...");
+
+var disputeConcurrent = new SubmissionDispute
+{
+    Id = Guid.NewGuid(),
+    EventId = platformEvent.Id,
+    SubmissionId = submission2.Id,
+    RaisedById = adminId,
+    Reason = "Suspicious artwork",
+    Status = "Pending",
+    Priority = "High",
+    CreatedAt = now
+};
+db.SubmissionDisputes.Add(disputeConcurrent);
+await db.SaveChangesAsync();
+
+// Launch 10 concurrent resolution requests: some Disqualify, some Dismiss, some RequestReEvaluation
+var resolutions = new[] { "Disqualify", "Dismiss", "RequestReEvaluation", "Dismiss", "Disqualify", "Dismiss", "RequestReEvaluation", "Disqualify", "Dismiss", "Disqualify" };
+
+var concurrentTasks = resolutions.Select(async (res, idx) =>
+{
+    await using var taskDb = CreateDb();
+    var handler = new ResolveSubmissionDisputeCommandHandler(taskDb);
+    var cmd = new ResolveSubmissionDisputeCommand(
+        DisputeId: disputeConcurrent.Id,
+        ModeratorId: adminId,
+        Resolution: res,
+        Note: $"Concurrent attempt #{idx + 1}"
+    );
+    return await handler.Handle(cmd, CancellationToken.None);
+}).ToArray();
+
+var concurrentResults = await Task.WhenAll(concurrentTasks);
+
+var successCount = concurrentResults.Count(r => r.Success);
+var failCount = concurrentResults.Count(r => !r.Success);
+
+Console.WriteLine($"Concurrent Dispute Resolution Results: Success={successCount}, Fail={failCount}");
+
+if (successCount != 1)
+{
+    Console.WriteLine($"FAIL: Expected exactly 1 successful resolution, but got {successCount}!");
+    return 1;
+}
+
+if (failCount != 9)
+{
+    Console.WriteLine($"FAIL: Expected 9 failed resolutions, but got {failCount}!");
+    return 1;
+}
+
+// Verify that all 9 failures got the expected rejection message
+foreach (var fail in concurrentResults.Where(r => !r.Success))
+{
+    if (!fail.Errors.Contains("Khiếu nại đã đóng.") && fail.Message != "Khiếu nại này đã được xử lý trước đó.")
+    {
+        Console.WriteLine($"FAIL: Unexpected failure message: {fail.Message} / {string.Join(", ", fail.Errors)}");
+        return 1;
+    }
+}
+
+Console.WriteLine("PASS: Exactly 1 concurrent dispute resolution succeeded; all other 9 concurrent attempts cleanly rejected.");
+
+Console.WriteLine("\nALL DISQUALIFY CHECKS PASSED SUCCESSFULLY!");
 return 0;
