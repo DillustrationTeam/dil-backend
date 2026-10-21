@@ -70,6 +70,25 @@ public class GetDisputeAiSummaryQueryHandler
         sb.AppendLine($"- Lý do gửi đơn: {detail.Reason}");
         sb.AppendLine($"- Mô tả ban đầu: {detail.CommissionDescription ?? "Không có mô tả thêm"}");
 
+        if (detail.ClaimantRefundPercent.HasValue || detail.RespondentRefundPercent.HasValue)
+        {
+            sb.AppendLine("\n[ĐỀ XUẤT HÒA GIẢI CỦA HAI BÊN]:");
+            sb.AppendLine($"- Bên mở đơn ({detail.RaisedBy?.Role}): Yêu cầu hoàn {detail.ClaimantRefundPercent ?? 100:G29}%");
+            if (detail.RespondentRefundPercent.HasValue)
+            {
+                var otherRole = detail.RaisedBy?.Role == "Client" ? "Creator" : "Client";
+                sb.AppendLine($"- Bên phản hồi ({otherRole}): Đề xuất hoàn {detail.RespondentRefundPercent.Value:G29}%");
+                if (!string.IsNullOrWhiteSpace(detail.RespondentResponse))
+                {
+                    sb.AppendLine($"- Lời giải trình của bên phản hồi: \"{detail.RespondentResponse}\"");
+                }
+            }
+            else
+            {
+                sb.AppendLine($"- Bên phản hồi: Chưa gửi đề xuất đối ứng (đơn được chuyển thẳng hoặc hết hạn).");
+            }
+        }
+
         if (detail.EvidenceUrls != null && detail.EvidenceUrls.Count > 0)
         {
             sb.AppendLine("\n[FILE/LINK BẰNG CHỨNG DO BÊN KHIẾU NẠI ĐÍNH KÈM]:");

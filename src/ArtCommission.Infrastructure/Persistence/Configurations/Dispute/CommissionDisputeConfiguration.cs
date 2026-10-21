@@ -29,5 +29,14 @@ public class CommissionDisputeConfiguration : IEntityTypeConfiguration<Commissio
 
         builder.Property(d => d.ArtistPayAmount)
             .HasPrecision(18, 2);
+
+        builder.Property(d => d.ClaimantRefundPercent)
+            .HasPrecision(5, 2);
+
+        builder.Property(d => d.RespondentRefundPercent)
+            .HasPrecision(5, 2);
+
+        builder.Property(d => d.RespondentResponse)
+            .HasMaxLength(2000);
     }
 }

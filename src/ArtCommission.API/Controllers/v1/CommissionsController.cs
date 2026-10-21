@@ -278,6 +278,18 @@ public class CommissionsController : ControllerBase
     }
 
     /// <summary>
+    /// POST /api/v1/commissions/{id}/disputes/respond
+    /// Phản hồi đề xuất hòa giải tranh chấp (Chấp nhận hoặc Đề xuất đối ứng)
+    /// </summary>
+    [HttpPost("{id:guid}/disputes/respond")]
+    public async Task<IActionResult> RespondDispute(Guid id, [FromBody] RespondDisputeRequest request, CancellationToken ct)
+    {
+        var respondentId = GetCurrentUserId();
+        var result = await _commissionService.RespondDisputeAsync(id, request, respondentId, ct);
+        return Ok(new ApiResponse<CommissionDisputeDto>(result));
+    }
+
+    /// <summary>
     /// GET /api/v1/commissions/{id}/disputes
     /// Xem thông tin chi tiết tranh chấp của đơn hàng
     /// </summary>

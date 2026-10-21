@@ -1,4 +1,5 @@
 namespace ArtCommission.Application.Commission.DTOs;
+
 public class DisputeDto
 {
     public Guid Id { get; set; }
@@ -14,4 +15,11 @@ public class DisputeDto
     public string? AdminNote { get; set; }
     public DateTimeOffset? ResolvedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+
+    // 2-Party Negotiation (Two-Party Dispute Resolution Flow)
+    public decimal? ClaimantRefundPercent { get; set; }
+    public decimal? RespondentRefundPercent { get; set; }
+    public string? RespondentResponse { get; set; }
+    public string? RespondentEvidenceUrls { get; set; }
+    public DateTimeOffset? RespondentRespondedAt { get; set; }
 }

@@ -749,7 +749,8 @@ public class CommissionService : ICommissionService
             RaisedById = raisedById,
             Reason = request.Reason,
             EvidenceUrls = request.EvidenceUrls != null ? string.Join(",", request.EvidenceUrls) : null,
-            Status = "Pending"
+            ClaimantRefundPercent = request.ClaimantRefundPercent ?? 100m,
+            Status = "Negotiating"
         };
 
         _dbContext.Disputes.Add(dispute);
@@ -769,6 +770,154 @@ public class CommissionService : ICommissionService
             commission.Id, $"DisputeOpened:{dispute.Id}:{recipientId}", cancellationToken);
 
         return MapToDisputeDto(dispute);
+    }
+
+    public async Task<CommissionDisputeDto> RespondDisputeAsync(Guid id, RespondDisputeRequest request, Guid respondentId, CancellationToken cancellationToken = default)
+    {
+        var validation = new RespondDisputeRequestValidator().Validate(request);
+        if (!validation.IsValid) throw new ArgumentException(string.Join(" ", validation.Errors.Select(e => e.ErrorMessage)));
+
+        var commission = await _dbContext.Commissions
+            .Include(c => c.Disputes)
+            .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+
+        if (commission == null) throw new KeyNotFoundException("Không tìm thấy đơn hàng.");
+
+        var creatorUserId = await CreatorUserIdAsync(commission.CreatorId, cancellationToken);
+        var isClient = respondentId == commission.ClientId;
+        var isCreator = respondentId == creatorUserId;
+        if (!isClient && !isCreator) throw new UnauthorizedAccessException("Bạn không có quyền tham gia giải quyết tranh chấp này.");
+
+        var dispute = commission.Disputes.OrderByDescending(d => d.CreatedAt).FirstOrDefault();
+        if (dispute == null) throw new InvalidOperationException("Đơn hàng chưa có tranh chấp.");
+
+        if (dispute.RaisedById == respondentId)
+            throw new InvalidOperationException("Bên mở khiếu nại không thể tự phản hồi đơn của mình.");
+
+        if (dispute.Status != "Negotiating")
+            throw new InvalidOperationException($"Tranh chấp đang ở trạng thái '{dispute.Status}', không thể gửi phản hồi đàm phán.");
+
+        var claimantId = dispute.RaisedById;
+
+        if (request.Action.Equals("Accept", StringComparison.OrdinalIgnoreCase))
+        {
+            var refundPercent = dispute.ClaimantRefundPercent ?? 100m;
+            var totalEscrow = commission.EscrowHeldAmount > 0 ? commission.EscrowHeldAmount : commission.FinalPrice;
+            var clientRefund = Math.Round(totalEscrow * (refundPercent / 100m), 2);
+            var creatorGross = totalEscrow - clientRefund;
+
+            decimal feePercent = 10m;
+            try
+            {
+                feePercent = await _walletService.GetDecimalConfigAsync(PlatformConfigKeys.PlatformFeePercent, 10.0m, cancellationToken);
+            }
+            catch { }
+            var platformFee = Math.Round(creatorGross * (feePercent / 100m), 2);
+            var creatorPay = Math.Max(0m, creatorGross - platformFee);
+
+            if (totalEscrow > 0)
+            {
+                var clientWallet = await _walletService.GetOrCreateWalletAsync(commission.ClientId, cancellationToken);
+                var creatorWallet = await _walletService.GetOrCreateWalletAsync(creatorUserId, cancellationToken);
+                var effectiveEscrow = Math.Min(clientWallet.LockedBalance, totalEscrow);
+
+                clientRefund = Math.Round(effectiveEscrow * (refundPercent / 100m), 2);
+                creatorGross = effectiveEscrow - clientRefund;
+                platformFee = Math.Round(creatorGross * (feePercent / 100m), 2);
+                creatorPay = Math.Max(0m, creatorGross - platformFee);
+
+                if (clientRefund > 0)
+                {
+                    await _walletService.RefundHeldFundsAsync(
+                        clientWallet,
+                        WalletTransactionType.RefundFromHold,
+                        clientRefund,
+                        "Commission",
+                        commission.Id,
+                        $"Hoàn tiền tự hòa giải tranh chấp đơn #{commission.Id.ToString()[..8].ToUpper()}",
+                        cancellationToken);
+                }
+
+                if (creatorGross > 0)
+                {
+                    await _walletService.ReleaseFundsAsync(
+                        clientWallet,
+                        WalletTransactionType.EscrowRelease,
+                        creatorGross,
+                        "Commission",
+                        commission.Id,
+                        $"Giải phóng tiền ký quỹ cho Creator từ đơn #{commission.Id.ToString()[..8].ToUpper()}",
+                        cancellationToken);
+
+                    await _walletService.CreditAsync(
+                        creatorWallet,
+                        WalletTransactionType.EscrowReceive,
+                        creatorGross,
+                        "Commission",
+                        commission.Id,
+                        $"Nhận tiền thanh toán tự hòa giải đơn #{commission.Id.ToString()[..8].ToUpper()}",
+                        cancellationToken);
+
+                    if (platformFee > 0)
+                    {
+                        await _walletService.DebitAsync(
+                            creatorWallet,
+                            WalletTransactionType.PlatformFee,
+                            platformFee,
+                            "Commission",
+                            commission.Id,
+                            $"Phí nền tảng {feePercent}% giải ngân tự hòa giải đơn #{commission.Id.ToString()[..8].ToUpper()}",
+                            cancellationToken);
+                    }
+                }
+            }
+
+            dispute.Resolution = "MutualSettled";
+            dispute.Status = "Resolved";
+            dispute.ClientRefundAmount = clientRefund;
+            dispute.ArtistPayAmount = creatorPay;
+            dispute.ResolvedAt = DateTimeOffset.UtcNow;
+            dispute.RespondentRespondedAt = DateTimeOffset.UtcNow;
+            dispute.RespondentResponse = "Đồng ý với đề xuất hoàn tiền của đối phương.";
+
+            commission.Status = refundPercent >= 100m ? CommissionStatus.Cancelled : CommissionStatus.Completed;
+            commission.EscrowStatus = refundPercent >= 100m ? EscrowStatus.Refunded
+                : refundPercent <= 0m ? EscrowStatus.Released
+                : EscrowStatus.Split;
+            commission.EscrowHeldAmount = 0m;
+            commission.DisbursedAmount += creatorPay;
+            commission.UpdatedAt = DateTimeOffset.UtcNow;
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            await PublishSafeAsync(
+                claimantId, NotificationType.DisputeStatusChanged,
+                "Tranh chấp đã được tự hòa giải thành công",
+                $"Đối phương đã chấp nhận mức hoàn {refundPercent:G29}%. Đơn hàng đã được xử lý tự động.",
+                commission.Id, $"DisputeMutualSettled:{dispute.Id}:{claimantId}", cancellationToken);
+
+            return MapToDisputeDto(dispute);
+        }
+        else // Counter
+        {
+            dispute.RespondentRefundPercent = request.CounterRefundPercent ?? 0m;
+            dispute.RespondentResponse = request.Response;
+            dispute.RespondentEvidenceUrls = request.EvidenceUrls != null ? string.Join(",", request.EvidenceUrls) : null;
+            dispute.RespondentRespondedAt = DateTimeOffset.UtcNow;
+            dispute.Status = "Pending"; // Chuyển lên hàng đợi Admin
+
+            commission.UpdatedAt = DateTimeOffset.UtcNow;
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            await PublishSafeAsync(
+                claimantId, NotificationType.DisputeStatusChanged,
+                "Đối phương từ chối đề xuất và gửi phản hồi",
+                $"Đối phương đề xuất mức hoàn {request.CounterRefundPercent:G29}%. Vụ việc đã được chuyển lên Ban Quản Trị / Trọng tài phân xử.",
+                commission.Id, $"DisputeEscalated:{dispute.Id}:{claimantId}", cancellationToken);
+
+            return MapToDisputeDto(dispute);
+        }
     }
 
     public async Task<CommissionDisputeDto?> GetDisputeByCommissionIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
@@ -1014,7 +1163,12 @@ public class CommissionService : ICommissionService
             Resolution = d.Resolution,
             ClientRefundAmount = d.ClientRefundAmount,
             ArtistPayAmount = d.ArtistPayAmount,
-            ClientRefundPercent = ParseClientRefundPercent(d.Resolution),
+            ClientRefundPercent = ParseClientRefundPercent(d.Resolution) ?? d.ClaimantRefundPercent,
+            ClaimantRefundPercent = d.ClaimantRefundPercent,
+            RespondentRefundPercent = d.RespondentRefundPercent,
+            RespondentResponse = d.RespondentResponse,
+            RespondentEvidenceUrls = d.RespondentEvidenceUrls,
+            RespondentRespondedAt = d.RespondentRespondedAt,
             AdminNote = d.AdminNote,
             ResolvedAt = d.ResolvedAt,
             CreatedAt = d.CreatedAt

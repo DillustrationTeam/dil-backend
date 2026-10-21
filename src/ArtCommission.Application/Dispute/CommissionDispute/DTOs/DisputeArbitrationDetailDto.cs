@@ -27,14 +27,21 @@ public record DisputeArbitrationDetailDto
     public string Reason { get; init; } = string.Empty;
     public List<string> EvidenceUrls { get; init; } = new();
 
-    public string Status { get; init; } = "Pending"; // Pending, UnderReview, Resolved
-    public string? Resolution { get; init; } // ClientWin100, ArtistWin100, SplitCustom
+    public string Status { get; init; } = "Negotiating"; // Negotiating, Pending, UnderReview, Resolved
+    public string? Resolution { get; init; } // ClientWin100, ArtistWin100, SplitCustom, MutualSettled
     public decimal? ClientRefundAmount { get; init; }
     public decimal? ArtistPayAmount { get; init; }
     public decimal? ClientRefundPercent { get; init; }
     public string? AdminNote { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? ResolvedAt { get; init; }
+
+    // 2-Party Negotiation (Two-Party Dispute Resolution Flow)
+    public decimal? ClaimantRefundPercent { get; init; }
+    public decimal? RespondentRefundPercent { get; init; }
+    public string? RespondentResponse { get; init; }
+    public List<string> RespondentEvidenceUrls { get; init; } = new();
+    public DateTimeOffset? RespondentRespondedAt { get; init; }
 
     public List<DisputeMilestoneDto> Milestones { get; init; } = new();
     public List<DisputeChatSnapshotMessageDto> ChatSnapshot { get; init; } = new();

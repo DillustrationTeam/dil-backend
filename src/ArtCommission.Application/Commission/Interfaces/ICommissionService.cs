@@ -28,6 +28,7 @@ public interface ICommissionService
     Task ProcessCancellationDeadlinesAsync(CancellationToken cancellationToken = default);
     
     Task<ArtCommission.Application.Dispute.CommissionDispute.DTOs.CommissionDisputeDto> CreateDisputeAsync(Guid id, CreateDisputeRequest request, Guid raisedById, CancellationToken cancellationToken = default);
+    Task<ArtCommission.Application.Dispute.CommissionDispute.DTOs.CommissionDisputeDto> RespondDisputeAsync(Guid id, RespondDisputeRequest request, Guid respondentId, CancellationToken cancellationToken = default);
     Task<ArtCommission.Application.Dispute.CommissionDispute.DTOs.CommissionDisputeDto?> GetDisputeByCommissionIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
     Task<ReviewDto> CreateReviewAsync(Guid id, CreateReviewRequest request, Guid reviewerId, CancellationToken cancellationToken = default);
     Task<ReviewDto> ReplyReviewAsync(Guid id, string replyComment, Guid creatorId, CancellationToken cancellationToken = default);

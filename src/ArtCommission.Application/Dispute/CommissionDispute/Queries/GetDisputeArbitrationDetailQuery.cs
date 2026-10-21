@@ -70,6 +70,23 @@ public class GetDisputeArbitrationDetailQueryHandler : IRequestHandler<GetDisput
             }
         }
 
+        var respondentEvidenceList = new List<string>();
+        if (!string.IsNullOrWhiteSpace(dispute.RespondentEvidenceUrls))
+        {
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<List<string>>(dispute.RespondentEvidenceUrls);
+                if (parsed != null)
+                {
+                    respondentEvidenceList.AddRange(parsed);
+                }
+            }
+            catch
+            {
+                respondentEvidenceList.AddRange(dispute.RespondentEvidenceUrls.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            }
+        }
+
         var milestones = commission.Milestones
             .OrderBy(m => m.Sequence)
             .Select(m => new DisputeMilestoneDto
@@ -174,7 +191,12 @@ public class GetDisputeArbitrationDetailQueryHandler : IRequestHandler<GetDisput
             Resolution = dispute.Resolution,
             ClientRefundAmount = dispute.ClientRefundAmount,
             ArtistPayAmount = dispute.ArtistPayAmount,
-            ClientRefundPercent = ParseClientRefundPercent(dispute.Resolution),
+            ClientRefundPercent = ParseClientRefundPercent(dispute.Resolution) ?? dispute.ClaimantRefundPercent,
+            ClaimantRefundPercent = dispute.ClaimantRefundPercent,
+            RespondentRefundPercent = dispute.RespondentRefundPercent,
+            RespondentResponse = dispute.RespondentResponse,
+            RespondentEvidenceUrls = respondentEvidenceList,
+            RespondentRespondedAt = dispute.RespondentRespondedAt,
             AdminNote = dispute.AdminNote,
             CreatedAt = dispute.CreatedAt,
             ResolvedAt = dispute.ResolvedAt,

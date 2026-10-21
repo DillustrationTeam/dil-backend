@@ -52,6 +52,18 @@ public class CreateDisputeRequest
     [Required, MinLength(1)]
     public string Reason { get; set; } = string.Empty;
     public List<string>? EvidenceUrls { get; set; }
+    [Range(0, 100)]
+    public decimal? ClaimantRefundPercent { get; set; } = 100;
+}
+
+public class RespondDisputeRequest
+{
+    [Required, RegularExpression("^(Accept|Counter)$", ErrorMessage = "Action must be Accept or Counter.")]
+    public string Action { get; set; } = "Accept"; // "Accept" or "Counter"
+    [Range(0, 100)]
+    public decimal? CounterRefundPercent { get; set; }
+    public string? Response { get; set; }
+    public List<string>? EvidenceUrls { get; set; }
 }
 
 public class CreateReviewRequest
