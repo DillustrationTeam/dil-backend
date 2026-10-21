@@ -697,6 +697,43 @@ public class CommissionService : ICommissionService
         return MapToDto(commission);
     }
 
+    public async Task<CommissionDto> WithdrawCancellationRequestAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
+    {
+        await using var tx = await BeginTransactionAsync(cancellationToken);
+        var commission = await PartyCommissionAsync(id, userId, cancellationToken);
+        if (commission.CancellationRequestStatus != "Pending" || commission.CancellationRequestedById is null)
+            throw new InvalidOperationException("Không có yêu cầu hủy nào đang chờ xử lý.");
+        if (commission.CancellationRequestedById != userId)
+            throw new UnauthorizedAccessException("Chỉ bên gửi yêu cầu mới có quyền rút lại yêu cầu hủy.");
+        if (commission.CancellationRequestExpiresAt <= DateTimeOffset.UtcNow)
+            throw new InvalidOperationException("Yêu cầu hủy đã hết hạn phản hồi.");
+
+        var requesterRole = commission.CancellationRequestedByRole ?? (commission.ClientId == userId ? "Client" : "Creator");
+        var creatorUserId = await CreatorUserIdAsync(commission.CreatorId, cancellationToken);
+        var recipientId = commission.ClientId == userId ? creatorUserId : commission.ClientId;
+
+        commission.CancellationRequestStatus = null;
+        commission.CancellationRequestedById = null;
+        commission.CancellationRequestedByRole = null;
+        commission.CancellationRequestedAt = null;
+        commission.CancellationRequestExpiresAt = null;
+        commission.CancellationReason = null;
+        commission.CancellationDetails = null;
+        commission.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        if (tx is not null)
+            await tx.CommitAsync(cancellationToken);
+
+        await PublishSafeAsync(
+            recipientId, NotificationType.CommissionStatusChanged,
+            "Đã rút lại yêu cầu hủy đơn",
+            $"{requesterRole} đã rút lại yêu cầu hủy “{commission.Title}”. Đơn hàng tiếp tục được duy trì.",
+            commission.Id, $"CancellationWithdrawn:{commission.Id}:{commission.UpdatedAt:O}", cancellationToken);
+
+        return MapToDto(commission);
+    }
+
     public async Task ProcessCancellationDeadlinesAsync(CancellationToken cancellationToken = default)
     {
         var now = DateTimeOffset.UtcNow;

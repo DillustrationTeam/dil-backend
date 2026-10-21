@@ -266,6 +266,18 @@ public class CommissionsController : ControllerBase
     }
 
     /// <summary>
+    /// DELETE /api/v1/commissions/{id}/cancellation-request
+    /// Bên gửi yêu cầu hủy rút lại yêu cầu khi chưa được đối phương phê duyệt.
+    /// </summary>
+    [HttpDelete("{id:guid}/cancellation-request")]
+    public async Task<IActionResult> WithdrawCancellationRequest(Guid id, CancellationToken ct)
+    {
+        var result = await _commissionService.WithdrawCancellationRequestAsync(
+            id, GetCurrentUserId(), ct);
+        return Ok(new ApiResponse<CommissionDto>(result));
+    }
+
+    /// <summary>
     /// POST /api/v1/commissions/{id}/disputes
     /// Mở tranh chấp/khiếu nại đơn hàng
     /// </summary>
