@@ -1,3 +1,4 @@
+using ArtCommission.Application.Ai.Queries.GetDisputeAiSummary;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.Dispute.CommissionDispute.Commands;
 using ArtCommission.Application.Dispute.CommissionDispute.DTOs;
@@ -110,6 +111,27 @@ public class AdminDisputesController : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    /// <summary>
+    /// Tự động đọc hồ sơ, lịch sử mốc và tin nhắn để lập bản tóm tắt trọng tài cho Admin/Moderator (AI-UC56).
+    /// </summary>
+    [HttpGet("{id:guid}/ai-summary")]
+    [HttpGet("commissions/{id:guid}/ai-summary")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetDisputeAiSummary(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var (success, data, errors) = await Mediator.Send(
+            new GetDisputeAiSummaryQuery(id),
+            cancellationToken);
+
+        return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
+    }
+
     public async Task<IActionResult> ResolveDisputeArbitration(
         Guid id,
         [FromBody] ResolveDisputeArbitrationRequest request,
