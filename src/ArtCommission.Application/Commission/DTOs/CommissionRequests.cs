@@ -45,6 +45,8 @@ public class RequestRevisionRequest
     [Required, MinLength(1)]
     public string FeedbackComment { get; set; } = string.Empty;
     public List<string>? ReferenceImages { get; set; }
+    public string? RevisionFeedbackImageUrl { get; set; }
+    public string? RevisionAnnotationsJson { get; set; }
 }
 
 public class CreateDisputeRequest

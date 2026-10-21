@@ -1853,11 +1853,19 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<string>("RevisionAnnotationsJson")
+                        .HasMaxLength(8000)
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<int>("RevisionCount")
                         .HasColumnType("int");
 
                     b.Property<string>("RevisionFeedback")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RevisionFeedbackImageUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
 
                     b.Property<int>("Sequence")
                         .HasColumnType("int");

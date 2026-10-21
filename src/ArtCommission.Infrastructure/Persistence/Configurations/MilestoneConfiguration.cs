@@ -32,5 +32,11 @@ public class MilestoneConfiguration : IEntityTypeConfiguration<Milestone>
 
         builder.Property(m => m.FinalDeliverableUrl)
             .HasMaxLength(500);
+
+        builder.Property(m => m.RevisionFeedbackImageUrl)
+            .HasMaxLength(2000);
+
+        builder.Property(m => m.RevisionAnnotationsJson)
+            .HasMaxLength(8000);
     }
 }

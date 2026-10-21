@@ -18,6 +18,8 @@ public class MilestoneDto
     public bool RevisionLimitReached => RevisionCount >= MaxRevisions;
     public string? CreatorNote { get; set; }
     public string? RevisionFeedback { get; set; }
+    public string? RevisionFeedbackImageUrl { get; set; }
+    public string? RevisionAnnotationsJson { get; set; }
     public DateTimeOffset? SubmittedAt { get; set; }
     public DateTimeOffset? ApprovedAt { get; set; }
 }

@@ -511,6 +511,28 @@ public class CommissionService : ICommissionService
         milestone.Status = MilestoneStatus.RevisionRequested;
         milestone.RevisionCount += 1;
         milestone.RevisionFeedback = request.FeedbackComment;
+        milestone.RevisionAnnotationsJson = request.RevisionAnnotationsJson;
+
+        if (!string.IsNullOrWhiteSpace(request.RevisionFeedbackImageUrl) && request.RevisionFeedbackImageUrl.StartsWith("data:image"))
+        {
+            try
+            {
+                var base64Data = System.Text.RegularExpressions.Regex.Replace(request.RevisionFeedbackImageUrl, @"^data:image\/[a-zA-Z]+;base64,", string.Empty);
+                var bytes = Convert.FromBase64String(base64Data);
+                using var ms = new MemoryStream(bytes);
+                var key = $"commissions/{commissionId}/milestone-{milestone.Sequence}-redline-{Guid.NewGuid()}.png";
+                milestone.RevisionFeedbackImageUrl = await _storageService.UploadPublicAsync(ms, key, "image/png", cancellationToken);
+            }
+            catch
+            {
+                milestone.RevisionFeedbackImageUrl = request.RevisionFeedbackImageUrl;
+            }
+        }
+        else
+        {
+            milestone.RevisionFeedbackImageUrl = request.RevisionFeedbackImageUrl;
+        }
+
         milestone.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -1129,6 +1151,8 @@ public class CommissionService : ICommissionService
             MaxRevisions = m.MaxRevisions,
             CreatorNote = m.CreatorNote,
             RevisionFeedback = m.RevisionFeedback,
+            RevisionFeedbackImageUrl = m.RevisionFeedbackImageUrl,
+            RevisionAnnotationsJson = m.RevisionAnnotationsJson,
             SubmittedAt = m.SubmittedAt,
             ApprovedAt = m.ApprovedAt
         };

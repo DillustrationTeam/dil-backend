@@ -32,6 +32,12 @@ public class Milestone : BaseEntity
     /// <summary>Feedback thô của Client khi yêu cầu sửa.</summary>
     public string? RevisionFeedback { get; set; }
 
+    /// <summary>URL ảnh nét vẽ redline đè lên tranh (nếu client có vẽ).</summary>
+    public string? RevisionFeedbackImageUrl { get; set; }
+
+    /// <summary>Dữ liệu JSON các điểm ghim ghi chú (Pin Annotations) theo tọa độ tương đối %.</summary>
+    public string? RevisionAnnotationsJson { get; set; }
+
     public DateTimeOffset? SubmittedAt { get; set; }
     public DateTimeOffset? ApprovedAt { get; set; }
 
