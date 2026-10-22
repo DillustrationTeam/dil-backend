@@ -108,11 +108,14 @@ public class EventsController : ApiControllerBase
         [FromQuery] int pageSize = 10,
         CancellationToken cancellationToken = default)
     {
+        var isAdmin = User.IsInRole(UserRoleNames.Administrator) || User.IsInRole(UserRoleNames.Moderator);
         var query = new GetEventLeaderboardQuery(
             EventId: id,
             SortBy: sortBy,
             Page: page,
-            PageSize: pageSize
+            PageSize: pageSize,
+            CurrentUserId: CurrentUserId == Guid.Empty ? null : CurrentUserId,
+            IsAdmin: isAdmin
         );
 
         var (items, totalCount, eventTitle) = await Mediator.Send(query, cancellationToken);
@@ -347,6 +350,7 @@ public class EventsController : ApiControllerBase
         [FromQuery] int pageSize = 10,
         CancellationToken cancellationToken = default)
     {
+        var isAdmin = User.IsInRole(UserRoleNames.Administrator) || User.IsInRole(UserRoleNames.Moderator);
         var query = new GetSubmissionsByEventIdQuery(
             EventId: id,
             Title: title,
@@ -355,7 +359,9 @@ public class EventsController : ApiControllerBase
             AiScanPassed: aiScanPassed,
             SortBy: sortBy,
             Page: page,
-            PageSize: pageSize
+            PageSize: pageSize,
+            CurrentUserId: CurrentUserId == Guid.Empty ? null : CurrentUserId,
+            IsAdmin: isAdmin
         );
 
         var (items, totalCount) = await Mediator.Send(query, cancellationToken);
@@ -429,9 +435,12 @@ public class EventsController : ApiControllerBase
             return UnauthorizedEnvelope();
         }
 
+        var targetEventId = id ?? dto.EventId;
+
         var command = new UpdateSubmissionCommand(
             SubmissionId: submissionId,
             UserId: CurrentUserId,
+            EventId: targetEventId,
             Title: dto.Title,
             Description: dto.Description,
             ArtworkId: dto.ArtworkId,
@@ -452,6 +461,35 @@ public class EventsController : ApiControllerBase
     }
 
     /// <summary>
+    /// Rút bài dự thi khỏi sự kiện (Dành cho Creator rút bài thi của mình trong thời hạn nhận bài).
+    /// </summary>
+    [HttpDelete("{id:guid}/submissions/{submissionId:guid}")]
+    [HttpDelete("submissions/{submissionId:guid}")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> WithdrawEventSubmission(
+        Guid? id,
+        Guid submissionId,
+        CancellationToken cancellationToken = default)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var command = new WithdrawSubmissionCommand(submissionId, CurrentUserId, id);
+        var (success, errors) = await Mediator.Send(command, cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(new { message = "Đã rút bài dự thi khỏi sự kiện thành công." });
+    }
+
+    /// <summary>
     /// Lấy danh sách bài nộp sự kiện trên toàn hệ thống (Công khai).
     /// </summary>
     [HttpGet("submissions")]
@@ -468,6 +506,7 @@ public class EventsController : ApiControllerBase
         [FromQuery] int pageSize = 10,
         CancellationToken cancellationToken = default)
     {
+        var isAdmin = User.IsInRole(UserRoleNames.Administrator) || User.IsInRole(UserRoleNames.Moderator);
         var query = new GetSubmissionsQuery(
             SubmitterId: submitterId,
             Title: title,
@@ -476,7 +515,9 @@ public class EventsController : ApiControllerBase
             AiScanPassed: aiScanPassed,
             SortBy: sortBy,
             Page: page,
-            PageSize: pageSize
+            PageSize: pageSize,
+            CurrentUserId: CurrentUserId == Guid.Empty ? null : CurrentUserId,
+            IsAdmin: isAdmin
         );
 
         var (items, totalCount) = await Mediator.Send(query, cancellationToken);
@@ -493,20 +534,32 @@ public class EventsController : ApiControllerBase
     /// <summary>
     /// Lấy chi tiết một bài nộp sự kiện theo Id (Công khai).
     /// </summary>
+    [HttpGet("{id:guid}/submissions/{submissionId:guid}")]
     [HttpGet("submissions/{submissionId:guid}")]
     [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetSubmissionById(
+        Guid? id,
         Guid submissionId,
         CancellationToken cancellationToken = default)
     {
-        var query = new GetSubmissionByIdQuery(submissionId);
+        var isAdmin = User.IsInRole(UserRoleNames.Administrator) || User.IsInRole(UserRoleNames.Moderator);
+        var query = new GetSubmissionByIdQuery(
+            submissionId,
+            CurrentUserId == Guid.Empty ? null : CurrentUserId,
+            isAdmin
+        );
         var result = await Mediator.Send(query, cancellationToken);
 
         if (result == null)
         {
             return NotFoundEnvelope("Không tìm thấy bài nộp hoặc sự kiện đã bị xóa.");
+        }
+
+        if (id.HasValue && id.Value != Guid.Empty && result.EventId != id.Value)
+        {
+            return NotFoundEnvelope("Bài dự thi không thuộc sự kiện này.");
         }
 
         return OkEnvelope(result);

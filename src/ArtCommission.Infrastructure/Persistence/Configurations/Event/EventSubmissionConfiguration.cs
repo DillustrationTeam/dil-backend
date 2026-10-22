@@ -31,6 +31,9 @@ public class EventSubmissionConfiguration : IEntityTypeConfiguration<EventSubmis
         builder.Property(s => s.AdminNote)
             .HasMaxLength(1000);
 
+        builder.Property(s => s.IsDisqualified)
+            .HasDefaultValue(false);
+
         builder.Property(s => s.SubmittedAt)
             .IsRequired();
 
@@ -50,6 +53,8 @@ public class EventSubmissionConfiguration : IEntityTypeConfiguration<EventSubmis
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(s => new { s.EventId, s.Score, s.VoteCount });
+
+        builder.HasIndex(s => new { s.EventId, s.IsDisqualified });
 
         builder.HasIndex(s => new { s.EventId, s.SubmitterId });
 

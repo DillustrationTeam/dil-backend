@@ -7,7 +7,8 @@ namespace ArtCommission.Application.Event.Commands;
 
 public record WithdrawSubmissionCommand(
     Guid SubmissionId,
-    Guid UserId
+    Guid UserId,
+    Guid? EventId = null
 ) : IRequest<(bool Success, string[] Errors)>;
 
 public class WithdrawSubmissionCommandHandler
@@ -41,6 +42,12 @@ public class WithdrawSubmissionCommandHandler
         if (submission == null)
         {
             return (false, ["Không tìm thấy bài dự thi."]);
+        }
+
+        // 2.1. Ràng buộc: Bài dự thi phải thuộc đúng sự kiện được chỉ định trên route/tham số
+        if (request.EventId.HasValue && request.EventId.Value != Guid.Empty && submission.EventId != request.EventId.Value)
+        {
+            return (false, ["Bài dự thi không thuộc sự kiện này."]);
         }
 
         // 3. Quy tắc bắt buộc: Chỉ chính chủ Creator nộp bài mới có quyền rút bài thi

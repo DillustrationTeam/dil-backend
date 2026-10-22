@@ -2265,6 +2265,11 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("EventId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("IsDisqualified")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<decimal?>("Score")
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
@@ -2290,6 +2295,8 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.HasIndex("ArtworkId");
 
                     b.HasIndex("SubmitterId");
+
+                    b.HasIndex("EventId", "IsDisqualified");
 
                     b.HasIndex("EventId", "SubmitterId");
 

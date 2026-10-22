@@ -10,6 +10,11 @@ namespace ArtCommission.Application.Event.DTOs;
 public sealed record UpdateSubmissionDto
 {
     /// <summary>
+    /// Id sự kiện của bài dự thi (tùy chọn xác thực).
+    /// </summary>
+    public Guid? EventId { get; set; }
+
+    /// <summary>
     /// Tiêu đề bài dự thi (tùy chọn cập nhật).
     /// </summary>
     public string? Title { get; set; }

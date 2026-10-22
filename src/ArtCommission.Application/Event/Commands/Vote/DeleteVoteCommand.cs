@@ -1,4 +1,5 @@
 using ArtCommission.Application.Common.Interfaces;
+using ArtCommission.Application.Concurrency;
 using ArtCommission.Application.Event.DTOs;
 using ArtCommission.Application.Event.Validators;
 using MediatR;
@@ -50,33 +51,82 @@ public class DeleteVoteCommandHandler
             return (false, null, ["Cannot withdraw vote after the event voting period has ended."]);
         }
 
-        _db.EventVotes.Remove(vote);
+        var eventId = platformEvent?.Id ?? vote.Submission?.EventId ?? Guid.Empty;
+        var lockKey = $"event_vote_{eventId:D}_{request.VoterId:D}";
 
-        if (vote.Submission != null)
+        using (await AsyncKeyedLockManager.LockAsync(lockKey, cancellationToken))
         {
-            vote.Submission.VoteCount = Math.Max(0, vote.Submission.VoteCount - 1);
+            var isSqlServer = _db.Database.IsRelational() &&
+                              _db.Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true;
+
+            await using var tx = isSqlServer
+                ? await _db.Database.BeginTransactionAsync(cancellationToken)
+                : null;
+
+            try
+            {
+                if (isSqlServer)
+                {
+                    await _db.Database.ExecuteSqlInterpolatedAsync(
+                        $"EXEC sp_getapplock @Resource = {lockKey}, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;",
+                        cancellationToken);
+                }
+
+                var activeVote = await _db.EventVotes
+                    .Include(v => v.Submission)
+                        .ThenInclude(s => s!.Event)
+                    .FirstOrDefaultAsync(v => v.SubmissionId == request.SubmissionId && v.VoterId == request.VoterId, cancellationToken);
+
+                if (activeVote == null)
+                {
+                    return (false, null, ["Vote not found."]);
+                }
+
+                _db.EventVotes.Remove(activeVote);
+                await _db.SaveChangesAsync(cancellationToken);
+
+                var actualVoteCount = await _db.EventVotes
+                    .CountAsync(v => v.SubmissionId == request.SubmissionId, cancellationToken);
+
+                if (activeVote.Submission != null)
+                {
+                    activeVote.Submission.VoteCount = actualVoteCount;
+                    await _db.SaveChangesAsync(cancellationToken);
+                }
+
+                if (tx != null)
+                {
+                    await tx.CommitAsync(cancellationToken);
+                }
+
+                int remainingVotes = 0;
+                if (platformEvent != null)
+                {
+                    var userVoteCountInEvent = await _db.EventVotes
+                        .CountAsync(v => v.Submission != null && v.Submission.EventId == platformEvent.Id && v.VoterId == request.VoterId, cancellationToken);
+                    remainingVotes = Math.Max(0, platformEvent.MaxVote - userVoteCountInEvent);
+                }
+
+                var result = new EventVoteResultDto
+                {
+                    SubmissionId = request.SubmissionId,
+                    VoterId = request.VoterId,
+                    VotedAt = now,
+                    UpdatedVoteCount = activeVote.Submission?.VoteCount ?? actualVoteCount,
+                    IsVoted = false,
+                    RemainingVotesInEvent = remainingVotes
+                };
+
+                return (true, result, Array.Empty<string>());
+            }
+            catch (Exception)
+            {
+                if (tx != null)
+                {
+                    await tx.RollbackAsync(cancellationToken);
+                }
+                throw;
+            }
         }
-
-        await _db.SaveChangesAsync(cancellationToken);
-
-        int remainingVotes = 0;
-        if (platformEvent != null)
-        {
-            var userVoteCountInEvent = await _db.EventVotes
-                .CountAsync(v => v.Submission != null && v.Submission.EventId == platformEvent.Id && v.VoterId == request.VoterId, cancellationToken);
-            remainingVotes = Math.Max(0, platformEvent.MaxVote - userVoteCountInEvent);
-        }
-
-        var result = new EventVoteResultDto
-        {
-            SubmissionId = request.SubmissionId,
-            VoterId = request.VoterId,
-            VotedAt = now,
-            UpdatedVoteCount = vote.Submission?.VoteCount ?? 0,
-            IsVoted = false,
-            RemainingVotesInEvent = remainingVotes
-        };
-
-        return (true, result, Array.Empty<string>());
     }
 }
