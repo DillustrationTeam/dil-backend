@@ -8,6 +8,7 @@ public class CommissionDto
     public Guid ClientId { get; set; }
     public string? ClientName { get; set; }
     public Guid CreatorId { get; set; }
+    public Guid? PackageId { get; set; }
     public string? CreatorName { get; set; }
     public Guid? VoucherId { get; set; }
     public string LicenseType { get; set; } = "Personal";

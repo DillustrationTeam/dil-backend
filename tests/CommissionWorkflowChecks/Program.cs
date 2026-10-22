@@ -15,6 +15,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using ArtCommission.Infrastructure.ExternalServices.R2;
 
+if (args.Contains("--sql-addons")) { await SqlAddonChecks.RunAsync(); return; }
+
 var clientId = Guid.NewGuid();
 var creatorId = Guid.NewGuid();
 var roleId = Guid.NewGuid();
@@ -315,6 +317,127 @@ await using (var second = new AppDbContext(raceOptions))
     }
     catch (DbUpdateConcurrencyException) { checks++; }
 }
+
+// Add-on pricing snapshots, milestone gating, wallet accounting and idempotency.
+var addonService = new AddonService(db, new WalletService(db));
+var extra = await addonService.SaveAsync(new SaveCreatorAddonRequest {
+    PresetKey = "extra-character", Title = "ignored", Price = 150, AllowedMilestone = "Final", ExtendDays = 1
+}, creatorId, default);
+Equal("Sketch", extra.AllowedMilestone, "preset stage cannot be overridden");
+var addonOrder = await service.CreateCommissionAsync(new CreateCommissionRequest {
+    CreatorId = profile.Id, PackageId = packageId, Title = "addons", DeadlineAt = DateTimeOffset.UtcNow.AddDays(10)
+}, clientId);
+await service.RespondCommissionAsync(addonOrder.Id, new RespondCommissionRequest { Action = "Accept" }, creatorId);
+await service.AcceptWorkroomTermsAsync(addonOrder.Id, clientId);
+await service.AcceptWorkroomTermsAsync(addonOrder.Id, creatorId);
+await service.DepositEscrowAsync(addonOrder.Id, clientId, "Wallet");
+var addonCommission = await db.Commissions.Include(x => x.Milestones).SingleAsync(x => x.Id == addonOrder.Id);
+var deadlineBeforeAddon = addonCommission.DeadlineAt;
+var addonWallet = await db.Wallets.SingleAsync(x => x.UserId == clientId);
+var balanceBeforeAddon = addonWallet.Balance;
+var lockedBeforeAddon = addonWallet.LockedBalance;
+var proposed = await addonService.ProposeAsync(addonOrder.Id, new ProposeAddonRequest { CreatorAddonId = extra.Id }, creatorId, default);
+Equal("Proposed", proposed.Status, "proposal awaits client consent");
+Equal(balanceBeforeAddon, addonWallet.Balance, "proposing does not charge");
+await addonService.RespondAsync(addonOrder.Id, proposed.Id, new("Accept"), clientId, default);
+Equal(balanceBeforeAddon - 150, addonWallet.Balance, "addon debits available funds");
+Equal(lockedBeforeAddon + 150, addonWallet.LockedBalance, "addon locks funds");
+Equal(450m, addonCommission.FinalPrice, "addon increases contract price");
+Equal(450m, addonCommission.EscrowHeldAmount, "addon increases escrow");
+Equal(250m, addonCommission.Milestones.Single(x => x.Sequence == 1).Price, "addon paid through target milestone");
+Equal(deadlineBeforeAddon!.Value.AddDays(1), addonCommission.DeadlineAt!.Value, "addon extends deadline");
+await addonService.RespondAsync(addonOrder.Id, proposed.Id, new("Accept"), clientId, default);
+Equal(balanceBeforeAddon - 150, addonWallet.Balance, "accept retry does not charge twice");
+Equal(1, await db.WalletTransactions.CountAsync(x => x.RefId == proposed.Id), "one ledger entry per addon");
+var declined = await addonService.ProposeAsync(addonOrder.Id, new ProposeAddonRequest { Title = "custom", Price = 25, AllowedMilestone = "Sketch" }, creatorId, default);
+await addonService.RespondAsync(addonOrder.Id, declined.Id, new("Reject"), clientId, default);
+Equal("Rejected", declined.Status, "reject marks proposal");
+Equal(450m, addonCommission.FinalPrice, "reject leaves price unchanged");
+Equal(1, addonCommission.CurrentStage, "reject leaves progress unchanged");
+Equal(balanceBeforeAddon - 150, addonWallet.Balance, "reject leaves wallet unchanged");
+var staleAddon = await addonService.ProposeAsync(addonOrder.Id, new ProposeAddonRequest { CreatorAddonId = extra.Id }, creatorId, default);
+var sketch = addonCommission.Milestones.Single(x => x.Sequence == 1);
+await service.SubmitMilestoneWipAsync(addonOrder.Id, sketch.Id, null, new MemoryStream(new byte[] { 1 }), "image/png", creatorId);
+await service.ApproveMilestoneAsync(addonOrder.Id, sketch.Id, clientId);
+Equal(200m, addonCommission.EscrowHeldAmount, "approval releases base and addon funds");
+await Rejected(() => addonService.ProposeAsync(addonOrder.Id, new ProposeAddonRequest { CreatorAddonId = extra.Id }, creatorId, default), "Sketch addon cannot be proposed at Lineart");
+await Rejected(() => addonService.RespondAsync(addonOrder.Id, staleAddon.Id, new("Accept"), clientId, default), "stale Sketch proposal cannot be accepted at Lineart");
+var unfundedAddon = await addonService.ProposeAsync(addonOrder.Id, new ProposeAddonRequest { Title = "unaffordable", Price = 999999, AllowedMilestone = "Lineart" }, creatorId, default);
+var priceBeforeFailure = addonCommission.FinalPrice;
+await Rejected(() => addonService.RespondAsync(addonOrder.Id, unfundedAddon.Id, new("Accept"), clientId, default), "insufficient wallet rejects addon");
+Equal("Proposed", unfundedAddon.Status, "failed payment preserves proposal");
+Equal(priceBeforeFailure, addonCommission.FinalPrice, "failed payment preserves contract");
+try { await addonService.RespondAsync(addonOrder.Id, unfundedAddon.Id, new("Accept"), creatorId, default); throw new Exception("creator accepted own price"); }
+catch (UnauthorizedAccessException) { checks++; }
+try { await addonService.ListAsync(addonOrder.Id, Guid.NewGuid(), default); throw new Exception("outsider read addons"); }
+catch (UnauthorizedAccessException) { checks++; }
+var booked = await service.CreateCommissionAsync(new CreateCommissionRequest {
+    CreatorId = profile.Id, PackageId = packageId, Title = "booking extras", AddonIds = [extra.Id], DeadlineAt = DateTimeOffset.UtcNow.AddDays(7)
+}, clientId);
+Equal(450m, booked.FinalPrice, "booking uses stored addon price");
+Equal(1, await db.Set<CommissionAddon>().CountAsync(x => x.CommissionId == booked.Id && x.Status == "Accepted"), "booking snapshots addon");
+await Rejected(() => service.CreateCommissionAsync(new CreateCommissionRequest {
+    CreatorId = profile.Id, PackageId = packageId, Title = "duplicate extras", AddonIds = [extra.Id, extra.Id]
+}, clientId), "duplicate booking extras rejected");
+Equal("Lineart", AddonRules.Stage(3, 4), "four-stage package coloring stays Lineart");
+Equal("Final", AddonRules.Stage(4, 4), "four-stage final resolves correctly");
+
+var customConfig = await addonService.SaveAsync(new SaveCreatorAddonRequest {
+    Title = "Layer separation", Price = 50, AllowedMilestone = "Final", PackageId = packageId
+}, creatorId, default);
+Equal("Final", customConfig.AllowedMilestone, "custom configuration persists stage");
+await Rejected(() => addonService.ProposeAsync(addonOrder.Id, new ProposeAddonRequest { CreatorAddonId = customConfig.Id }, clientId, default), "Final extras unavailable in Lineart");
+await Rejected(() => addonService.SaveAsync(new SaveCreatorAddonRequest { Title = "Invalid", Price = -1 }, creatorId, default), "negative custom price rejected");
+await Rejected(() => addonService.SaveAsync(new SaveCreatorAddonRequest { Title = "Invalid", Price = 1.5m }, creatorId, default), "fractional VND rejected");
+var lineartOption = await addonService.SaveAsync(new SaveCreatorAddonRequest { Title = "Alt expression", Price = 40, AllowedMilestone = "Lineart" }, creatorId, default);
+var clientProposal = await addonService.ProposeAsync(addonOrder.Id, new ProposeAddonRequest { CreatorAddonId = lineartOption.Id, Price = 1, AllowedMilestone = "Final" }, clientId, default);
+Equal(40m, clientProposal.Price, "client cannot override configured price");
+Equal("Lineart", clientProposal.AllowedMilestone, "client cannot override configured stage");
+await addonService.SaveAsync(new SaveCreatorAddonRequest { Id = lineartOption.Id, Title = lineartOption.Title, Price = 70, AllowedMilestone = "Lineart", IsActive = false }, creatorId, default);
+await addonService.RespondAsync(addonOrder.Id, clientProposal.Id, new("Accept"), clientId, default);
+Equal(490m, addonCommission.FinalPrice, "accepted proposal keeps price snapshot after config edits");
+await Rejected(() => addonService.ProposeAsync(addonOrder.Id, new ProposeAddonRequest { CreatorAddonId = lineartOption.Id }, creatorId, default), "disabled addon unavailable");
+await Rejected(() => addonService.RespondAsync(addonOrder.Id, declined.Id, new("Accept"), clientId, default), "rejected quote cannot be paid");
+var anyProposal = await addonService.ProposeAsync(addonOrder.Id, new ProposeAddonRequest { Title = "Any extra", Price = 10, AllowedMilestone = "Any" }, creatorId, default);
+var lineartMilestone = addonCommission.Milestones.Single(x => x.Sequence == 2);
+await service.SubmitMilestoneWipAsync(addonOrder.Id, lineartMilestone.Id, null, new MemoryStream(new byte[] { 1 }), "image/png", creatorId);
+await service.ApproveMilestoneAsync(addonOrder.Id, lineartMilestone.Id, clientId);
+await Rejected(() => addonService.RespondAsync(addonOrder.Id, anyProposal.Id, new("Accept"), clientId, default), "Any proposal still expires when sequence changes");
+await Rejected(() => addonService.ProposeAsync(addonOrder.Id, new ProposeAddonRequest { CreatorAddonId = extra.Id }, creatorId, default), "extra character blocked at Final");
+var finalProposal = await addonService.ProposeAsync(addonOrder.Id, new ProposeAddonRequest { CreatorAddonId = customConfig.Id }, creatorId, default);
+await addonService.RespondAsync(addonOrder.Id, finalProposal.Id, new("Accept"), clientId, default);
+Equal(3, finalProposal.MilestoneSequence, "Final source addon targets final milestone");
+Equal(150m, addonCommission.EscrowHeldAmount, "Final addon included in remaining escrow");
+var finalMilestone = addonCommission.Milestones.Single(x => x.Sequence == 3);
+await service.SubmitMilestoneWipAsync(addonOrder.Id, finalMilestone.Id, null, new MemoryStream(new byte[] { 1 }), "image/png", creatorId);
+await service.ApproveMilestoneAsync(addonOrder.Id, finalMilestone.Id, clientId);
+Equal(0m, addonCommission.EscrowHeldAmount, "all funded extras disbursed at completion of milestones");
+Equal(540m, addonCommission.DisbursedAmount, "creator receives all base and extra funds");
+
+db.Vouchers.Add(new Voucher {
+    VoucherCode = "ADDON10", DiscountType = DiscountType.Percent, DiscountValue = 10,
+    Scope = VoucherScope.Commission, IsActive = true,
+    StartDate = VoucherCheckService.TodayInVietnam().AddDays(-1), EndDate = VoucherCheckService.TodayInVietnam().AddDays(1)
+});
+await db.SaveChangesAsync();
+var withVoucher = await service.CreateCommissionAsync(new CreateCommissionRequest {
+    CreatorId = profile.Id, PackageId = packageId, Title = "extras with voucher", AddonIds = [extra.Id],
+    VoucherCode = "ADDON10", DeadlineAt = DateTimeOffset.UtcNow.AddDays(7)
+}, clientId);
+Equal(420m, withVoucher.FinalPrice, "voucher discounts base price and leaves quoted extra intact");
+await service.RespondCommissionAsync(withVoucher.Id, new RespondCommissionRequest { Action = "Accept" }, creatorId);
+await service.AcceptWorkroomTermsAsync(withVoucher.Id, clientId);
+await service.AcceptWorkroomTermsAsync(withVoucher.Id, creatorId);
+await service.DepositEscrowAsync(withVoucher.Id, clientId, "Wallet");
+var voucherDetail = (await service.GetCommissionByIdAsync(withVoucher.Id, clientId))!;
+Equal(420m, voucherDetail.FinalPrice, "deposit revalidation preserves base-only discount");
+Equal(420m, voucherDetail.Milestones.Sum(x => x.Price), "funded milestones reconcile to discounted contract plus extras");
+Equal(240m, voucherDetail.Milestones.Single(x => x.Sequence == 1).Price, "Sketch retains full extra plus discounted base payment");
+foreach (var m in voucherDetail.Milestones.OrderBy(x => x.Sequence)) {
+    await service.SubmitMilestoneWipAsync(withVoucher.Id, m.Id, null, new MemoryStream(new byte[] { 1 }), "image/png", creatorId);
+    await service.ApproveMilestoneAsync(withVoucher.Id, m.Id, clientId);
+}
+Equal(0m, (await service.GetCommissionByIdAsync(withVoucher.Id, clientId))!.EscrowHeldAmount, "voucher plus extras releases all escrow safely");
 
 Console.WriteLine($"Passed {checks} commission workflow checks.");
 
