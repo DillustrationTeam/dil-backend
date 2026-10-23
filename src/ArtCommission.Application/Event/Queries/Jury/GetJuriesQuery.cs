@@ -7,6 +7,8 @@ namespace ArtCommission.Application.Event.Queries;
 
 public record GetJuriesQuery(
     Guid? EventId = null,
+    Guid? CreatorId = null,
+    Guid? UserId = null,
     string? Role = null,
     bool? IsHeadJury = null,
     string? Name = null,
@@ -39,6 +41,16 @@ public class GetJuriesQueryHandler
         if (request.EventId.HasValue && request.EventId.Value != Guid.Empty)
         {
             query = query.Where(j => j.EventId == request.EventId.Value);
+        }
+
+        if (request.CreatorId.HasValue && request.CreatorId.Value != Guid.Empty)
+        {
+            query = query.Where(j => j.CreatorId == request.CreatorId.Value);
+        }
+
+        if (request.UserId.HasValue && request.UserId.Value != Guid.Empty)
+        {
+            query = query.Where(j => j.CreatorId == request.UserId.Value || (j.Creator != null && j.Creator.UserId == request.UserId.Value));
         }
 
         // Filter theo role: HeadJury vs Jury / Member
@@ -99,6 +111,8 @@ public class GetJuriesQueryHandler
                 EventId = j.EventId,
                 EventTitle = j.Event != null ? j.Event.Title : null,
                 CreatorId = j.CreatorId,
+                CreatorUserId = j.Creator != null ? j.Creator.UserId : (Guid?)null,
+                UserId = j.Creator != null ? j.Creator.UserId : (Guid?)null,
                 CreatorName = j.Creator != null && j.Creator.User != null ? j.Creator.User.FullName : null,
                 CreatorDisplayName = j.Creator != null ? j.Creator.DisplayName : null,
                 CreatorAvatarUrl = null,
