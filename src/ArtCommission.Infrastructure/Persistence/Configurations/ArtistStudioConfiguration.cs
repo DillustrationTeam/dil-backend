@@ -55,7 +55,13 @@ public class ArtworkConfiguration : IEntityTypeConfiguration<Artwork>
         builder.Property(x => x.FlagReason).HasMaxLength(200);
         builder.Property(x => x.Resolution).HasMaxLength(50);
         builder.Property(x => x.ModerationNote).HasMaxLength(1000);
-        builder.Property(x => x.AiDetectionScore).HasPrecision(18, 2);
+        builder.Property(x => x.AiDetectionScore).HasPrecision(5, 4);
+        builder.Property(x => x.AiScanStatus).HasMaxLength(24).HasDefaultValue("Queued");
+        builder.Property(x => x.AiScanImageUrl).HasMaxLength(500);
+        builder.Property(x => x.AiScanError).HasMaxLength(300);
+        builder.Property(x => x.AiScanProvider).HasMaxLength(50);
+        builder.Property(x => x.AiScanModel).HasMaxLength(100);
+        builder.Property(x => x.AiScanUpdatedAt).IsConcurrencyToken();
         builder.Property(x => x.StartingPrice).HasPrecision(18, 2);
 
         builder.Ignore(x => x.AutoWatermarkEnabled);

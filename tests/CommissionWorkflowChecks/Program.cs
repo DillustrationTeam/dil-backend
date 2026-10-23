@@ -15,6 +15,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using ArtCommission.Infrastructure.ExternalServices.R2;
 
+if (args.Contains("--artwork-ai")) { await ArtworkAiChecks.RunAsync(); return; }
+
 if (args.Contains("--sql-addons")) { await SqlAddonChecks.RunAsync(); return; }
 
 var clientId = Guid.NewGuid();
@@ -438,6 +440,85 @@ foreach (var m in voucherDetail.Milestones.OrderBy(x => x.Sequence)) {
     await service.ApproveMilestoneAsync(withVoucher.Id, m.Id, clientId);
 }
 Equal(0m, (await service.GetCommissionByIdAsync(withVoucher.Id, clientId))!.EscrowHeldAmount, "voucher plus extras releases all escrow safely");
+
+Equal("Sketch,Lineart", AddonRules.Normalize("Lineart, Sketch,Sketch"), "multi-stage canonical storage");
+Equal(true, AddonRules.Allows("Sketch,Lineart", "Lineart"), "multi-stage permits selected stage");
+Equal(false, AddonRules.Allows("Sketch,Lineart", "Final"), "multi-stage blocks unselected stage");
+Equal(true, AddonRules.Allows("Any", "Final"), "Any permits final");
+await Rejected(() => { AddonRules.Normalize("Any,Sketch"); return Task.CompletedTask; }, "Any cannot mix with stages");
+await Rejected(() => { AddonRules.Normalize("Sketch,Unknown"); return Task.CompletedTask; }, "unknown milestone rejected");
+var oldRates = profile.RateCardJson;
+profile.RateCardJson = JsonSerializer.Serialize(new[] { new RateCardPackageDto(packageId, "Revision contract", null, 300m, [new(1, "Sketch", 100m, 0), new(2, "Final", 200m, 5)]) });
+await db.SaveChangesAsync();
+var revisionOrder = await service.CreateCommissionAsync(new CreateCommissionRequest { CreatorId = profile.Id, PackageId = packageId, Title = "Configured revision limits" }, clientId);
+Equal(0, (await db.Milestones.SingleAsync(m => m.CommissionId == revisionOrder.Id && m.Sequence == 1)).MaxRevisions, "zero revisions snapshot");
+Equal(5, (await db.Milestones.SingleAsync(m => m.CommissionId == revisionOrder.Id && m.Sequence == 2)).MaxRevisions, "custom revisions snapshot");
+profile.RateCardJson = oldRates;
+await db.SaveChangesAsync();
+Equal(5, (await db.Milestones.SingleAsync(m => m.CommissionId == revisionOrder.Id && m.Sequence == 2)).MaxRevisions, "rate card changes preserve existing revision contract");
+
+// Extended integration coverage: multi-stage extras through actual services.
+var multi = await addonService.SaveAsync(new SaveCreatorAddonRequest { Title = "Multi stage audit", Price = 15, AllowedMilestone = "Lineart, Sketch,Sketch", PackageId = packageId }, creatorId, default);
+Equal("Sketch,Lineart", multi.AllowedMilestone, "save canonicalizes milestone set");
+var multiBooking = await service.CreateCommissionAsync(new CreateCommissionRequest { CreatorId = profile.Id, PackageId = packageId, Title = "multi booking audit", AddonIds = [multi.Id] }, clientId);
+Equal(315m, multiBooking.FinalPrice, "booking charges multi-stage extra once");
+Equal(1, (await db.Set<CommissionAddon>().SingleAsync(a => a.CommissionId == multiBooking.Id)).MilestoneSequence, "booking assigns multi-stage extra to first eligible stage");
+await service.RespondCommissionAsync(multiBooking.Id, new RespondCommissionRequest { Action = "Accept" }, creatorId);
+await service.AcceptWorkroomTermsAsync(multiBooking.Id, clientId);
+await service.AcceptWorkroomTermsAsync(multiBooking.Id, creatorId);
+await service.DepositEscrowAsync(multiBooking.Id, clientId, "Wallet");
+var multiStages = await db.Milestones.Where(m => m.CommissionId == multiBooking.Id).OrderBy(m => m.Sequence).ToListAsync();
+await service.SubmitMilestoneWipAsync(multiBooking.Id, multiStages[0].Id, null, new MemoryStream([1]), "image/png", creatorId);
+await service.ApproveMilestoneAsync(multiBooking.Id, multiStages[0].Id, clientId);
+var atLineart = await addonService.ProposeAsync(multiBooking.Id, new ProposeAddonRequest { CreatorAddonId = multi.Id }, creatorId, default);
+Equal(2, atLineart.MilestoneSequence, "multi-stage option works at Lineart");
+await addonService.RespondAsync(multiBooking.Id, atLineart.Id, new("Accept"), clientId, default);
+Equal(330m, (await db.Commissions.SingleAsync(c => c.Id == multiBooking.Id)).FinalPrice, "Lineart extra updates existing escrow contract");
+var staleMulti = await addonService.ProposeAsync(multiBooking.Id, new ProposeAddonRequest { CreatorAddonId = multi.Id }, creatorId, default);
+await service.SubmitMilestoneWipAsync(multiBooking.Id, multiStages[1].Id, null, new MemoryStream([1]), "image/png", creatorId);
+await service.ApproveMilestoneAsync(multiBooking.Id, multiStages[1].Id, clientId);
+await Rejected(() => addonService.ProposeAsync(multiBooking.Id, new ProposeAddonRequest { CreatorAddonId = multi.Id }, creatorId, default), "multi-stage Sketch+Lineart blocked at Final");
+await Rejected(() => addonService.RespondAsync(multiBooking.Id, staleMulti.Id, new("Accept"), clientId, default), "multi-stage stale proposal cannot be paid");
+
+// Revision limits exercise submission/revision/resubmission, not only DTO snapshots.
+profile.RateCardJson = JsonSerializer.Serialize(new[] { new RateCardPackageDto(packageId, "Revision audit", null, 300m, [new(1, "Sketch", 100m, 0), new(2, "Final", 200m, 1)]) });
+await db.SaveChangesAsync();
+var limited = await Create("revision enforcement audit");
+await service.RespondCommissionAsync(limited.Id, new RespondCommissionRequest { Action = "Accept" }, creatorId);
+await service.DepositEscrowAsync(limited.Id, clientId, "Wallet");
+await service.SubmitMilestoneWipAsync(limited.Id, limited.Milestones[0], null, new MemoryStream([1]), "image/png", creatorId);
+await Rejected(() => service.RequestMilestoneRevisionAsync(limited.Id, limited.Milestones[0], new RequestRevisionRequest { FeedbackComment = "Please adjust the face" }, clientId), "zero revision limit actually enforced");
+Equal(0, (await db.Milestones.SingleAsync(m => m.Id == limited.Milestones[0])).RevisionCount, "denied zero revision does not increment counter");
+await service.ApproveMilestoneAsync(limited.Id, limited.Milestones[0], clientId);
+await service.SubmitMilestoneWipAsync(limited.Id, limited.Milestones[1], null, new MemoryStream([1]), "image/png", creatorId);
+await service.RequestMilestoneRevisionAsync(limited.Id, limited.Milestones[1], new RequestRevisionRequest { FeedbackComment = "Please adjust the lighting" }, clientId);
+await service.SubmitMilestoneWipAsync(limited.Id, limited.Milestones[1], null, new MemoryStream([1]), "image/png", creatorId);
+await Rejected(() => service.RequestMilestoneRevisionAsync(limited.Id, limited.Milestones[1], new RequestRevisionRequest { FeedbackComment = "One more change please" }, clientId), "one revision limit blocks second revision");
+Equal(1, (await db.Milestones.SingleAsync(m => m.Id == limited.Milestones[1])).RevisionCount, "exhausted revision limit preserves counter");
+await service.ApproveMilestoneAsync(limited.Id, limited.Milestones[1], clientId);
+Equal(0m, (await db.Commissions.SingleAsync(c => c.Id == limited.Id)).EscrowHeldAmount, "revision workflow still releases full escrow");
+profile.RateCardJson = oldRates;
+await db.SaveChangesAsync();
+var legacyRates = JsonSerializer.Deserialize<List<RateCardPackageDto>>("[{\"Id\":\"" + packageId + "\",\"Name\":\"Legacy\",\"Price\":100,\"Milestones\":[{\"Sequence\":1,\"Title\":\"Sketch\",\"Price\":100}]}]")!;
+Equal(3, legacyRates[0].Milestones[0].MaxRevisions, "old rate card without revision field keeps default 3");
+var rateHandler = new ArtCommission.Application.ArtistStudio.Commands.SaveCreatorRateCard.SaveCreatorRateCardCommandHandler(db);
+foreach (var limit in new[] { -1, 21 }) {
+ var invalidSave = await rateHandler.Handle(new(creatorId, [new(packageId, "Invalid limit", null, 100, [new(1, "Sketch", 100, limit)])]), default);
+ Equal(false, invalidSave.Success, $"server rejects revision limit {limit}");
+ Equal(oldRates, profile.RateCardJson, "invalid revision save preserves old rate card");
+}
+// Audit interoperability of deleting a package and managing an existing scoped add-on.
+var removedPackage = await rateHandler.Handle(new(creatorId, []), default);
+Equal(true, removedPackage.Success, "existing remove-all-packages action still saves");
+var orphanDisabled = await addonService.SaveAsync(new SaveCreatorAddonRequest { Id = multi.Id, Title = multi.Title, Price = multi.Price, AllowedMilestone = multi.AllowedMilestone, PackageId = packageId, IsActive = false }, creatorId, default);
+Equal(false, orphanDisabled.IsActive, "scoped add-on can be disabled after package removal");
+var orphanEnabled = await addonService.SaveAsync(new SaveCreatorAddonRequest { Id = multi.Id, Title = multi.Title, Price = multi.Price, AllowedMilestone = multi.AllowedMilestone, PackageId = packageId, IsActive = true }, creatorId, default);
+Equal(true, orphanEnabled.IsActive, "scoped add-on can be re-enabled after package removal");
+Equal(packageId, orphanEnabled.PackageId!.Value, "orphan add-on retains package scope");
+await Rejected(() => addonService.SaveAsync(new SaveCreatorAddonRequest { Title = "Invalid new scope", Price = 15, PackageId = packageId }, creatorId, default), "new offer cannot target removed package");
+await Rejected(() => addonService.SaveAsync(new SaveCreatorAddonRequest { Id = multi.Id, Title = multi.Title, Price = 15, PackageId = Guid.NewGuid() }, creatorId, default), "owned offer cannot be reassigned to unknown package");
+profile.RateCardJson = oldRates;
+await db.SaveChangesAsync();
 
 Console.WriteLine($"Passed {checks} commission workflow checks.");
 

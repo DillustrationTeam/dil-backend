@@ -43,11 +43,24 @@ public static class AddonRules
         new("rush-order", "Giao gấp 24–48h", "Final")
     ];
 
+    public static string Normalize(string milestone)
+    {
+        var values = (milestone ?? "").Split(',').Select(x => x.Trim()).Distinct().ToArray();
+        if (values.Length == 0 || values.Any(x => x is not ("Sketch" or "Lineart" or "Final" or "Any"))
+            || (values.Contains("Any") && values.Length != 1))
+            throw new ArgumentException("Chọn một hoặc nhiều mốc hợp lệ, hoặc Any.");
+        return values.Contains("Any") ? "Any" : string.Join(",", new[] { "Sketch", "Lineart", "Final" }.Where(values.Contains));
+    }
+
+    public static bool Allows(string allowed, string stage) => Normalize(allowed) is var normalized
+        && (normalized == "Any" || normalized.Split(',').Contains(stage));
+
     public static void Validate(string title, decimal price, string milestone, int days, string? description)
     {
+        Normalize(milestone);
         if (string.IsNullOrWhiteSpace(title) || title.Trim().Length > 200 || description?.Length > 2000
             || price <= 0 || price > 999999999999m || decimal.Truncate(price) != price
-            || days < 0 || days > 365 || milestone is not ("Sketch" or "Lineart" or "Final" or "Any"))
+            || days < 0 || days > 365)
             throw new ArgumentException("Phụ phí cần tên (tối đa 200 ký tự), giá nguyên VND dương, mốc hợp lệ và gia hạn 0–365 ngày.");
     }
 

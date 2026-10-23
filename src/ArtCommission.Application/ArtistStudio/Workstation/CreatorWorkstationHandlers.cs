@@ -71,8 +71,29 @@ public class CreatorWorkstationMutationHandler : IRequestHandler<CreatorWorkstat
                 if (c.Payload is not UpdateWorkItemStageRequest stage || !Stages.Contains(stage.Stage)) return (false, null, new[] { "Work item stage is invalid." });
                 var existing = await _db.CreatorWorkItems.FirstOrDefaultAsync(x => x.Id == c.TargetId && x.CreatorProfileId == profile.Id && !x.IsDeleted, ct); if (existing is null) return (false, null, new[] { "Work item not found." }); existing.Stage = stage.Stage; existing.UpdatedAt = DateTimeOffset.UtcNow; await _db.SaveChangesAsync(ct); return (true, new CreatorWorkItemDto(existing.Id, existing.ClientName, existing.Title, existing.Stage, existing.DueAt, existing.CreatedAt), Array.Empty<string>());
             case "asset":
-                if (c.Payload is not CreateCreatorAssetRequest asset || string.IsNullOrWhiteSpace(asset.Name) || !new[] { "Pose", "Palette", "Preset" }.Contains(asset.AssetType)) return (false, null, new[] { "Asset type, name, or data is invalid." });
-                var newAsset = new CreatorAsset { CreatorProfileId = profile.Id, AssetType = asset.AssetType, Name = asset.Name.Trim(), AssetUrl = asset.AssetUrl, MetadataJson = asset.MetadataJson }; _db.CreatorAssets.Add(newAsset); await _db.SaveChangesAsync(ct); return (true, new CreatorAssetDto(newAsset.Id, newAsset.AssetType, newAsset.Name, newAsset.AssetUrl, newAsset.MetadataJson, newAsset.CreatedAt), Array.Empty<string>());
+            case "update-asset":
+                if (c.Payload is not CreateCreatorAssetRequest asset) return (false, null, new[] { "Asset data is required." });
+                var error = CreatorAssetValidation.Error(asset);
+                if (error is not null) return (false, null, new[] { error });
+                CreatorAsset newAsset;
+                if (c.Action == "update-asset")
+                {
+                    var ownedAsset = await _db.CreatorAssets.FirstOrDefaultAsync(x => x.Id == c.TargetId && x.CreatorProfileId == profile.Id && !x.IsDeleted, ct);
+                    if (ownedAsset is null) return (false, null, new[] { "Asset not found." });
+                    newAsset = ownedAsset;
+                    newAsset.UpdatedAt = DateTimeOffset.UtcNow;
+                }
+                else
+                {
+                    newAsset = new CreatorAsset { CreatorProfileId = profile.Id };
+                    _db.CreatorAssets.Add(newAsset);
+                }
+                newAsset.AssetType = asset.AssetType;
+                newAsset.Name = asset.Name.Trim();
+                newAsset.AssetUrl = asset.AssetUrl?.Trim();
+                newAsset.MetadataJson = asset.MetadataJson;
+                await _db.SaveChangesAsync(ct);
+                return (true, new CreatorAssetDto(newAsset.Id, newAsset.AssetType, newAsset.Name, newAsset.AssetUrl, newAsset.MetadataJson, newAsset.CreatedAt), Array.Empty<string>());
             case "delete-asset":
                 var delete = await _db.CreatorAssets.FirstOrDefaultAsync(x => x.Id == c.TargetId && x.CreatorProfileId == profile.Id && !x.IsDeleted, ct); if (delete is null) return (false, null, new[] { "Asset not found." }); delete.IsDeleted = true; delete.UpdatedAt = DateTimeOffset.UtcNow; await _db.SaveChangesAsync(ct); return (true, null, Array.Empty<string>());
             default: return (false, null, new[] { "Unsupported creator workstation action." });

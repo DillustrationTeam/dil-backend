@@ -152,6 +152,12 @@ public sealed class UpdateCreatorArtworkCommandHandler
         if (request.ImageUrl is not null)
         {
             artwork.ImageUrl = request.ImageUrl;
+            artwork.AiDetectionScore = null;
+            artwork.AiScanStatus = "Queued";
+            artwork.AiScanImageUrl = null;
+            artwork.AiScanAttempts = 0;
+            artwork.AiScanUpdatedAt = DateTimeOffset.UtcNow;
+            artwork.AiScanError = null;
             artwork.ThumbnailUrl = request.ThumbnailUrl ?? request.ImageUrl;
             artwork.ModerationStatus = "Pending";
             artwork.ModeratorId = null;

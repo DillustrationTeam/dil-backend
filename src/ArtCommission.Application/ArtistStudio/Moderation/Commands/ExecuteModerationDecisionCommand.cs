@@ -106,7 +106,7 @@ public class ExecuteModerationDecisionCommandHandler
 
             case "flag_ai":
                 artwork.IsAiGenerated = true;
-                artwork.AiDetectionScore = artwork.AiDetectionScore ?? 1.0m;
+                // Moderator classification is separate from the detector score.
                 artwork.ModerationStatus = "Approved";
                 artwork.FlagReason = null;
                 foreach (var at in artwork.ArtworkTags.Where(at => at.Tag != null))

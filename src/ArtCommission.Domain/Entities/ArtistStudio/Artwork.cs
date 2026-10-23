@@ -15,6 +15,13 @@ public class Artwork : BaseEntity
     public int LikeCount { get; set; } // Lượt thích (database.sql)
     public bool IsAiGenerated { get; set; }
     public decimal? AiDetectionScore { get; set; }
+    public string AiScanStatus { get; set; } = "Queued";
+    public string? AiScanImageUrl { get; set; }
+    public int AiScanAttempts { get; set; }
+    public DateTimeOffset? AiScanUpdatedAt { get; set; }
+    public string? AiScanError { get; set; }
+    public string? AiScanProvider { get; set; }
+    public string? AiScanModel { get; set; }
     public string ModerationStatus { get; set; } = "Pending";
     public int ViewCount { get; set; }
     public string LicenseType { get; set; } = "Personal";

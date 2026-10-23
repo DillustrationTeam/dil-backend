@@ -113,4 +113,35 @@ Check(editedProfile.Success && editedProfile.Data?.Id == creator.Id, "Editing pr
 Check(creator.Headline is null && creator.WebsiteUrl is null && !creator.IsAcceptingOrders && creator.AvailableSlots == 0, "Editing clears fields and persists false/zero values");
 var createValidator = new ArtCommission.Application.ArtistStudio.Commands.CreateCreatorProfile.CreateCreatorProfileCommandValidator();
 Check(!createValidator.Validate(new ArtCommission.Application.ArtistStudio.Commands.CreateCreatorProfile.CreateCreatorProfileCommand(creator.UserId, "Creator", null, null, null, new string('x', 201), "javascript:alert(1)", "not-a-url")).IsValid, "Onboarding shares profile URL and length protections");
+// Asset library: persistence, validation, ownership and legacy compatibility.
+var assetWriter = new ArtCommission.Application.ArtistStudio.Workstation.CreatorWorkstationMutationHandler(db);
+var assetReader = new ArtCommission.Application.ArtistStudio.Workstation.CreatorWorkstationQueryHandler(db);
+var paletteRequest = new CreateCreatorAssetRequest("Palette", " Moonlight ", "", """{"colors":["#112233","#abcdef"],"notes":"Use for night scenes"}""");
+var paletteResult = await assetWriter.Handle(new("asset", creator.UserId, Guid.Empty, paletteRequest), default);
+Check(paletteResult.Success && paletteResult.Data is CreatorAssetDto { Name: "Moonlight" }, "Palette persists actual colors and trimmed name");
+var savedPalette = (CreatorAssetDto)paletteResult.Data!;
+Check((await assetReader.Handle(new ArtCommission.Application.ArtistStudio.Workstation.GetCreatorAssetsQuery(creator.UserId, "Palette"), default)).Single().MetadataJson == paletteRequest.MetadataJson, "Read preserves palette color values and notes");
+var outsiderCreator = new CreatorProfile { UserId = Guid.NewGuid(), DisplayName = "Other creator" };
+db.CreatorProfiles.Add(outsiderCreator); await db.SaveChangesAsync();
+Check((await assetReader.Handle(new ArtCommission.Application.ArtistStudio.Workstation.GetCreatorAssetsQuery(outsiderCreator.UserId, null), default)).Count == 0, "Other creator cannot list private library");
+Check(!(await assetWriter.Handle(new("update-asset", outsiderCreator.UserId, savedPalette.Id, paletteRequest), default)).Success, "Other creator cannot edit asset");
+Check(!(await assetWriter.Handle(new("delete-asset", outsiderCreator.UserId, savedPalette.Id), default)).Success, "Other creator cannot delete asset");
+foreach (var invalidAsset in new[] {
+    paletteRequest with { Name = " " }, paletteRequest with { Name = new string('a', 121) },
+    paletteRequest with { MetadataJson = "broken" }, paletteRequest with { MetadataJson = "[]" },
+    paletteRequest with { MetadataJson = """{"colors":["red","#112233"]}""" },
+    paletteRequest with { MetadataJson = """{"colors":["#112233"]}""" },
+    paletteRequest with { MetadataJson = """{"colors":["#112233","#abcdef"],"notes":12}""" },
+    paletteRequest with { AssetUrl = "javascript:alert(1)" },
+    paletteRequest with { AssetUrl = "https://user:password@example.com/img.png" },
+    new CreateCreatorAssetRequest("Pose", "Empty pose", "", "{}"),
+    new CreateCreatorAssetRequest("Preset", "Empty preset", "", "{}") })
+    Check(!(await assetWriter.Handle(new("asset", creator.UserId, Guid.Empty, invalidAsset), default)).Success, "Malformed/empty assets are rejected");
+var changed = paletteRequest with { Name = "Updated palette", MetadataJson = """{"colors":["#FFFFFF","#000000"]}""" };
+Check((await assetWriter.Handle(new("update-asset", creator.UserId, savedPalette.Id, changed), default)).Data is CreatorAssetDto { Name: "Updated palette" }, "Edit preserves asset identity");
+Check((await assetWriter.Handle(new("asset", creator.UserId, Guid.Empty, new CreateCreatorAssetRequest("Preset", "Soft shading", "", """{"notes":"Multiply opacity 25%"}""")), default)).Success, "Text preset can be used without image");
+Check((await assetWriter.Handle(new("asset", creator.UserId, Guid.Empty, new CreateCreatorAssetRequest("Pose", "Jump pose", "https://example.com/pose.png", "{}")), default)).Success, "Pose retains usable image URL");
+Check((await assetWriter.Handle(new("delete-asset", creator.UserId, savedPalette.Id), default)).Success, "Owner can delete asset");
+Check((await assetReader.Handle(new ArtCommission.Application.ArtistStudio.Workstation.GetCreatorAssetsQuery(creator.UserId, "Palette"), default)).Count == 0, "Deleted asset excluded from library");
+Check(!(await assetWriter.Handle(new("update-asset", creator.UserId, savedPalette.Id, changed), default)).Success, "Deleted asset cannot be edited");
 Console.WriteLine($"Passed {checks} creator feature checks.");

@@ -27,17 +27,19 @@ public class AddonService(AppDbContext db, IWalletService wallets) : IAddonServi
         var preset = r.PresetKey is null ? null : AddonRules.Presets.FirstOrDefault(x => x.Key == r.PresetKey)
             ?? throw new ArgumentException("Preset không hợp lệ.");
         var title = preset?.Title ?? r.Title;
-        var stage = preset?.AllowedMilestone ?? r.AllowedMilestone;
+        var stage = AddonRules.Normalize(preset?.AllowedMilestone ?? r.AllowedMilestone);
         AddonRules.Validate(title, r.Price, stage, r.ExtendDays, r.Description);
+        var addon = r.Id is null ? new CreatorAddon { CreatorId = profile.Id } :
+            await db.Set<CreatorAddon>().SingleOrDefaultAsync(x => x.Id == r.Id && x.CreatorId == profile.Id && !x.IsDeleted, ct)
+            ?? throw new KeyNotFoundException("Không tìm thấy phụ phí.");
         if (r.PackageId is not null)
         {
             var packages = JsonSerializer.Deserialize<List<RateCardPackageDto>>(profile.RateCardJson ?? "[]",
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new RateCardIdConverter() } });
-            if (packages?.Any(x => x.Id == r.PackageId) != true) throw new ArgumentException("Gói không thuộc Creator.");
+            // An owned offer may retain its original scope after that package is removed.
+            // Never convert it into a global offer or allow a new invalid package assignment.
+            if (packages?.Any(x => x.Id == r.PackageId) != true && !(r.Id is not null && addon.PackageId == r.PackageId)) throw new ArgumentException("Gói không thuộc Creator.");
         }
-        var addon = r.Id is null ? new CreatorAddon { CreatorId = profile.Id } :
-            await db.Set<CreatorAddon>().SingleOrDefaultAsync(x => x.Id == r.Id && x.CreatorId == profile.Id && !x.IsDeleted, ct)
-            ?? throw new KeyNotFoundException("Không tìm thấy phụ phí.");
         addon.Title = title.Trim(); addon.Price = r.Price; addon.Description = r.Description;
         addon.AllowedMilestone = stage; addon.ExtendDays = r.ExtendDays; addon.PresetKey = r.PresetKey;
         addon.PackageId = r.PackageId; addon.IsActive = r.IsActive; addon.UpdatedAt = DateTimeOffset.UtcNow;
@@ -69,7 +71,7 @@ public class AddonService(AppDbContext db, IWalletService wallets) : IAddonServi
         var m = c.Milestones.SingleOrDefault(x => x.Sequence == c.CurrentStage && !x.IsDeleted && x.Status != MilestoneStatus.Approved)
             ?? throw new InvalidOperationException("Mốc đã kết thúc.");
         if ((proposedSequence is not null && proposedSequence != m.Sequence) ||
-            (allowed != "Any" && allowed != AddonRules.Stage(m.Sequence, c.Milestones.Count(x => !x.IsDeleted))))
+            !AddonRules.Allows(allowed, AddonRules.Stage(m.Sequence, c.Milestones.Count(x => !x.IsDeleted))))
             throw new InvalidOperationException("Phụ phí không được phép tại mốc hiện tại. Hãy gửi đề xuất mới phù hợp.");
         return m;
     }
@@ -94,6 +96,7 @@ public class AddonService(AppDbContext db, IWalletService wallets) : IAddonServi
             ExtendDays = configured?.ExtendDays ?? r.ExtendDays, IsPreset = configured?.PresetKey is not null
         };
         AddonRules.Validate(a.Title, a.Price, a.AllowedMilestone, a.ExtendDays, a.Description);
+        a.AllowedMilestone = AddonRules.Normalize(a.AllowedMilestone);
         a.MilestoneSequence = Current(c, a.AllowedMilestone).Sequence;
         db.Add(a);
         await db.SaveChangesAsync(ct);

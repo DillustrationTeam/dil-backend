@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard;
 
-public record RateCardMilestoneDto(int Sequence, string Title, decimal Price);
+public record RateCardMilestoneDto(int Sequence, string Title, decimal Price, int MaxRevisions = 3);
 public record RateCardPackageDto(Guid Id, string Name, string? Description, decimal Price, List<RateCardMilestoneDto> Milestones);
 
 // Older stored packages used slugs. Map them consistently to IDs for display and ordering.

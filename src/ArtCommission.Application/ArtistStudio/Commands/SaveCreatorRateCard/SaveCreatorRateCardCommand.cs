@@ -32,6 +32,15 @@ public class SaveCreatorRateCardCommandHandler
             return (false, null, new[] { "Creator profile not found. Please setup your profile first." });
         }
 
+        if (request.Packages is null || request.Packages.Count > 10 || request.Packages.Any(p =>
+            p is null || string.IsNullOrWhiteSpace(p.Name) || p.Name.Length > 100 || p.Description?.Length > 2000 ||
+            p.Milestones is null || p.Milestones.Count is < 1 or > 10 ||
+            p.Milestones.Any(m => m is null || string.IsNullOrWhiteSpace(m.Title) || m.Title.Length > 200 ||
+                m.Price <= 0 || decimal.Truncate(m.Price) != m.Price || m.Price > 1000000000000m || m.MaxRevisions is < 0 or > 20) ||
+            !p.Milestones.Select(m => m.Sequence).SequenceEqual(Enumerable.Range(1, p.Milestones.Count)) ||
+            p.Price != p.Milestones.Sum(m => m.Price)))
+            return (false, null, new[] { "Gói cần 1–10 mốc, giá VND nguyên dương, tổng giá đúng và 0–20 lần sửa mỗi mốc." });
+
         try
         {
             profile.RateCardJson = JsonSerializer.Serialize(request.Packages ?? new List<RateCardPackageDto>(), JsonOptions);
