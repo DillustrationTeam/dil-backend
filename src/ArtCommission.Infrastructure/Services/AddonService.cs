@@ -3,16 +3,49 @@ using System.Text.Json;
 using ArtCommission.Application.Commission.DTOs;
 using ArtCommission.Application.Commission.Interfaces;
 using ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard;
+using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
 using ArtCommission.Domain.Entities.Commission;
 using ArtCommission.Domain.Enums;
 using ArtCommission.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace ArtCommission.Infrastructure.Services;
 
-public class AddonService(AppDbContext db, IWalletService wallets) : IAddonService
+public class AddonService(
+    AppDbContext db,
+    IWalletService wallets,
+    INotificationPublisher? notifications = null,
+    ILogger<AddonService>? logger = null) : IAddonService
 {
+    private async Task PublishSafeAsync(
+        Guid userId,
+        NotificationType type,
+        string title,
+        string body,
+        Guid commissionId,
+        string? dedupKey = null,
+        CancellationToken ct = default,
+        string? refType = null)
+    {
+        if (notifications == null) return;
+        try
+        {
+            await notifications.PublishAsync(
+                userId, type, title, body,
+                refType: refType ?? "CommissionWorkroom",
+                refId: commissionId,
+                dedupKey: dedupKey,
+                cancellationToken: ct);
+        }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "Failed to publish notification {Type} to {UserId} for commission {CommissionId}",
+                type, userId, commissionId);
+        }
+    }
+
     public async Task<List<CreatorAddon>> ListCreatorAsync(Guid id, CancellationToken ct)
     {
         var profile = await db.CreatorProfiles.AsNoTracking().FirstOrDefaultAsync(x => (x.Id == id || x.UserId == id) && !x.IsDeleted, ct)
@@ -68,8 +101,8 @@ public class AddonService(AppDbContext db, IWalletService wallets) : IAddonServi
             throw new InvalidOperationException("Đơn cần đang thực hiện và đã ký quỹ.");
         var m = c.Milestones.SingleOrDefault(x => x.Sequence == c.CurrentStage && !x.IsDeleted && x.Status != MilestoneStatus.Approved)
             ?? throw new InvalidOperationException("Mốc đã kết thúc.");
-        if ((proposedSequence is not null && proposedSequence != m.Sequence) ||
-            (allowed != "Any" && allowed != AddonRules.Stage(m.Sequence, c.Milestones.Count(x => !x.IsDeleted))))
+        var currentStageName = AddonRules.Stage(m.Sequence, c.Milestones.Count(x => !x.IsDeleted));
+        if ((proposedSequence is not null && proposedSequence != m.Sequence) || !AddonRules.IsStageAllowed(allowed, currentStageName))
             throw new InvalidOperationException("Phụ phí không được phép tại mốc hiện tại. Hãy gửi đề xuất mới phù hợp.");
         return m;
     }
@@ -97,6 +130,24 @@ public class AddonService(AppDbContext db, IWalletService wallets) : IAddonServi
         a.MilestoneSequence = Current(c, a.AllowedMilestone).Sequence;
         db.Add(a);
         await db.SaveChangesAsync(ct);
+
+        // Thông báo cho đối tác
+        var creatorUserId = await db.CreatorProfiles.Where(x => x.Id == c.CreatorId && !x.IsDeleted)
+            .Select(x => x.UserId).FirstOrDefaultAsync(ct);
+        var recipientUserId = isCreator ? c.ClientId : creatorUserId;
+        if (recipientUserId != Guid.Empty && recipientUserId != userId)
+        {
+            var senderRole = isCreator ? "Họa sĩ" : "Khách hàng";
+            await PublishSafeAsync(
+                recipientUserId,
+                NotificationType.CommissionStatusChanged,
+                $"Đề xuất phụ phí mới: {a.Title}",
+                $"{senderRole} đã đề xuất phụ phí \"{a.Title}\" ({a.Price:N0} VND) cho đơn \"{c.Title}\".",
+                c.Id,
+                $"AddonProposed:{a.Id}:{recipientUserId}",
+                ct);
+        }
+
         return a;
     }
 
@@ -132,6 +183,44 @@ public class AddonService(AppDbContext db, IWalletService wallets) : IAddonServi
         else { a.Status = target; a.UpdatedAt = DateTimeOffset.UtcNow; }
         await db.SaveChangesAsync(ct);
         if (tx is not null) await tx.CommitAsync(ct);
+
+        // Thông báo kết quả phản hồi
+        var creatorUserId = await db.CreatorProfiles.Where(x => x.Id == c.CreatorId && !x.IsDeleted)
+            .Select(x => x.UserId).FirstOrDefaultAsync(ct);
+        if (r.Action == "Accept")
+        {
+            if (creatorUserId != Guid.Empty)
+            {
+                await PublishSafeAsync(
+                    creatorUserId,
+                    NotificationType.EscrowStatusChanged,
+                    $"Phụ phí đã được ký quỹ: {a.Title}",
+                    $"Khách hàng đã ký quỹ thành công cho phụ phí \"{a.Title}\" (+{a.Price:N0} VND). Deadline được gia hạn thêm {a.ExtendDays} ngày.",
+                    c.Id,
+                    $"AddonAccepted:{a.Id}:{creatorUserId}",
+                    ct);
+            }
+            await PublishSafeAsync(
+                c.ClientId,
+                NotificationType.EscrowStatusChanged,
+                "Ký quỹ phụ phí thành công",
+                $"Bạn đã ký quỹ {a.Price:N0} VND cho phụ phí \"{a.Title}\" của đơn \"{c.Title}\".",
+                c.Id,
+                $"AddonAcceptedClient:{a.Id}:{c.ClientId}",
+                ct);
+        }
+        else if (creatorUserId != Guid.Empty)
+        {
+            await PublishSafeAsync(
+                creatorUserId,
+                NotificationType.CommissionStatusChanged,
+                $"Đề xuất phụ phí bị từ chối",
+                $"Khách hàng đã từ chối phụ phí \"{a.Title}\" của đơn \"{c.Title}\".",
+                c.Id,
+                $"AddonRejected:{a.Id}:{creatorUserId}",
+                ct);
+        }
+
         return a;
     }
 }

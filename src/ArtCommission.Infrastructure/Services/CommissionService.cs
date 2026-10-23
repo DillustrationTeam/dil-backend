@@ -144,7 +144,7 @@ public class CommissionService : ICommissionService
         foreach (var addon in bookingAddons)
         {
             AddonRules.Validate(addon.Title, addon.Price, addon.AllowedMilestone, addon.ExtendDays, addon.Description);
-            var milestone = milestones.FirstOrDefault(x => addon.AllowedMilestone == "Any" || AddonRules.Stage(x.Sequence, milestones.Count) == addon.AllowedMilestone)
+            var milestone = milestones.FirstOrDefault(x => AddonRules.IsStageAllowed(addon.AllowedMilestone, AddonRules.Stage(x.Sequence, milestones.Count)))
                 ?? throw new ArgumentException("Gói không có mốc phù hợp với phụ phí.");
             milestone.Price += addon.Price;
             totalPrice += addon.Price;
@@ -182,7 +182,7 @@ public class CommissionService : ICommissionService
         _dbContext.Commissions.Add(commission);
         foreach (var addon in bookingAddons)
         {
-            var sequence = milestones.First(x => addon.AllowedMilestone == "Any" || AddonRules.Stage(x.Sequence, milestones.Count) == addon.AllowedMilestone).Sequence;
+            var sequence = milestones.First(x => AddonRules.IsStageAllowed(addon.AllowedMilestone, AddonRules.Stage(x.Sequence, milestones.Count))).Sequence;
             _dbContext.Add(new CommissionAddon {
                 CommissionId = commission.Id, ProposedById = clientId, Title = addon.Title, Description = addon.Description,
                 Price = addon.Price, AllowedMilestone = addon.AllowedMilestone, MilestoneSequence = sequence,

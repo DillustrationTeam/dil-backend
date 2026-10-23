@@ -319,11 +319,24 @@ await using (var second = new AppDbContext(raceOptions))
 }
 
 // Add-on pricing snapshots, milestone gating, wallet accounting and idempotency.
-var addonService = new AddonService(db, new WalletService(db));
+var addonService = new AddonService(db, new WalletService(db), notifications);
 var extra = await addonService.SaveAsync(new SaveCreatorAddonRequest {
     PresetKey = "extra-character", Title = "ignored", Price = 150, AllowedMilestone = "Final", ExtendDays = 1
 }, creatorId, default);
 Equal("Sketch", extra.AllowedMilestone, "preset stage cannot be overridden");
+
+// Multi-stage milestone validation and matching
+var multiStageConfig = await addonService.SaveAsync(new SaveCreatorAddonRequest {
+    Title = "Multi Stage Addon", Price = 80, AllowedMilestone = "Sketch,Lineart"
+}, creatorId, default);
+Equal("Sketch,Lineart", multiStageConfig.AllowedMilestone, "multi-stage allowed milestones persisted");
+Equal(true, AddonRules.IsStageAllowed("Sketch,Lineart", "Sketch"), "Sketch matches Sketch,Lineart");
+Equal(true, AddonRules.IsStageAllowed("Sketch,Lineart", "Lineart"), "Lineart matches Sketch,Lineart");
+Equal(false, AddonRules.IsStageAllowed("Sketch,Lineart", "Final"), "Final blocked for Sketch,Lineart");
+Equal(false, AddonRules.IsValidMilestone("Sketch,Invalid"), "invalid milestone rejected");
+Equal(true, AddonRules.IsValidMilestone("Sketch,Lineart,Final"), "three stages valid");
+Equal(true, AddonRules.IsValidMilestone("Any"), "Any is valid");
+await Rejected(() => addonService.SaveAsync(new SaveCreatorAddonRequest { Title = "Bad Milestone", Price = 100, AllowedMilestone = "Sketch,Invalid" }, creatorId, default), "invalid milestone config rejected");
 var addonOrder = await service.CreateCommissionAsync(new CreateCommissionRequest {
     CreatorId = profile.Id, PackageId = packageId, Title = "addons", DeadlineAt = DateTimeOffset.UtcNow.AddDays(10)
 }, clientId);
@@ -339,6 +352,7 @@ var lockedBeforeAddon = addonWallet.LockedBalance;
 var proposed = await addonService.ProposeAsync(addonOrder.Id, new ProposeAddonRequest { CreatorAddonId = extra.Id }, creatorId, default);
 Equal("Proposed", proposed.Status, "proposal awaits client consent");
 Equal(balanceBeforeAddon, addonWallet.Balance, "proposing does not charge");
+Equal((clientId, NotificationType.CommissionStatusChanged), (notifications.Items[^1].UserId, notifications.Items[^1].Type), "proposing notifies client");
 await addonService.RespondAsync(addonOrder.Id, proposed.Id, new("Accept"), clientId, default);
 Equal(balanceBeforeAddon - 150, addonWallet.Balance, "addon debits available funds");
 Equal(lockedBeforeAddon + 150, addonWallet.LockedBalance, "addon locks funds");
@@ -346,6 +360,8 @@ Equal(450m, addonCommission.FinalPrice, "addon increases contract price");
 Equal(450m, addonCommission.EscrowHeldAmount, "addon increases escrow");
 Equal(250m, addonCommission.Milestones.Single(x => x.Sequence == 1).Price, "addon paid through target milestone");
 Equal(deadlineBeforeAddon!.Value.AddDays(1), addonCommission.DeadlineAt!.Value, "addon extends deadline");
+Equal((creatorId, NotificationType.EscrowStatusChanged), (notifications.Items[^2].UserId, notifications.Items[^2].Type), "accept notifies creator of escrow");
+Equal((clientId, NotificationType.EscrowStatusChanged), (notifications.Items[^1].UserId, notifications.Items[^1].Type), "accept notifies client of escrow");
 await addonService.RespondAsync(addonOrder.Id, proposed.Id, new("Accept"), clientId, default);
 Equal(balanceBeforeAddon - 150, addonWallet.Balance, "accept retry does not charge twice");
 Equal(1, await db.WalletTransactions.CountAsync(x => x.RefId == proposed.Id), "one ledger entry per addon");
@@ -355,6 +371,7 @@ Equal("Rejected", declined.Status, "reject marks proposal");
 Equal(450m, addonCommission.FinalPrice, "reject leaves price unchanged");
 Equal(1, addonCommission.CurrentStage, "reject leaves progress unchanged");
 Equal(balanceBeforeAddon - 150, addonWallet.Balance, "reject leaves wallet unchanged");
+Equal((creatorId, NotificationType.CommissionStatusChanged), (notifications.Items[^1].UserId, notifications.Items[^1].Type), "reject notifies creator");
 var staleAddon = await addonService.ProposeAsync(addonOrder.Id, new ProposeAddonRequest { CreatorAddonId = extra.Id }, creatorId, default);
 var sketch = addonCommission.Milestones.Single(x => x.Sequence == 1);
 await service.SubmitMilestoneWipAsync(addonOrder.Id, sketch.Id, null, new MemoryStream(new byte[] { 1 }), "image/png", creatorId);
