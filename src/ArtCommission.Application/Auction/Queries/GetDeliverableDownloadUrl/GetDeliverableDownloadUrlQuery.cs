@@ -98,25 +98,36 @@ public class GetDeliverableDownloadUrlQueryHandler
         var deliverable = await _db.Deliverables
             .FirstOrDefaultAsync(d => d.AuctionId == auction.Id && !d.IsDeleted, cancellationToken);
 
+        var artwork = await _db.Artworks
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == auction.ArtworkId && !a.IsDeleted, cancellationToken);
+
         // Nếu bản ghi bàn giao chưa tồn tại (dữ liệu cũ), dựng từ tranh thay vì báo lỗi.
         if (deliverable is null)
         {
-            var artwork = await _db.Artworks
-                .AsNoTracking()
-                .FirstOrDefaultAsync(a => a.Id == auction.ArtworkId && !a.IsDeleted, cancellationToken);
+            var masterUrl = artwork?.ImageUrl;
+            if (string.IsNullOrWhiteSpace(masterUrl))
+            {
+                masterUrl = artwork?.WatermarkedUrl;
+            }
 
-            if (artwork is null || string.IsNullOrWhiteSpace(artwork.ImageUrl))
+            if (artwork is null || string.IsNullOrWhiteSpace(masterUrl))
             {
                 return (false, null, 404, ["Không tìm thấy file gốc của tranh."]);
             }
+
+            var isZip = masterUrl.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+            var isPng = masterUrl.Contains(".png", StringComparison.OrdinalIgnoreCase);
+            var detectedMime = isZip ? "application/zip" : (isPng ? "image/png" : "image/jpeg");
+            var detectedExt = isZip ? "zip" : (isPng ? "png" : "jpg");
 
             deliverable = new Domain.Entities.Auction.Deliverable
             {
                 AuctionId = auction.Id,
                 RecipientId = request.UserId,
-                FileName = artwork.Title,
-                FileUrl = artwork.ImageUrl,
-                MimeType = "image/jpeg",
+                FileName = $"{artwork.Title}.{detectedExt}",
+                FileUrl = masterUrl,
+                MimeType = detectedMime,
                 FileSizeBytes = artwork.FileSizeBytes
             };
 
@@ -159,9 +170,58 @@ public class GetDeliverableDownloadUrlQueryHandler
 
         await _db.SaveChangesAsync(cancellationToken);
 
+        var ownership = await _db.ArtworkOwnerships
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                o => o.AuctionId == auction.Id && o.OwnerId == request.UserId && !o.IsDeleted,
+                cancellationToken);
+
+        var certNumber = ownership != null
+            ? $"DIL-CERT-{ownership.AcquiredAt:yyyyMMdd}-{auction.Id.ToString()[..8].ToUpperInvariant()}"
+            : null;
+
+        var artworkImageUrl = artwork?.ImageUrl ?? artwork?.WatermarkedUrl;
+        string? artworkDownloadUrl = null;
+        if (!string.IsNullOrWhiteSpace(artworkImageUrl))
+        {
+            try
+            {
+                var artworkExt = Path.GetExtension(artworkImageUrl);
+                if (string.IsNullOrWhiteSpace(artworkExt) || artworkExt.Length > 5)
+                {
+                    artworkExt = ".png";
+                }
+                var artworkFileName = $"{artwork?.Title ?? "Artwork"}-Original{artworkExt}";
+                var presignedArtwork = await _fileStorage.CreateDownloadUrlAsync(
+                    artworkImageUrl,
+                    artworkFileName,
+                    TimeSpan.FromMinutes((double)lifetimeMinutes),
+                    cancellationToken);
+                artworkDownloadUrl = presignedArtwork.Url;
+            }
+            catch
+            {
+                artworkDownloadUrl = artworkImageUrl;
+            }
+        }
+
+        var isArchive = deliverable.FileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                     || deliverable.FileName.EndsWith(".rar", StringComparison.OrdinalIgnoreCase)
+                     || deliverable.FileName.EndsWith(".7z", StringComparison.OrdinalIgnoreCase)
+                     || deliverable.FileName.EndsWith(".psd", StringComparison.OrdinalIgnoreCase)
+                     || deliverable.FileUrl.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+
         return (true, new DeliverableDownloadDto(
             presigned.Url,
             presigned.ExpiresAt,
-            deliverable.FileName), 200, []);
+            deliverable.FileName,
+            deliverable.MimeType,
+            deliverable.FileSizeBytes,
+            certNumber,
+            "1-of-1 Exclusive Ownership & Commercial Rights",
+            artworkImageUrl,
+            artworkDownloadUrl ?? artworkImageUrl,
+            artwork?.Title,
+            isArchive), 200, []);
     }
 }

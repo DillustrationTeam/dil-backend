@@ -316,7 +316,226 @@ await using (var second = new AppDbContext(raceOptions))
     catch (DbUpdateConcurrencyException) { checks++; }
 }
 
-Console.WriteLine($"Passed {checks} commission workflow checks.");
+// --- Security & Business Audit Fixes Verification ---
+
+// Test B05: Chặn số tiền thập phân VND
+{
+    var paymentValidator = new ArtCommission.Application.Payment.Commands.CreatePaymentOrder.CreatePaymentOrderCommandValidator();
+    var invalidPayment = paymentValidator.Validate(new ArtCommission.Application.Payment.Commands.CreatePaymentOrder.CreatePaymentOrderCommand(
+        Guid.NewGuid(), 100000.99m, "PayOS"));
+    Equal(false, invalidPayment.IsValid, "B05: Payment order validator must reject decimal VND");
+
+    var validPayment = paymentValidator.Validate(new ArtCommission.Application.Payment.Commands.CreatePaymentOrder.CreatePaymentOrderCommand(
+        Guid.NewGuid(), 100000m, "PayOS"));
+    Equal(true, validPayment.IsValid, "B05: Payment order validator must accept integer VND");
+
+    var payoutValidator = new ArtCommission.Application.Payment.Commands.CreatePayoutRequest.CreatePayoutRequestCommandValidator();
+    var invalidPayout = payoutValidator.Validate(new ArtCommission.Application.Payment.Commands.CreatePayoutRequest.CreatePayoutRequestCommand(
+        Guid.NewGuid(), 50000.50m, Guid.NewGuid(), null));
+    Equal(false, invalidPayout.IsValid, "B05: Payout request validator must reject decimal VND");
+
+    var validPayout = payoutValidator.Validate(new ArtCommission.Application.Payment.Commands.CreatePayoutRequest.CreatePayoutRequestCommand(
+        Guid.NewGuid(), 50000m, Guid.NewGuid(), null));
+    Equal(true, validPayout.IsValid, "B05: Payout request validator must accept integer VND");
+}
+
+// Test S05: Che số tài khoản ngân hàng
+{
+    Equal("******7890", BankAccountMasker.Mask("1234567890"), "S05: Bank account masker masks standard length");
+    Equal("****", BankAccountMasker.Mask("1234"), "S05: Bank account masker masks short length");
+    Equal(string.Empty, BankAccountMasker.Mask(null), "S05: Bank account masker handles null");
+}
+
+// Test B07: Keyset pagination thông báo không bỏ sót bản ghi trùng timestamp
+{
+    await using var notifDb = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+        .UseInMemoryDatabase("notif-cursor-" + Guid.NewGuid()).Options);
+    var notifUser = Guid.NewGuid();
+    var fixedTimestamp = DateTimeOffset.UtcNow;
+    for (int i = 0; i < 25; i++)
+    {
+        notifDb.Notifications.Add(new ArtCommission.Domain.Entities.Notifications.Notification
+        {
+            UserId = notifUser,
+            NotificationTitle = $"Notif {i}",
+            Body = $"Body {i}",
+            NotificationType = NotificationType.PaymentSucceeded,
+            CreatedAt = fixedTimestamp
+        });
+    }
+    await notifDb.SaveChangesAsync();
+
+    var notifHandler = new ArtCommission.Application.Notifications.Queries.GetMyNotifications.GetMyNotificationsQueryHandler(notifDb);
+    var (p1Ok, p1Data, _, _) = await notifHandler.Handle(
+        new ArtCommission.Application.Notifications.Queries.GetMyNotifications.GetMyNotificationsQuery(notifUser, null, null, null, null, 20),
+        CancellationToken.None);
+    Equal(true, p1Ok, "B07: Page 1 success");
+    Equal(20, p1Data!.Items.Count, "B07: Page 1 has 20 items");
+    Equal(true, p1Data.NextCursor != null && p1Data.NextCursor.Contains('|'), "B07: Page 1 nextCursor has composite format");
+
+    var (p2Ok, p2Data, _, _) = await notifHandler.Handle(
+        new ArtCommission.Application.Notifications.Queries.GetMyNotifications.GetMyNotificationsQuery(notifUser, null, null, null, p1Data.NextCursor, 20),
+        CancellationToken.None);
+    Equal(true, p2Ok, "B07: Page 2 success");
+    Equal(5, p2Data!.Items.Count, "B07: Page 2 has remaining 5 items");
+
+    var allIds = p1Data.Items.Concat(p2Data.Items).Select(x => x.NotificationId).Distinct().Count();
+    Equal(25, allIds, "B07: Exactly 25 unique notifications retrieved across pages without skipping");
+}
+
+// Test B04: Phân giải CreatorProfile.Id sang UserId trong AI Conversation
+{
+    await using var aiDb = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+        .UseInMemoryDatabase("ai-creator-" + Guid.NewGuid()).Options);
+    var clientUser = Guid.NewGuid();
+    var creatorUser = Guid.NewGuid();
+    var creatorProf = new CreatorProfile { UserId = creatorUser, DisplayName = "AI Test Creator" };
+    aiDb.CreatorProfiles.Add(creatorProf);
+    var comm = new Commission
+    {
+        ClientId = clientUser,
+        CreatorId = creatorProf.Id, // CreatorId != creatorUser
+        Title = "AI Commission Test"
+    };
+    aiDb.Commissions.Add(comm);
+    await aiDb.SaveChangesAsync();
+
+    var aiHandler = new ArtCommission.Application.Ai.Commands.CreateAiConversation.CreateAiConversationCommandHandler(aiDb);
+    var (aiOk, aiDto, _) = await aiHandler.Handle(
+        new ArtCommission.Application.Ai.Commands.CreateAiConversation.CreateAiConversationCommand(
+            creatorUser, "Test Topic", "Commission", comm.Id),
+        CancellationToken.None);
+    Equal(true, aiOk, "B04: Creator can create AI conversation when CreatorId is CreatorProfile.Id");
+    Equal(comm.Id, aiDto!.ContextId, "B04: AI conversation correctly bound to Commission");
+
+    var stranger = Guid.NewGuid();
+    var (strangerOk, _, _) = await aiHandler.Handle(
+        new ArtCommission.Application.Ai.Commands.CreateAiConversation.CreateAiConversationCommand(
+            stranger, "Test Topic", "Commission", comm.Id),
+        CancellationToken.None);
+    Equal(false, strangerOk, "B04: Stranger rejected from creating AI conversation on commission");
+}
+
+// Test S02: Chặn chiếm chỗ voucher trên Commission của người khác
+{
+    await using var voucherDb = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+        .UseInMemoryDatabase("voucher-s02-" + Guid.NewGuid())
+        .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
+        .Options);
+    var legitClient = Guid.NewGuid();
+    var attacker = Guid.NewGuid();
+    var commOfLegit = new Commission
+    {
+        ClientId = legitClient,
+        CreatorId = Guid.NewGuid(),
+        Title = "Legit Commission",
+        TotalPrice = 500000m
+    };
+    voucherDb.Commissions.Add(commOfLegit);
+
+    var voucher = new Voucher
+    {
+        VoucherCode = "DISCOUNT10",
+        DiscountType = DiscountType.Fixed,
+        DiscountValue = 50000m,
+        StartDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1)),
+        EndDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(10)),
+        IsActive = true,
+        UsageLimit = 10,
+        UsedCount = 0
+    };
+    voucherDb.Vouchers.Add(voucher);
+    await voucherDb.SaveChangesAsync();
+
+    var voucherHandler = new ArtCommission.Application.Payment.Commands.RedeemVoucher.RedeemVoucherCommandHandler(
+        voucherDb,
+        new VoucherCheckService(voucherDb),
+        Microsoft.Extensions.Logging.Abstractions.NullLogger<ArtCommission.Application.Payment.Commands.RedeemVoucher.RedeemVoucherCommandHandler>.Instance);
+
+    var (attOk, _, _, attErrors) = await voucherHandler.Handle(
+        new ArtCommission.Application.Payment.Commands.RedeemVoucher.RedeemVoucherCommand(
+            attacker, "DISCOUNT10", "Commission", commOfLegit.Id, 500000m),
+        CancellationToken.None);
+
+    Equal(false, attOk, "S02: Attacker cannot redeem voucher on another user's commission");
+    Equal("Bạn không có quyền áp dụng mã giảm giá cho đơn đặt vẽ này.", attErrors[0], "S02: Returns permission denied error");
+
+    // Chủ đơn dùng hợp lệ lần đầu
+    var (legitOk, _, _, _) = await voucherHandler.Handle(
+        new ArtCommission.Application.Payment.Commands.RedeemVoucher.RedeemVoucherCommand(
+            legitClient, "DISCOUNT10", "Commission", commOfLegit.Id, 500000m),
+        CancellationToken.None);
+    Equal(true, legitOk, "S02/B03: Owner can redeem voucher on their commission");
+
+    // B03: Chủ đơn thử dùng lại cùng mã cho đơn khác (comm2)
+    var comm2OfLegit = new Commission
+    {
+        ClientId = legitClient,
+        CreatorId = Guid.NewGuid(),
+        Title = "Second Commission",
+        TotalPrice = 500000m
+    };
+    voucherDb.Commissions.Add(comm2OfLegit);
+    await voucherDb.SaveChangesAsync();
+
+    var (secondOk, secondConflict, _, secondErrors) = await voucherHandler.Handle(
+        new ArtCommission.Application.Payment.Commands.RedeemVoucher.RedeemVoucherCommand(
+            legitClient, "DISCOUNT10", "Commission", comm2OfLegit.Id, 500000m),
+        CancellationToken.None);
+    Equal(false, secondOk, "B03: User cannot redeem same voucher twice across different commissions");
+    Equal("Bạn đã sử dụng mã giảm giá này rồi.", secondErrors[0], "B03: Correct error when voucher reused by same user");
+}
+
+// Test B01: Chống race condition duyệt / từ chối payout
+{
+    await using var payoutDb = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+        .UseInMemoryDatabase("payout-b01-" + Guid.NewGuid())
+        .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
+        .Options);
+    var creatorUser = Guid.NewGuid();
+    var adminUser = Guid.NewGuid();
+    var bankAccount = new BankAccount
+    {
+        UserId = creatorUser,
+        BankName = "MBBank",
+        AccountNumber = "0987654321",
+        AccountHolder = "CREATOR TEST"
+    };
+    payoutDb.BankAccounts.Add(bankAccount);
+    var payoutReq = new PayoutRequest
+    {
+        UserId = creatorUser,
+        BankAccountId = bankAccount.Id,
+        Amount = 100000m,
+        Status = PayoutStatus.Pending
+    };
+    payoutDb.PayoutRequests.Add(payoutReq);
+    payoutDb.Wallets.Add(new Wallet { UserId = creatorUser, Balance = 0m });
+    await payoutDb.SaveChangesAsync();
+
+    var payoutHandler = new ArtCommission.Application.Payment.Commands.UpdatePayoutRequestStatus.UpdatePayoutRequestStatusCommandHandler(
+        payoutDb,
+        new WalletService(payoutDb),
+        new TestPayOsPayoutService());
+
+    // Lần 1: Admin từ chối thành công -> hoàn tiền
+    var (firstOk, _, firstDto, _) = await payoutHandler.Handle(
+        new ArtCommission.Application.Payment.Commands.UpdatePayoutRequestStatus.UpdatePayoutRequestStatusCommand(
+            adminUser, payoutReq.Id, "Rejected", "Lý do từ chối"),
+        CancellationToken.None);
+    Equal(true, firstOk, "B01: First rejection succeeds");
+    Equal("Rejected", firstDto!.PayoutStatus, "B01: Payout status is Rejected");
+
+    // Lần 2: Admin khác cố xử lý lại -> bị từ chối, không thể xử lý lại
+    var (secondOk, _, _, secondErrors) = await payoutHandler.Handle(
+        new ArtCommission.Application.Payment.Commands.UpdatePayoutRequestStatus.UpdatePayoutRequestStatusCommand(
+            Guid.NewGuid(), payoutReq.Id, "Rejected", "Lý do khác"),
+        CancellationToken.None);
+    Equal(false, secondOk, "B01: Second duplicate status update rejected");
+    Equal(true, secondErrors[0].Contains("không thể xử lý lại"), "B01: Correct error message on duplicate payout update");
+}
+
+Console.WriteLine($"Passed {checks} commission workflow and security audit checks.");
 
 sealed class TestWatermark : IWatermarkService
 {
@@ -327,6 +546,12 @@ sealed class TestStorage : IStorageService
     public Task<string> UploadPublicAsync(Stream stream, string key, string contentType, CancellationToken ct = default) => Task.FromResult(key);
     public Task<string> UploadPrivateAsync(Stream stream, string key, string contentType, CancellationToken ct = default) => Task.FromResult(key);
     public string GeneratePresignedDownloadUrl(string key, TimeSpan expiry) => "https://example.test/" + key;
+}
+
+sealed class TestPayOsPayoutService : IPayOsPayoutService
+{
+    public Task<PayOsPayoutResult> CreatePayoutAsync(PayOsPayoutRequest request, CancellationToken cancellationToken = default)
+        => Task.FromResult(new PayOsPayoutResult(true, "TX-TEST-01", null, "OK"));
 }
 
 sealed class TestNotificationPublisher : INotificationPublisher

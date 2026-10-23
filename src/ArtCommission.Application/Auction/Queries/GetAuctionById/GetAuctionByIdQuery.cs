@@ -151,7 +151,7 @@ public class GetAuctionByIdQueryHandler
         var detail = new AuctionDetailDto(
             AuctionId: auction.Id,
             Artwork: AuctionMapper.ToArtworkDto(auction.Artwork) is { } artwork
-                ? artwork with { DeliverableCount = deliverableCount }
+                ? artwork with { DeliverableCount = deliverableCount, HasMasterFilePack = deliverableCount > 0 }
                 : null,
             Seller: seller is null ? null : new AuctionSellerDto(seller.Id, seller.FullName),
             AuctionType: auction.AuctionType.ToString(),

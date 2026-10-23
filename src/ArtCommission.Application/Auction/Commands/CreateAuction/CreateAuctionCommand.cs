@@ -23,7 +23,10 @@ public record CreateAuctionCommand(
     decimal BidStep,
     decimal? BuyNowPrice,
     DateTimeOffset StartAt,
-    DateTimeOffset EndAt
+    DateTimeOffset EndAt,
+    string? MasterFileUrl = null,
+    string? MasterFileName = null,
+    long? MasterFileSizeBytes = null
 ) : IRequest<(bool Success, AuctionDto? Data, string[] Errors, bool Conflict)>;
 
 public class CreateAuctionCommandValidator : AbstractValidator<CreateAuctionCommand>
@@ -177,6 +180,22 @@ public class CreateAuctionCommandHandler
                 };
 
                 _db.Auctions.Add(auction);
+
+                if (!string.IsNullOrWhiteSpace(request.MasterFileUrl))
+                {
+                    var isZip = request.MasterFileUrl.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+                    _db.Deliverables.Add(new Deliverable
+                    {
+                        AuctionId = auction.Id,
+                        RecipientId = request.UserId, // Tạm gán seller cho tới khi phiên chốt sẽ đổi sang winner
+                        FileName = !string.IsNullOrWhiteSpace(request.MasterFileName) ? request.MasterFileName : $"{artwork.Title}-MasterPack.zip",
+                        FileUrl = request.MasterFileUrl,
+                        MimeType = isZip ? "application/zip" : "application/octet-stream",
+                        FileSizeBytes = request.MasterFileSizeBytes ?? 0,
+                        IsDelivered = false
+                    });
+                }
+
                 await EnsureContributorOwnerRowAsync(request.UserId, artwork, cancellationToken);
                 await _db.SaveChangesAsync(cancellationToken);
                 if (transaction is not null)

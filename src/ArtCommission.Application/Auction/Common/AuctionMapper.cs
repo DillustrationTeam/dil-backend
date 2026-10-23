@@ -18,8 +18,8 @@ public static class AuctionMapper
             : new AuctionArtworkDto(
                 artwork.Id,
                 artwork.Title,
-                artwork.ThumbnailUrl ?? artwork.ImageUrl,
-                artwork.ImageUrl,
+                artwork.ThumbnailUrl ?? artwork.WatermarkedUrl ?? artwork.ImageUrl,
+                artwork.WatermarkedUrl ?? artwork.ImageUrl,
                 artwork.Style,
                 artwork.CreatedAt,
                 artwork.Resolution,
