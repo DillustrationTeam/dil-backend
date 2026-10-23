@@ -1,3 +1,8 @@
+using ArtCommission.Infrastructure.ExternalServices.ArtworkAi;
+using ArtCommission.Application.ArtistStudio.Ai;
+using ArtCommission.API.Services;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using System.Text;
 using System.Security.Claims;
 using System.Net.Mail;
@@ -437,6 +442,7 @@ builder.Services.AddSwaggerGen(c =>
 
 // Register Application Services
 builder.Services.AddScoped<ICommissionService, CommissionService>();
+builder.Services.AddScoped<IAddonService, AddonService>();
 builder.Services.AddScoped<IWatermarkService, WatermarkService>();
 if (builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(builder.Configuration["CloudflareR2:AccountId"]))
 {
@@ -447,6 +453,18 @@ else
     builder.Services.AddScoped<IStorageService, CloudflareR2StorageService>();
 }
 
+
+builder.Services.Configure<ArtworkAiOptions>(builder.Configuration.GetSection("ArtworkAi"));
+builder.Services.AddHttpClient<IArtworkMetadataService, GeminiArtworkMetadataService>(client => client.Timeout = TimeSpan.FromSeconds(60));
+builder.Services.AddHttpClient<IArtworkAiDetector, SightengineArtworkDetector>(client => client.Timeout = TimeSpan.FromSeconds(45));
+builder.Services.AddScoped<ArtworkAiScanService>();
+builder.Services.AddHostedService<ArtworkAiScanWorker>();
+builder.Services.AddRateLimiter(options => {
+    options.RejectionStatusCode = 429;
+    options.AddPolicy("artwork-ai", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 6, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+});
 var app = builder.Build();
 
 // Configure HTTP request pipeline
@@ -603,6 +621,7 @@ app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapControllers();
 
