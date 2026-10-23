@@ -467,17 +467,23 @@ public class AuctionSettlementService : IAuctionSettlementService
         Domain.Entities.Auction.Auction auction,
         CancellationToken cancellationToken)
     {
-        var alreadyExists = await _db.Deliverables
-            .AnyAsync(d => d.AuctionId == auction.Id && !d.IsDeleted, cancellationToken);
-
-        if (alreadyExists)
+        // WinnerId phải được gán TRƯỚC khi gọi hàm này.
+        if (!auction.WinnerId.HasValue)
         {
             return;
         }
 
-        // WinnerId phải được gán TRƯỚC khi gọi hàm này.
-        if (!auction.WinnerId.HasValue)
+        var existingDeliverable = await _db.Deliverables
+            .FirstOrDefaultAsync(d => d.AuctionId == auction.Id && !d.IsDeleted, cancellationToken);
+
+        if (existingDeliverable is not null)
         {
+            // Nếu Creator đã đính kèm Master File Pack lúc tạo phiên, chuyển quyền nhận sang Winner
+            if (existingDeliverable.RecipientId != auction.WinnerId.Value)
+            {
+                existingDeliverable.RecipientId = auction.WinnerId.Value;
+                existingDeliverable.UpdatedAt = DateTimeOffset.UtcNow;
+            }
             return;
         }
 
@@ -492,17 +498,20 @@ public class AuctionSettlementService : IAuctionSettlementService
             return;
         }
 
-        var isPng = artwork.ImageUrl.Contains(".png", StringComparison.OrdinalIgnoreCase);
         // Ưu tiên bản không watermark ImageUrl nếu có WatermarkedUrl riêng, hoặc file chất lượng cao
         var masterFileUrl = !string.IsNullOrWhiteSpace(artwork.ImageUrl) ? artwork.ImageUrl : artwork.WatermarkedUrl ?? string.Empty;
+        var isZip = masterFileUrl.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+        var isPng = masterFileUrl.Contains(".png", StringComparison.OrdinalIgnoreCase);
+        var mimeType = isZip ? "application/zip" : (isPng ? "image/png" : "image/jpeg");
+        var ext = isZip ? "zip" : (isPng ? "png" : "jpg");
 
         _db.Deliverables.Add(new Deliverable
         {
             AuctionId = auction.Id,
             RecipientId = auction.WinnerId.Value,
-            FileName = $"{artwork.Title}.{(isPng ? "png" : "jpg")}",
+            FileName = $"{artwork.Title}.{ext}",
             FileUrl = masterFileUrl,
-            MimeType = isPng ? "image/png" : "image/jpeg",
+            MimeType = mimeType,
             FileSizeBytes = artwork.FileSizeBytes,
             IsDelivered = false
         });

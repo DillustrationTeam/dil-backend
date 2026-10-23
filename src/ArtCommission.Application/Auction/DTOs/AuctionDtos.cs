@@ -18,7 +18,8 @@ public sealed record AuctionArtworkDto(
     string? Resolution = null,
     long? FileSizeBytes = null,
     string? FileFormat = null,
-    int DeliverableCount = 0
+    int DeliverableCount = 0,
+    bool HasMasterFilePack = false
 );
 
 public sealed record AuctionSellerDto(
@@ -176,7 +177,15 @@ public sealed record AuctionSettlementStatusDto(
 public sealed record DeliverableDownloadDto(
     string DownloadUrl,
     DateTimeOffset ExpiresAt,
-    string FileName
+    string FileName,
+    string? MimeType = null,
+    long? FileSizeBytes = null,
+    string? CertificateNumber = null,
+    string? LicenseType = null,
+    string? ArtworkImageUrl = null,
+    string? ArtworkImageDownloadUrl = null,
+    string? ArtworkTitle = null,
+    bool HasMasterPack = false
 );
 
 /// <summary>Kết quả xử lý winner quá hạn thanh toán.</summary>
@@ -384,4 +393,71 @@ public sealed record RevenueSnapshotDto(
     int CompletedOrderCount,
     DateTimeOffset? RebuiltAt,
     int RebuildCount
+);
+
+// =====================================================================
+// Provenance, 1-of-1 Collection & Commercial Rights (VIP Winner Perks)
+// =====================================================================
+
+public sealed record MyCollectionItemDto(
+    Guid ArtworkId,
+    string Title,
+    string? ThumbnailUrl,
+    string ImageUrl,
+    string? Style,
+    Guid CreatorId,
+    string CreatorName,
+    DateTimeOffset AcquiredAt,
+    Guid? AuctionId,
+    decimal? FinalPrice,
+    string? CertificateNumber,
+    bool HasMasterFile,
+    string ExclusiveBadge = "Exclusive 1-of-1 Owner"
+);
+
+public sealed record ArtworkProvenanceHistoryItemDto(
+    Guid OwnerId,
+    string OwnerName,
+    DateTimeOffset AcquiredAt,
+    DateTimeOffset? ReleasedAt,
+    string TransferReason,
+    Guid? AuctionId,
+    decimal? Price,
+    bool IsCurrent
+);
+
+public sealed record ArtworkProvenanceDto(
+    Guid ArtworkId,
+    string ArtworkTitle,
+    string? ImageUrl,
+    Guid CreatorId,
+    string CreatorName,
+    DateTimeOffset CreatedAt,
+    Guid? CurrentOwnerId,
+    string? CurrentOwnerName,
+    bool IsCurrentOwnerCollector,
+    string ExclusiveBadge,
+    IReadOnlyList<ArtworkProvenanceHistoryItemDto> History
+);
+
+public sealed record CommercialRightsDeedDto(
+    Guid AuctionId,
+    Guid ArtworkId,
+    string ArtworkTitle,
+    string? ArtworkImageUrl,
+    string CertificateNumber,
+    string VerificationCode,
+    string DigitalSignature,
+    Guid CreatorId,
+    string CreatorName,
+    Guid OwnerId,
+    string OwnerName,
+    decimal FinalPrice,
+    DateTimeOffset SettledAt,
+    string ScopeOfRights,
+    bool CommercialExploitationAllowed,
+    bool VtuberAndGameDevAllowed,
+    bool ResellAllowed,
+    bool MoralRightsRetainedByArtist,
+    string TermsAndConditions
 );

@@ -118,8 +118,10 @@ public class VoucherRedemptionConfiguration : IEntityTypeConfiguration<VoucherRe
             .IsUnique()
             .HasDatabaseName("UX_VoucherRedemption_Ref");
 
+        // Mỗi người dùng chỉ được sử dụng một mã voucher 1 lần (LUẬT 1 - B03)
         builder.HasIndex(r => new { r.VoucherId, r.UserId })
-            .HasDatabaseName("IX_VoucherRedemption_Voucher_User");
+            .IsUnique()
+            .HasDatabaseName("UX_VoucherRedemption_Voucher_User");
 
         builder.HasIndex(r => r.UserId)
             .HasDatabaseName("IX_VoucherRedemption_UserId");

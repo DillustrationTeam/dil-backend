@@ -79,15 +79,30 @@ public class CreateAiConversationCommandHandler
         // Ngữ cảnh Commission: chỉ cho tạo khi user thực sự là người trong đơn.
         if (contextType == AiContextType.Commission && request.ContextId.HasValue)
         {
-            var isParticipant = await _db.Commissions
+            var commission = await _db.Commissions
                 .AsNoTracking()
-                .AnyAsync(
-                    c => c.Id == request.ContextId.Value
-                         && !c.IsDeleted
-                         && (c.ClientId == request.UserId || c.CreatorId == request.UserId),
-                    cancellationToken);
+                .Where(c => c.Id == request.ContextId.Value && !c.IsDeleted)
+                .Select(c => new { c.ClientId, c.CreatorId })
+                .FirstOrDefaultAsync(cancellationToken);
 
-            if (!isParticipant)
+            if (commission is null)
+            {
+                return (false, null, ["Không tìm thấy đơn đặt vẽ."]);
+            }
+
+            var isClient = commission.ClientId == request.UserId;
+            var isCreator = false;
+            if (!isClient)
+            {
+                isCreator = commission.CreatorId == request.UserId ||
+                            await _db.CreatorProfiles
+                                .AsNoTracking()
+                                .AnyAsync(
+                                    p => p.Id == commission.CreatorId && p.UserId == request.UserId && !p.IsDeleted,
+                                    cancellationToken);
+            }
+
+            if (!isClient && !isCreator)
             {
                 return (false, null, ["Bạn không phải thành viên của đơn đặt vẽ này."]);
             }
