@@ -47,4 +47,12 @@ public sealed record EventDetailDto
     public DateTimeOffset? UpdatedAt { get; set; }
 
     public bool IsOpenForSubmission { get; set; }
+    public List<EventCriteriaDto> Criteria { get; set; } = new();
+
+    public List<EventCriteriaDto> EventCriteria
+    {
+        get => Criteria;
+        set => Criteria = value;
+    }
 }
+

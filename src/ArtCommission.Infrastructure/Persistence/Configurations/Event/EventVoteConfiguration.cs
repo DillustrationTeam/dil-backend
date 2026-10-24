@@ -8,7 +8,7 @@ public class EventVoteConfiguration : IEntityTypeConfiguration<EventVote>
 {
     public void Configure(EntityTypeBuilder<EventVote> builder)
     {
-        builder.ToTable("EventVotes");
+        builder.ToTable("EventVotes", tb => tb.UseSqlOutputClause(false));
 
         builder.HasKey(v => new { v.SubmissionId, v.VoterId });
 

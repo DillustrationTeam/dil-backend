@@ -1,3 +1,4 @@
+
 using ArtCommission.Application.Event.Commands;
 using ArtCommission.Application.Event.DTOs;
 using ArtCommission.Application.Event.Queries;
@@ -171,7 +172,8 @@ public class EventsController : ApiControllerBase
             VotingEndAt: dto.VotingEndAt,
             ResultAnnouncementAt: dto.ResultAnnouncementAt,
             AdminId: CurrentUserId,
-            IsFeatured: dto.IsFeatured
+            IsFeatured: dto.IsFeatured,
+            Criteria: dto.Criteria
         );
 
         var (success, data, errors) = await Mediator.Send(command, cancellationToken);
@@ -219,7 +221,8 @@ public class EventsController : ApiControllerBase
             VotingEndAt: dto.VotingEndAt,
             ResultAnnouncementAt: dto.ResultAnnouncementAt,
             AdminId: CurrentUserId,
-            IsFeatured: dto.IsFeatured
+            IsFeatured: dto.IsFeatured,
+            Criteria: dto.Criteria
         );
 
         var (success, data, errors) = await Mediator.Send(command, cancellationToken);
@@ -714,5 +717,27 @@ public class EventsController : ApiControllerBase
             signedOffAt
         });
     }
+
+    /// <summary>
+    /// Lấy toàn bộ dữ liệu tiến độ và kết quả làm việc của Ban Giám khảo dành cho Trưởng ban (Head Jury Workspace).
+    /// </summary>
+    [HttpGet("{id:guid}/head-jury-workspace")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetHeadJuryWorkspace(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var query = new GetHeadJuryWorkspaceQuery(id);
+        var result = await Mediator.Send(query, cancellationToken);
+        if (result == null)
+        {
+            return NotFoundEnvelope("Không tìm thấy dữ liệu Head Jury Workspace cho sự kiện này.");
+        }
+        return OkEnvelope(result);
+    }
 }
+
+
 

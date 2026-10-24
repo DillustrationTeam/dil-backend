@@ -52,7 +52,20 @@ public class GetEventByIdQueryHandler
                 TotalVoteCount = e.Submissions.Sum(s => (int?)s.VoteCount) ?? 0,
                 CreatedAt = e.CreatedAt,
                 UpdatedAt = e.UpdatedAt,
-                IsOpenForSubmission = e.Status == EventStatus.Open && e.SubmissionStartAt <= now && e.SubmissionEndAt >= now
+                IsOpenForSubmission = e.Status == EventStatus.Open && e.SubmissionStartAt <= now && e.SubmissionEndAt >= now,
+                Criteria = e.Criteria
+                    .Where(c => !c.IsDeleted)
+                    .OrderBy(c => c.DisplayOrder)
+                    .Select(c => new EventCriteriaDto
+                    {
+                        Id = c.Id,
+                        EventId = c.EventId,
+                        Name = c.Name,
+                        Description = c.Description,
+                        MaxScore = c.MaxScore,
+                        Weight = c.Weight,
+                        DisplayOrder = c.DisplayOrder
+                    }).ToList()
             })
             .FirstOrDefaultAsync(cancellationToken);
     }
