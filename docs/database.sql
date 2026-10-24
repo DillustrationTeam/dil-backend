@@ -1002,5 +1002,86 @@ FROM dbo.EventSubmissions s;
 ALTER TABLE dbo.EventSubmissions ENABLE TRIGGER TR_EventSubmissions_PreventJurySubmission;
 GO
 
+-- Xóa 2 sự kiện The Day You Went Away và Sunlight (kèm toàn bộ dữ liệu phụ thuộc liên quan) nếu có
+IF OBJECT_ID(N'dbo.PlatformEvents', N'U') IS NOT NULL
+BEGIN
+    DECLARE @EventIds TABLE (Id UNIQUEIDENTIFIER);
+    INSERT INTO @EventIds (Id)
+    SELECT Id FROM dbo.PlatformEvents 
+    WHERE Title LIKE N'%The Day You Went Away%' OR Title LIKE N'%Sunlight%';
+
+    IF EXISTS (SELECT 1 FROM @EventIds)
+    BEGIN
+        IF OBJECT_ID(N'dbo.EventVotes', N'U') IS NOT NULL
+            DELETE FROM dbo.EventVotes WHERE SubmissionId IN (SELECT Id FROM dbo.EventSubmissions WHERE EventId IN (SELECT Id FROM @EventIds));
+
+        IF OBJECT_ID(N'dbo.CriteriaScores', N'U') IS NOT NULL
+            DELETE FROM dbo.CriteriaScores WHERE EventCriteriaId IN (SELECT Id FROM dbo.EventCriteria WHERE EventId IN (SELECT Id FROM @EventIds))
+               OR SubmissionId IN (SELECT Id FROM dbo.EventSubmissions WHERE EventId IN (SELECT Id FROM @EventIds));
+
+        IF OBJECT_ID(N'dbo.SubmissionDisputes', N'U') IS NOT NULL
+            DELETE FROM dbo.SubmissionDisputes WHERE EventId IN (SELECT Id FROM @EventIds);
+
+        IF OBJECT_ID(N'dbo.EventSubmissions', N'U') IS NOT NULL
+            DELETE FROM dbo.EventSubmissions WHERE EventId IN (SELECT Id FROM @EventIds);
+
+        IF OBJECT_ID(N'dbo.EventCriteria', N'U') IS NOT NULL
+            DELETE FROM dbo.EventCriteria WHERE EventId IN (SELECT Id FROM @EventIds);
+
+        IF OBJECT_ID(N'dbo.Juries', N'U') IS NOT NULL
+            DELETE FROM dbo.Juries WHERE EventId IN (SELECT Id FROM @EventIds);
+
+        IF OBJECT_ID(N'dbo.Invitations', N'U') IS NOT NULL
+            DELETE FROM dbo.Invitations WHERE EventId IN (SELECT Id FROM @EventIds);
+
+        DELETE FROM dbo.PlatformEvents WHERE Id IN (SELECT Id FROM @EventIds);
+    END
+END
+GO
+
+-- 4. Seed / Ensure Creator Profile & Role for artist1@seed.dillustration.art
+DECLARE @ArtistEmail NVARCHAR(256) = N'artist1@seed.dillustration.art';
+DECLARE @ArtistUserId UNIQUEIDENTIFIER = NULL;
+
+IF OBJECT_ID(N'dbo.Users', N'U') IS NOT NULL
+    SELECT TOP 1 @ArtistUserId = Id FROM dbo.Users WHERE Email = @ArtistEmail;
+ELSE IF OBJECT_ID(N'dbo.AspNetUsers', N'U') IS NOT NULL
+    SELECT TOP 1 @ArtistUserId = Id FROM dbo.AspNetUsers WHERE Email = @ArtistEmail;
+
+IF @ArtistUserId IS NOT NULL
+BEGIN
+    -- Ensure Creator Role
+    DECLARE @CreatorRoleId UNIQUEIDENTIFIER = NULL;
+    IF OBJECT_ID(N'dbo.Roles', N'U') IS NOT NULL
+        SELECT TOP 1 @CreatorRoleId = Id FROM dbo.Roles WHERE Name = N'Creator';
+
+    IF @CreatorRoleId IS NOT NULL AND OBJECT_ID(N'dbo.UserRoles', N'U') IS NOT NULL
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM dbo.UserRoles WHERE UserId = @ArtistUserId AND RoleId = @CreatorRoleId)
+            INSERT INTO dbo.UserRoles (UserId, RoleId) VALUES (@ArtistUserId, @CreatorRoleId);
+    END
+
+    -- Ensure CreatorProfile
+    IF OBJECT_ID(N'dbo.CreatorProfiles', N'U') IS NOT NULL
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM dbo.CreatorProfiles WHERE UserId = @ArtistUserId)
+        BEGIN
+            INSERT INTO dbo.CreatorProfiles (
+                Id, UserId, DisplayName, Headline, Bio, Specialties, Location,
+                IsAcceptingOrders, IsApproved, RatingAverage, RatingCount, FollowerCount,
+                CreatedAt, IsDeleted, IsAiVerified, CommissionSlots, CompletedOrdersCount, AvailableSlots
+            ) VALUES (
+                NEWID(), @ArtistUserId, N'Minh Châu Art Studio', N'Anime & Fantasy Character Illustrator',
+                N'Hoạ sĩ chuyên vẽ nhân vật phong cách anime, fantasy và chibi. Nhận đơn thương mại cho game, light novel, VTuber.',
+                N'Anime, Fantasy, Chibi, Portrait, Watercolor', N'Hồ Chí Minh City, Vietnam',
+                1, 1, 0.00, 0, 0,
+                SYSDATETIMEOFFSET(), 0, 0, 5, 0, 5
+            );
+        END
+    END
+END
+GO
+
 PRINT N'Database creation script with enhancements completed successfully!';
 GO
+

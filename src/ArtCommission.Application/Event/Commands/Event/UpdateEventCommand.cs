@@ -24,7 +24,8 @@ public record UpdateEventCommand(
     DateTimeOffset VotingEndAt,
     DateTimeOffset ResultAnnouncementAt,
     Guid AdminId,
-    bool IsFeatured = false
+    bool IsFeatured = false,
+    List<EventCriteriaRequestDto>? Criteria = null
 ) : IRequest<(bool Success, EventDetailDto? Data, string[] Errors)>;
 
 public class UpdateEventCommandHandler
@@ -51,6 +52,7 @@ public class UpdateEventCommandHandler
         var platformEvent = await _db.PlatformEvents
             .Include(e => e.CreatedByAdmin)
             .Include(e => e.Submissions)
+            .Include(e => e.Criteria)
             .FirstOrDefaultAsync(e => e.Id == request.EventId && !e.IsDeleted, cancellationToken);
 
         if (platformEvent == null)
@@ -64,6 +66,41 @@ public class UpdateEventCommandHandler
         if (timelineErrors.Count > 0)
         {
             return (false, null, timelineErrors.ToArray());
+        }
+
+        bool isJudgingStarted = platformEvent.JudgingStartAt <= now 
+            || platformEvent.Status == EventStatus.Judging 
+            || platformEvent.Status == EventStatus.Ended;
+
+        if (request.Criteria != null)
+        {
+            var activeExistingCriteria = platformEvent.Criteria
+                .Where(c => !c.IsDeleted)
+                .OrderBy(c => c.DisplayOrder)
+                .ToList();
+
+            bool isCriteriaModified = request.Criteria.Count != activeExistingCriteria.Count;
+            if (!isCriteriaModified)
+            {
+                for (int i = 0; i < request.Criteria.Count; i++)
+                {
+                    var req = request.Criteria[i];
+                    var exist = activeExistingCriteria[i];
+                    if (req.Name.Trim() != exist.Name
+                        || req.MaxScore != exist.MaxScore
+                        || req.Weight != exist.Weight
+                        || (req.Description?.Trim() ?? "") != (exist.Description?.Trim() ?? ""))
+                    {
+                        isCriteriaModified = true;
+                        break;
+                    }
+                }
+            }
+
+            if (isCriteriaModified && isJudgingStarted)
+            {
+                return (false, null, ["Event scoring criteria cannot be modified once the judging stage has started."]);
+            }
         }
 
         platformEvent.Title = request.Title.Trim();
@@ -82,6 +119,44 @@ public class UpdateEventCommandHandler
         platformEvent.VotingEndAt = request.VotingEndAt;
         platformEvent.ResultAnnouncementAt = request.ResultAnnouncementAt;
         platformEvent.UpdatedAt = now;
+
+        if (!isJudgingStarted && request.Criteria != null && request.Criteria.Count > 0)
+        {
+            var existingCriteriaIds = platformEvent.Criteria.Select(c => c.Id).ToList();
+            var hasScores = await _db.CriteriaScores.AnyAsync(
+                cs => existingCriteriaIds.Contains(cs.EventCriteriaId),
+                cancellationToken);
+
+            if (!hasScores)
+            {
+                foreach (var oldCrit in platformEvent.Criteria.Where(c => !c.IsDeleted))
+                {
+                    oldCrit.IsDeleted = true;
+                    oldCrit.UpdatedAt = now;
+                }
+
+                int order = 1;
+                foreach (var c in request.Criteria)
+                {
+                    if (string.IsNullOrWhiteSpace(c.Name)) continue;
+
+                    var newCrit = new Domain.Entities.Event.EventCriteria
+                    {
+                        Id = Guid.NewGuid(),
+                        EventId = platformEvent.Id,
+                        Name = c.Name.Trim(),
+                        Description = string.IsNullOrWhiteSpace(c.Description) ? null : c.Description.Trim(),
+                        MaxScore = c.MaxScore > 0 ? c.MaxScore : 10.0m,
+                        Weight = c.Weight > 0 ? c.Weight : 1.0m,
+                        DisplayOrder = c.DisplayOrder > 0 ? c.DisplayOrder : order++,
+                        CreatedAt = now,
+                        IsDeleted = false
+                    };
+                    _db.EventCriteria.Add(newCrit);
+                    platformEvent.Criteria.Add(newCrit);
+                }
+            }
+        }
 
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -109,7 +184,20 @@ public class UpdateEventCommandHandler
             TotalVoteCount = platformEvent.Submissions.Sum(s => (int?)s.VoteCount) ?? 0,
             CreatedAt = platformEvent.CreatedAt,
             UpdatedAt = platformEvent.UpdatedAt,
-            IsOpenForSubmission = platformEvent.Status == EventStatus.Open && platformEvent.SubmissionStartAt <= now && platformEvent.SubmissionEndAt >= now
+            IsOpenForSubmission = platformEvent.Status == EventStatus.Open && platformEvent.SubmissionStartAt <= now && platformEvent.SubmissionEndAt >= now,
+            Criteria = platformEvent.Criteria
+                .Where(c => !c.IsDeleted)
+                .OrderBy(c => c.DisplayOrder)
+                .Select(c => new EventCriteriaDto
+                {
+                    Id = c.Id,
+                    EventId = c.EventId,
+                    Name = c.Name,
+                    Description = c.Description,
+                    MaxScore = c.MaxScore,
+                    Weight = c.Weight,
+                    DisplayOrder = c.DisplayOrder
+                }).ToList()
         };
 
         return (true, data, Array.Empty<string>());
