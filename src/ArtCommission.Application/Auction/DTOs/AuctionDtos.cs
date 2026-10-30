@@ -56,7 +56,11 @@ public sealed record AuctionDto(
     DateTimeOffset? PaymentDeadline,
     string? CancelReason,
     /// <summary>Tên file gốc bàn giao cho winner. Null khi người gọi không đủ quyền xem.</summary>
-    string? OriginalFileUrl
+    string? OriginalFileUrl,
+    bool HasPhysicalCopy = false,
+    string? PhysicalDescription = null,
+    bool? RequiresPhysicalDelivery = null,
+    DateTimeOffset? PhysicalChoiceDeadline = null
 );
 
 /// <summary>Một dòng trong danh sách chợ đấu giá (GET /auctions).</summary>
@@ -68,7 +72,9 @@ public sealed record AuctionListItemDto(
     DateTimeOffset StartAt,
     DateTimeOffset EndAt,
     string AuctionStatus,
-    int WatchCount
+    int WatchCount,
+    bool HasPhysicalCopy = false,
+    string? PhysicalDescription = null
 );
 
 /// <summary>Chi tiết phiên kèm lịch sử bid gần nhất (GET /auctions/{id}).</summary>
@@ -93,7 +99,51 @@ public sealed record AuctionDetailDto(
     bool IsWatching,
     /// <summary>Người dẫn đầu hiện tại.</summary>
     Guid? LeadingBidderId,
-    IReadOnlyList<AuctionParticipantDto> Participants
+    IReadOnlyList<AuctionParticipantDto> Participants,
+    bool HasPhysicalCopy = false,
+    string? PhysicalDescription = null,
+    bool? RequiresPhysicalDelivery = null,
+    DateTimeOffset? PhysicalChoiceDeadline = null,
+    AuctionDeliveryDto? Delivery = null,
+    IReadOnlyList<AuctionReceiptDto>? Receipts = null
+);
+
+/// <summary>Thông tin giao nhận tranh vật lý của phiên.</summary>
+public sealed record AuctionDeliveryDto(
+    Guid Id,
+    Guid AuctionId,
+    Guid RecipientId,
+    string RecipientName,
+    string RecipientPhone,
+    string ShippingAddress,
+    string? NoteToSeller,
+    string? CarrierName,
+    string? TrackingCode,
+    string? TrackingUrl,
+    string? ShippingReceiptUrl,
+    string? PackageImageUrl,
+    string? DeliveryReceiptUrl,
+    string Status,
+    DateTimeOffset? ShippedAt,
+    DateTimeOffset? DeliveredAt,
+    DateTimeOffset? ConfirmedAt,
+    string? DisputeReason,
+    string? DisputeEvidenceUrl
+);
+
+/// <summary>Biên lai liên quan đến giao dịch đấu giá (Ký quỹ, Vận chuyển, Quyết toán, Giao hàng).</summary>
+public sealed record AuctionReceiptDto(
+    string ReceiptType,
+    string ReceiptNumber,
+    DateTimeOffset IssuedAt,
+    decimal Amount,
+    decimal? FeeAmount,
+    decimal? NetAmount,
+    string Title,
+    string? ProofImageUrl,
+    string? Description,
+    Guid? PayerId,
+    Guid? PayeeId
 );
 
 /// <summary>

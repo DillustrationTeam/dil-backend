@@ -1,6 +1,7 @@
 using ArtCommission.Application.Auction.Common;
 using ArtCommission.Application.Auction.DTOs;
 using ArtCommission.Application.Common.Interfaces;
+using ArtCommission.Domain.Entities.Auction;
 using ArtCommission.Domain.Enums;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -148,6 +149,14 @@ public class GetAuctionByIdQueryHandler
                 bidderNames.TryGetValue(b.BidderId, out var name) ? name : null))
             .ToList();
 
+        var delivery = await _db.Set<AuctionDelivery>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(d => d.AuctionId == auction.Id && !d.IsDeleted, cancellationToken);
+
+        var escrow = await _db.EscrowTransactions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.AuctionId == auction.Id && !e.IsDeleted, cancellationToken);
+
         var detail = new AuctionDetailDto(
             AuctionId: auction.Id,
             Artwork: AuctionMapper.ToArtworkDto(auction.Artwork) is { } artwork
@@ -169,7 +178,13 @@ public class GetAuctionByIdQueryHandler
             PaymentDeadline: auction.PaymentDeadline,
             IsWatching: isWatching,
             LeadingBidderId: leading?.BidderId,
-            Participants: participants);
+            Participants: participants,
+            HasPhysicalCopy: auction.HasPhysicalCopy,
+            PhysicalDescription: auction.PhysicalDescription,
+            RequiresPhysicalDelivery: auction.RequiresPhysicalDelivery,
+            PhysicalChoiceDeadline: auction.PhysicalChoiceDeadline,
+            Delivery: AuctionMapper.ToDeliveryDto(delivery),
+            Receipts: AuctionMapper.BuildReceipts(auction, escrow, delivery));
 
         return (true, detail, recentBids, []);
     }

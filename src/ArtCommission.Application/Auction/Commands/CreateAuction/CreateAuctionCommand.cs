@@ -26,7 +26,9 @@ public record CreateAuctionCommand(
     DateTimeOffset EndAt,
     string? MasterFileUrl = null,
     string? MasterFileName = null,
-    long? MasterFileSizeBytes = null
+    long? MasterFileSizeBytes = null,
+    bool HasPhysicalCopy = false,
+    string? PhysicalDescription = null
 ) : IRequest<(bool Success, AuctionDto? Data, string[] Errors, bool Conflict)>;
 
 public class CreateAuctionCommandValidator : AbstractValidator<CreateAuctionCommand>
@@ -55,7 +57,11 @@ public class CreateAuctionCommandValidator : AbstractValidator<CreateAuctionComm
         RuleFor(x => x.BuyNowPrice)
             .GreaterThan(x => x.StartPrice)
             .When(x => x.BuyNowPrice.HasValue)
-            .WithMessage("Giá mua ngay phải cao hơn giá khởi điểm.");
+            .WithMessage("Giá mua ngay phải lớn hơn giá khởi điểm.");
+
+        RuleFor(x => x.PhysicalDescription)
+            .MaximumLength(500)
+            .WithMessage("Mô tả tranh vật lý không được vượt quá 500 ký tự.");
 
         RuleFor(x => x.EndAt)
             .GreaterThan(x => x.StartAt)
@@ -176,6 +182,8 @@ public class CreateAuctionCommandHandler
                     BidCount = 0,
                     StartAt = request.StartAt,
                     EndAt = request.EndAt,
+                    HasPhysicalCopy = request.HasPhysicalCopy,
+                    PhysicalDescription = request.PhysicalDescription,
                     Status = request.StartAt <= now ? AuctionStatus.Active : AuctionStatus.Scheduled
                 };
 

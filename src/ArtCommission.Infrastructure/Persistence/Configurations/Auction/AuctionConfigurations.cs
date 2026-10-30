@@ -30,9 +30,12 @@ public class AuctionConfiguration : IEntityTypeConfiguration<AuctionEntity>
 
         builder.Property(a => a.Status)
             .HasConversion<string>()
-            .HasMaxLength(20)
+            .HasMaxLength(30)
             .HasDefaultValue(AuctionStatus.Scheduled)
             .IsRequired();
+
+        builder.Property(a => a.HasPhysicalCopy).HasDefaultValue(false);
+        builder.Property(a => a.PhysicalDescription).HasMaxLength(500);
 
         // Tiền: luôn decimal, precision cố định để không mất phần lẻ khi làm tròn.
         builder.Property(a => a.StartPrice).HasPrecision(18, 2);
@@ -307,5 +310,52 @@ public class DeliverableConfiguration : IEntityTypeConfiguration<Deliverable>
         builder.HasIndex(d => d.AuctionId)
             .IsUnique()
             .HasDatabaseName("UX_Deliverables_Auction");
+    }
+}
+
+public class AuctionDeliveryConfiguration : IEntityTypeConfiguration<AuctionDelivery>
+{
+    public void Configure(EntityTypeBuilder<AuctionDelivery> builder)
+    {
+        builder.ToTable("AuctionDeliveries");
+
+        builder.HasKey(d => d.Id);
+
+        builder.Property(d => d.RecipientName).HasMaxLength(150).IsRequired();
+        builder.Property(d => d.RecipientPhone).HasMaxLength(30).IsRequired();
+        builder.Property(d => d.ShippingAddress).HasMaxLength(500).IsRequired();
+        builder.Property(d => d.NoteToSeller).HasMaxLength(500);
+
+        builder.Property(d => d.CarrierName).HasMaxLength(100);
+        builder.Property(d => d.TrackingCode).HasMaxLength(100);
+        builder.Property(d => d.TrackingUrl).HasMaxLength(500);
+        builder.Property(d => d.ShippingReceiptUrl).HasMaxLength(1000);
+        builder.Property(d => d.PackageImageUrl).HasMaxLength(1000);
+        builder.Property(d => d.DeliveryReceiptUrl).HasMaxLength(1000);
+
+        builder.Property(d => d.Status)
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .IsRequired();
+
+        builder.Property(d => d.DisputeReason).HasMaxLength(500);
+        builder.Property(d => d.DisputeEvidenceUrl).HasMaxLength(1000);
+
+        builder.Property(d => d.CreatedAt).IsRequired();
+        builder.Property(d => d.IsDeleted).HasDefaultValue(false);
+
+        builder.HasOne(d => d.Auction)
+            .WithOne(a => a.Delivery)
+            .HasForeignKey<AuctionDelivery>(d => d.AuctionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne<Domain.Entities.Identity.ApplicationUser>()
+            .WithMany()
+            .HasForeignKey(d => d.RecipientId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(d => d.AuctionId)
+            .IsUnique()
+            .HasDatabaseName("UX_AuctionDeliveries_Auction");
     }
 }
