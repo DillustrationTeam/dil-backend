@@ -437,7 +437,6 @@ builder.Services.AddSwaggerGen(c =>
 
 // Register Application Services
 builder.Services.AddScoped<ICommissionService, CommissionService>();
-builder.Services.AddScoped<IAddonService, AddonService>();
 builder.Services.AddScoped<IWatermarkService, WatermarkService>();
 if (string.IsNullOrWhiteSpace(builder.Configuration["CloudflareR2:AccountId"]))
 {
