@@ -120,25 +120,41 @@ internal static class DevelopmentDemoSeeder
             demoWorkroom.UpdatedAt = DateTimeOffset.UtcNow;
         }
 
-        var hasDemoArtwork = await dbContext.Artworks.AnyAsync(
-            artwork => artwork.CreatorProfileId == creatorProfile.Id &&
-                       artwork.Title == "Moonlit Character Portrait",
-            cancellationToken);
-
-        if (!hasDemoArtwork)
+        var demoArtworks = new (string Title, string Description, string ImageUrl, string Style, int Views, int Likes, decimal Price)[]
         {
-            dbContext.Artworks.Add(new Artwork
+            ("Moonlit Character Portrait", "Portrait anime với ánh sáng neon huyền ảo.", "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=85", "Anime", 342, 89, 450000),
+            ("Cyberpunk Ronin 2077", "Chiến binh samurai tương lai giữa lòng thành phố rực sáng đèn neon.", "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=85", "Cyberpunk", 512, 120, 850000),
+            ("Ethereal Forest Spirit", "Linh hồn rừng sâu thức giấc dưới ánh trăng trong trẻo.", "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=85", "Fantasy", 289, 74, 600000),
+            ("Solar Flare Mech Visual", "Concept người máy cơ động cao bảo vệ trạm không gian.", "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=85", "Sci-Fi", 410, 95, 1200000),
+            ("Sunset Blossom Melody", "Cô gái chơi đàn dương cầm bên khung cửa sổ chiều hoàng hôn.", "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=1200&q=85", "Watercolour", 620, 150, 750000),
+            ("Astral Traveler Voyage", "Chuyến phiêu lưu xuyên không gian qua những dải ngân hà rực rỡ.", "https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?auto=format&fit=crop&w=1200&q=85", "Digital Concept", 478, 112, 950000),
+            ("Dragon Peak Shrine", "Ngôi đền linh thiêng trên đỉnh núi mây mù canh giữ bởi rồng thần.", "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=1200&q=85", "Fantasy Concept", 530, 138, 800000),
+            ("Rainy Neon Alleyway", "Góc phố mưa đêm phản chiếu ánh đèn đường lãng mạn.", "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=1200&q=85", "Lo-Fi Chill", 390, 88, 500000)
+        };
+
+        foreach (var art in demoArtworks)
+        {
+            var exists = await dbContext.Artworks.AnyAsync(a => a.Title == art.Title, cancellationToken);
+            if (!exists)
             {
-                CreatorProfileId = creatorProfile.Id,
-                Title = "Moonlit Character Portrait",
-                Description = "Portrait phong cách anime với ánh sáng xanh tím. Tác phẩm mẫu của Linh Nguyen cho khách hàng tham khảo trước khi gửi yêu cầu đặt vẽ.",
-                ImageUrl = "https://images.unsplash.com/photo-1618005198919-d3d4b5a92ead?auto=format&fit=crop&w=1200&q=85",
-                ThumbnailUrl = "https://images.unsplash.com/photo-1618005198919-d3d4b5a92ead?auto=format&fit=crop&w=600&q=80",
-                IsAiGenerated = false,
-                ModerationStatus = "Approved",
-                ViewCount = 126
-            });
+                dbContext.Artworks.Add(new Artwork
+                {
+                    CreatorProfileId = creatorProfile.Id,
+                    Title = art.Title,
+                    Description = art.Description,
+                    ImageUrl = art.ImageUrl,
+                    ThumbnailUrl = art.ImageUrl,
+                    Style = art.Style,
+                    LikeCount = art.Likes,
+                    ViewCount = art.Views,
+                    StartingPrice = art.Price,
+                    IsAiGenerated = false,
+                    ModerationStatus = "Approved",
+                    LicenseType = "Commercial"
+                });
+            }
         }
+
 
         var hasIncomingRequest = await dbContext.Commissions.AnyAsync(
             commission => commission.ClientId == client.Id && commission.CreatorId == creatorProfile.Id &&
