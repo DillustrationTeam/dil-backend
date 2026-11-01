@@ -100,14 +100,14 @@ public class CommissionService : ICommissionService
             throw new ArgumentException("Gói giá không tồn tại hoặc đã bị thay đổi. Vui lòng chọn lại.");
         var stages = selectedPackage.Milestones;
         if (selectedPackage.Price <= 0 || stages is null || stages.Count == 0
-            || stages.Any(stage => stage is null || stage.Price <= 0 || string.IsNullOrWhiteSpace(stage.Title))
+            || stages.Any(stage => stage is null || stage.Price <= 0 || stage.MaxRevisions < 0 || stage.MaxRevisions > 20 || string.IsNullOrWhiteSpace(stage.Title))
             || !stages.OrderBy(stage => stage.Sequence).Select(stage => stage.Sequence).SequenceEqual(Enumerable.Range(1, stages.Count))
             || stages.Sum(stage => stage.Price) != selectedPackage.Price)
             throw new ArgumentException("Giá và milestone của gói không hợp lệ. Vui lòng liên hệ Creator cập nhật.");
         var totalPrice = selectedPackage.Price;
         var milestones = stages.OrderBy(stage => stage.Sequence).Select(stage => new Milestone
         {
-            Sequence = stage.Sequence, Title = stage.Title, Price = stage.Price, Status = MilestoneStatus.Pending
+            Sequence = stage.Sequence, Title = stage.Title, Price = stage.Price, MaxRevisions = stage.MaxRevisions, Status = MilestoneStatus.Pending
         }).ToList();
         var multiplier = request.LicenseType == "Commercial"
             ? await _dbContext.CreatorTerms.AsNoTracking()
@@ -135,12 +135,31 @@ public class CommissionService : ICommissionService
         }
         var finalPrice = totalPrice - discountAmount;
 
+        if (request.AddonIds is null || request.AddonIds.Count > 50 || request.AddonIds.Distinct().Count() != request.AddonIds.Count)
+            throw new ArgumentException("Danh sách phụ phí không hợp lệ hoặc trùng lặp.");
+        var bookingAddons = await _dbContext.Set<CreatorAddon>().AsNoTracking()
+            .Where(x => request.AddonIds.Contains(x.Id) && x.CreatorId == creator.Id && x.IsActive && !x.IsDeleted
+                && (x.PackageId == null || x.PackageId == request.PackageId)).ToListAsync(cancellationToken);
+        if (bookingAddons.Count != request.AddonIds.Count) throw new ArgumentException("Phụ phí đã thay đổi. Vui lòng chọn lại.");
+        foreach (var addon in bookingAddons)
+        {
+            AddonRules.Validate(addon.Title, addon.Price, addon.AllowedMilestone, addon.ExtendDays, addon.Description);
+            var milestone = milestones.FirstOrDefault(x => AddonRules.Allows(addon.AllowedMilestone, AddonRules.Stage(x.Sequence, milestones.Count)))
+                ?? throw new ArgumentException("Gói không có mốc phù hợp với phụ phí.");
+            milestone.Price += addon.Price;
+            totalPrice += addon.Price;
+            finalPrice += addon.Price;
+        }
+        var extendDays = bookingAddons.Sum(x => x.ExtendDays);
+        if (extendDays > 0 && request.DeadlineAt is null) throw new ArgumentException("Cần chọn deadline khi phụ phí có gia hạn.");
+
         var commission = new Commission
         {
             Title = request.Title,
             Description = request.Description,
             ClientId = clientId,
             CreatorId = creator.Id,
+            PackageId = request.PackageId,
             VoucherId = voucherId,
             LicenseType = request.LicenseType,
             LicenseMultiplierApplied = multiplier,
@@ -152,7 +171,7 @@ public class CommissionService : ICommissionService
             EscrowStatus = EscrowStatus.Pending,
             CurrentStage = 1,
             Status = CommissionStatus.PendingAcceptance,
-            DeadlineAt = request.DeadlineAt
+            DeadlineAt = request.DeadlineAt?.AddDays(extendDays)
         };
 
         foreach (var m in milestones)
@@ -161,6 +180,15 @@ public class CommissionService : ICommissionService
         }
 
         _dbContext.Commissions.Add(commission);
+        foreach (var addon in bookingAddons)
+        {
+            var sequence = milestones.First(x => AddonRules.Allows(addon.AllowedMilestone, AddonRules.Stage(x.Sequence, milestones.Count))).Sequence;
+            _dbContext.Add(new CommissionAddon {
+                CommissionId = commission.Id, ProposedById = clientId, Title = addon.Title, Description = addon.Description,
+                Price = addon.Price, AllowedMilestone = addon.AllowedMilestone, MilestoneSequence = sequence,
+                ExtendDays = addon.ExtendDays, IsPreset = addon.PresetKey is not null, Status = "Accepted"
+            });
+        }
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         await PublishSafeAsync(
@@ -283,7 +311,8 @@ public class CommissionService : ICommissionService
                     var voucher = await _dbContext.Vouchers.AsNoTracking()
                         .SingleAsync(v => v.Id == commission.VoucherId.Value, cancellationToken);
                     commission.DiscountAmount = VoucherCheckService.CalculateDiscount(
-                        voucher.DiscountType, voucher.DiscountValue, voucher.MaxDiscountAmount, commission.TotalPrice);
+                        voucher.DiscountType, voucher.DiscountValue, voucher.MaxDiscountAmount,
+                        commission.TotalPrice - await BookingAddonTotalAsync(id, cancellationToken));
                 }
                 commission.FinalPrice = request.NegotiatePrice.Value - commission.DiscountAmount;
                 if (commission.FinalPrice <= 0)
@@ -339,7 +368,8 @@ public class CommissionService : ICommissionService
         {
             var voucher = await _dbContext.Vouchers.SingleAsync(v => v.Id == commission.VoucherId.Value, cancellationToken);
             var voucherCheck = await _voucherCheckService.CheckAsync(
-                clientId, voucher.VoucherCode, commission.TotalPrice, nameof(Commission), commission.Id, cancellationToken);
+                clientId, voucher.VoucherCode, commission.TotalPrice - await BookingAddonTotalAsync(id, cancellationToken),
+                nameof(Commission), commission.Id, cancellationToken);
             if (!voucherCheck.Success)
                 throw new InvalidOperationException(voucherCheck.Errors.FirstOrDefault() ?? "Mã giảm giá không còn hợp lệ.");
 
@@ -360,7 +390,7 @@ public class CommissionService : ICommissionService
             }
 
             commission.DiscountAmount = voucherCheck.DiscountAmount;
-            commission.FinalPrice = voucherCheck.FinalAmount;
+            commission.FinalPrice = commission.TotalPrice - voucherCheck.DiscountAmount;
             _dbContext.VoucherRedemptions.Add(new VoucherRedemption
             {
                 VoucherId = voucher.Id,
@@ -369,9 +399,10 @@ public class CommissionService : ICommissionService
                 RefId = commission.Id,
                 DiscountAmount = voucherCheck.DiscountAmount,
                 OrderAmount = commission.TotalPrice,
-                FinalAmount = voucherCheck.FinalAmount
+                FinalAmount = commission.FinalPrice
             });
         }
+        await AllocateFundedMilestonesAsync(commission, cancellationToken);
         var wallet = await _walletService.GetOrCreateWalletAsync(clientId, cancellationToken);
         if (wallet.Status != WalletStatus.Active) throw new InvalidOperationException("Wallet is inactive.");
         await _walletService.HoldFundsAsync(wallet, WalletTransactionType.EscrowHold, commission.FinalPrice,
@@ -822,6 +853,30 @@ public class CommissionService : ICommissionService
         if (userId == Guid.Empty) throw new UnauthorizedAccessException("Authentication required.");
     }
 
+    private Task<decimal> BookingAddonTotalAsync(Guid commissionId, CancellationToken ct) =>
+        _dbContext.Set<CommissionAddon>().Where(x => x.CommissionId == commissionId && !x.IsDeleted && x.Status == "Accepted")
+            .SumAsync(x => x.Price, ct);
+
+    private async Task AllocateFundedMilestonesAsync(Commission commission, CancellationToken ct)
+    {
+        await _dbContext.Entry(commission).Collection(x => x.Milestones).LoadAsync(ct);
+        var stages = commission.Milestones.Where(x => !x.IsDeleted).OrderBy(x => x.Sequence).ToList();
+        if (stages.Sum(x => x.Price) == commission.FinalPrice) return;
+        var extras = await _dbContext.Set<CommissionAddon>()
+            .Where(x => x.CommissionId == commission.Id && !x.IsDeleted && x.Status == "Accepted")
+            .GroupBy(x => x.MilestoneSequence).Select(g => new { Sequence = g.Key, Price = g.Sum(x => x.Price) })
+            .ToDictionaryAsync(x => x.Sequence, x => x.Price, ct);
+        var baseTotal = stages.Sum(x => x.Price) - extras.Values.Sum();
+        var basePayable = commission.FinalPrice - extras.Values.Sum();
+        if (stages.Count == 0 || baseTotal <= 0 || basePayable <= 0)
+            throw new InvalidOperationException("Giá ký quỹ không hợp lệ cho kế hoạch mốc và phụ phí.");
+        var prices = stages.Select(x => Math.Round((x.Price - extras.GetValueOrDefault(x.Sequence)) * basePayable / baseTotal,
+            2, MidpointRounding.AwayFromZero) + extras.GetValueOrDefault(x.Sequence)).ToArray();
+        prices[^1] += commission.FinalPrice - prices.Sum();
+        if (prices.Any(x => x <= 0)) throw new InvalidOperationException("Giá sau giảm không đủ cho từng mốc.");
+        for (var i = 0; i < stages.Count; i++) stages[i].Price = prices[i];
+    }
+
     private Task<Guid> CreatorProfileIdAsync(Guid userId, CancellationToken cancellationToken) =>
         _dbContext.CreatorProfiles.Where(p => p.UserId == userId && !p.IsDeleted)
             .Select(p => p.Id).FirstOrDefaultAsync(cancellationToken);
@@ -889,6 +944,7 @@ public class CommissionService : ICommissionService
             Description = c.Description,
             ClientId = c.ClientId,
             CreatorId = c.CreatorId,
+            PackageId = c.PackageId,
             VoucherId = c.VoucherId,
             LicenseType = c.LicenseType,
             LicenseMultiplierApplied = c.LicenseMultiplierApplied,
@@ -930,6 +986,7 @@ public class CommissionService : ICommissionService
             Description = dto.Description,
             ClientId = dto.ClientId,
             CreatorId = dto.CreatorId,
+            PackageId = dto.PackageId,
             VoucherId = dto.VoucherId,
             LicenseType = dto.LicenseType,
             LicenseMultiplierApplied = dto.LicenseMultiplierApplied,

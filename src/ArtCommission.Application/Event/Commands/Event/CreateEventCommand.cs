@@ -24,7 +24,8 @@ public record CreateEventCommand(
     DateTimeOffset VotingEndAt,
     DateTimeOffset ResultAnnouncementAt,
     Guid AdminId,
-    bool IsFeatured = false
+    bool IsFeatured = false,
+    List<EventCriteriaRequestDto>? Criteria = null
 ) : IRequest<(bool Success, EventDetailDto? Data, string[] Errors)>;
 
 public class CreateEventCommandHandler
@@ -81,43 +82,74 @@ public class CreateEventCommandHandler
 
         _db.PlatformEvents.Add(platformEvent);
 
-        var defaultCriteria = new List<EventCriteria>
+        var criteriaToSave = new List<EventCriteria>();
+
+        if (request.Criteria != null && request.Criteria.Count > 0)
         {
-            new()
+            int order = 1;
+            foreach (var c in request.Criteria)
             {
-                Id = Guid.NewGuid(),
-                EventId = platformEvent.Id,
-                Name = "Sáng tạo và ý tưởng",
-                Description = "Độ độc đáo, tính nguyên bản và thông điệp truyền tải của tác phẩm",
-                MaxScore = 40.0m,
-                Weight = 0.40m,
-                DisplayOrder = 1,
-                CreatedAt = now
-            },
-            new()
-            {
-                Id = Guid.NewGuid(),
-                EventId = platformEvent.Id,
-                Name = "Kỹ thuật thể hiện",
-                Description = "Bố cục, xử lý ánh sáng, màu sắc, chi tiết nét vẽ và độ hoàn thiện",
-                MaxScore = 35.0m,
-                Weight = 0.35m,
-                DisplayOrder = 2,
-                CreatedAt = now
-            },
-            new()
-            {
-                Id = Guid.NewGuid(),
-                EventId = platformEvent.Id,
-                Name = "Bám sát chủ đề",
-                Description = "Sự phù hợp và thể hiện đúng tinh thần thể lệ sự kiện đặt ra",
-                MaxScore = 25.0m,
-                Weight = 0.25m,
-                DisplayOrder = 3,
-                CreatedAt = now
+                if (string.IsNullOrWhiteSpace(c.Name)) continue;
+
+                criteriaToSave.Add(new EventCriteria
+                {
+                    Id = Guid.NewGuid(),
+                    EventId = platformEvent.Id,
+                    Name = c.Name.Trim(),
+                    Description = string.IsNullOrWhiteSpace(c.Description) ? null : c.Description.Trim(),
+                    MaxScore = c.MaxScore > 0 ? c.MaxScore : 10.0m,
+                    Weight = c.Weight > 0 ? c.Weight : 1.0m,
+                    DisplayOrder = c.DisplayOrder > 0 ? c.DisplayOrder : order++,
+                    CreatedAt = now,
+                    IsDeleted = false
+                });
             }
-        };
-        _db.EventCriteria.AddRange(defaultCriteria);
+        }
+
+        if (criteriaToSave.Count == 0)
+        {
+            criteriaToSave.AddRange(new[]
+            {
+                new EventCriteria
+                {
+                    Id = Guid.NewGuid(),
+                    EventId = platformEvent.Id,
+                    Name = "Sáng tạo và ý tưởng",
+                    Description = "Độ độc đáo, tính nguyên bản và thông điệp truyền tải của tác phẩm",
+                    MaxScore = 40.0m,
+                    Weight = 0.40m,
+                    DisplayOrder = 1,
+                    CreatedAt = now,
+                    IsDeleted = false
+                },
+                new EventCriteria
+                {
+                    Id = Guid.NewGuid(),
+                    EventId = platformEvent.Id,
+                    Name = "Kỹ thuật thể hiện",
+                    Description = "Bố cục, xử lý ánh sáng, màu sắc, chi tiết nét vẽ và độ hoàn thiện",
+                    MaxScore = 35.0m,
+                    Weight = 0.35m,
+                    DisplayOrder = 2,
+                    CreatedAt = now,
+                    IsDeleted = false
+                },
+                new EventCriteria
+                {
+                    Id = Guid.NewGuid(),
+                    EventId = platformEvent.Id,
+                    Name = "Bám sát chủ đề",
+                    Description = "Sự phù hợp và thể hiện đúng tinh thần thể lệ sự kiện đặt ra",
+                    MaxScore = 25.0m,
+                    Weight = 0.25m,
+                    DisplayOrder = 3,
+                    CreatedAt = now,
+                    IsDeleted = false
+                }
+            });
+        }
+
+        _db.EventCriteria.AddRange(criteriaToSave);
 
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -145,7 +177,17 @@ public class CreateEventCommandHandler
             TotalVoteCount = 0,
             CreatedAt = platformEvent.CreatedAt,
             UpdatedAt = platformEvent.UpdatedAt,
-            IsOpenForSubmission = platformEvent.Status == EventStatus.Open && platformEvent.SubmissionStartAt <= now && platformEvent.SubmissionEndAt >= now
+            IsOpenForSubmission = platformEvent.Status == EventStatus.Open && platformEvent.SubmissionStartAt <= now && platformEvent.SubmissionEndAt >= now,
+            Criteria = criteriaToSave.Select(c => new EventCriteriaDto
+            {
+                Id = c.Id,
+                EventId = c.EventId,
+                Name = c.Name,
+                Description = c.Description,
+                MaxScore = c.MaxScore,
+                Weight = c.Weight,
+                DisplayOrder = c.DisplayOrder
+            }).ToList()
         };
 
         return (true, data, Array.Empty<string>());
