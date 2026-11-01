@@ -92,7 +92,7 @@ public class ExpireAuctionSettlementCommandHandler
 
         if (!auction.PaymentDeadline.HasValue)
         {
-            return (false, null, ["Phiên chưa có hạn thanh toán nên chưa xử lý quá hạn được."]);
+            return (false, null, ["Hệ thống áp dụng thanh toán toàn bộ (100% full hold) ngay khi chốt phiên, không còn áp dụng hạn thanh toán hoặc hết hạn phiên."]);
         }
 
         // Quản trị viên được xử lý sớm; người bán chỉ được xử lý khi thực sự quá hạn.

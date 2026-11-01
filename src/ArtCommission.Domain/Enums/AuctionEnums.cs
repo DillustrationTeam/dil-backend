@@ -23,7 +23,35 @@ public enum AuctionStatus
     Cancelled,
 
     /// <summary>Winner quá payment_deadline không thanh toán — huỷ kết quả.</summary>
-    Expired
+    Expired,
+
+    /// <summary>Đã kết thúc, đang chờ người thắng quyết định có nhận tranh vật lý hay không (hạn 48h).</summary>
+    AwaitingPhysical,
+
+    /// <summary>Người bán đã gửi tranh, đang vận chuyển đến người mua.</summary>
+    InTransit,
+
+    /// <summary>Giao dịch hoàn tất toàn bộ: người mua đã nhận tranh vật lý và sàn đã nhả tiền cho người bán.</summary>
+    Completed
+}
+
+/// <summary>Trạng thái giao nhận tranh vật lý.</summary>
+public enum DeliveryStatus
+{
+    /// <summary>Người thắng đã yêu cầu và điền địa chỉ, chờ người bán gửi bưu cục.</summary>
+    AwaitingShipment = 1,
+
+    /// <summary>Người bán đã gửi bưu phẩm và đăng tải mã vận đơn + biên lai bưu cục.</summary>
+    InTransit = 2,
+
+    /// <summary>Người mua đã nhận được tranh và xác nhận hài lòng (hoặc auto-confirm sau 72h).</summary>
+    Delivered = 3,
+
+    /// <summary>Người mua khiếu nại (chưa nhận được hàng / hàng hư hỏng) — đóng băng tiền để Admin xử lý.</summary>
+    Disputed = 4,
+
+    /// <summary>Giao hàng bị huỷ do người bán quá hạn không gửi hoặc đơn vị vận chuyển làm thất lạc.</summary>
+    Cancelled = 5
 }
 
 /// <summary>Loại phiên đấu giá.</summary>

@@ -58,6 +58,13 @@ public interface IAuctionSettlementService
         Guid buyerId,
         decimal price,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Giải ngân tiền ký quỹ cho Người bán khi hoàn tất giao nhận tranh vật lý (UC35).
+    /// </summary>
+    Task<(bool Success, string[] Errors)> ReleaseEscrowToSellerAsync(
+        Domain.Entities.Auction.Auction auction,
+        CancellationToken cancellationToken = default);
 }
 
 public class AuctionSettlementService : IAuctionSettlementService
@@ -111,78 +118,21 @@ public class AuctionSettlementService : IAuctionSettlementService
             cancellationToken);
 
         // ------------------------------------------------------------------
-        // CÂN BẰNG TIỀN: tiền giữ được nhả ra PHẢI bằng số sẽ trả cho người bán.
-        //
-        // Hiện tại HoldAmount luôn bằng Amount nên phần chênh luôn bằng 0. Nhưng nếu
-        // sau này Admin cấu hình cọc theo tỉ lệ (PlatformConfigKeys.AuctionHoldPercent),
-        // hai con số sẽ lệch nhau. Không xử lý phần chênh thì hệ thống TẠO RA hoặc
-        // ĐỐT MẤT tiền thật:
-        //   - cọc < giá chốt ⇒ thiếu tiền trả người bán  → phải trừ thêm số dư khả dụng
-        //   - cọc > giá chốt ⇒ thừa tiền của người mua    → phải hoàn lại phần thừa
-        // Xử lý tường minh ở đây để công thức luôn đúng, bất kể cấu hình cọc.
+        // CÂN BẰNG TIỀN: Mô hình giữ đủ 100% (Full Hold).
+        // Toàn bộ số tiền cọc (bằng 100% giá bid thắng) được chuyển cho người bán.
         // ------------------------------------------------------------------
-        var shortfall = finalPrice - heldAmount;
-
-        if (shortfall > 0m)
-        {
-            var buyerWallet = await _walletService.GetOrCreateWalletAsync(
-                winningBid.BidderId, cancellationToken);
-
-            if (buyerWallet.Balance < shortfall)
-            {
-                // Không đủ tiền để bù phần thiếu ⇒ KHÔNG chốt phiên, tránh ghi nhận
-                // một giao dịch mà người mua không trả đủ. Caller thấy HasWinner = false
-                // và sẽ rollback transaction.
-                _logger.LogWarning(
-                    "Không chốt được phiên {AuctionId}: người mua thiếu {Shortfall} VND so với giá chốt.",
-                    auction.Id, shortfall);
-
-                return AuctionFinalizeResult.None(auction.Id);
-            }
-
-            // Trả phần thiếu bằng CẶP hold + release: tiền rời số dư khả dụng mà không
-            // để lại dấu vết trong LockedBalance. Dùng thẳng EscrowRelease sẽ khiến
-            // công thức đối soát trừ LockedBalance trong khi ví không hề giữ khoản này.
-            await _walletService.HoldFundsAsync(
-                buyerWallet,
-                WalletTransactionType.EscrowHold,
-                shortfall,
-                AuctionRefTypes.BidShortfall,
-                winningBid.Id,
-                $"Tạm khoá phần cọc còn thiếu cho phiên {auction.Id}",
-                cancellationToken);
-
-            await _walletService.ReleaseFundsAsync(
-                buyerWallet,
-                WalletTransactionType.EscrowRelease,
-                shortfall,
-                AuctionRefTypes.BidShortfall,
-                winningBid.Id,
-                $"Bù phần cọc còn thiếu cho phiên {auction.Id}",
-                cancellationToken);
-        }
-        else if (shortfall < 0m)
-        {
-            var buyerWallet = await _walletService.FindWalletAsync(
-                winningBid.BidderId, cancellationToken);
-
-            if (buyerWallet is not null)
-            {
-                // Phần cọc vượt giá chốt vẫn đang nằm trong LockedBalance ⇒ hoàn về
-                // số dư khả dụng đúng bằng RefundFromHold.
-                await _walletService.RefundHeldFundsAsync(
-                    buyerWallet,
-                    WalletTransactionType.RefundFromHold,
-                    -shortfall,
-                    AuctionRefTypes.BidShortfall,
-                    winningBid.Id,
-                    $"Hoàn phần cọc vượt giá chốt phiên {auction.Id}",
-                    cancellationToken);
-            }
-        }
-
         winningBid.Status = BidStatus.Won;
         winningBid.UpdatedAt = now;
+
+        // Dọn dẹp/Vô hiệu hóa các cấu hình Auto-bid của phiên này sau khi chốt
+        var autoBids = await _db.AuctionAutoBids
+            .Where(ab => ab.AuctionId == auction.Id && !ab.IsDeleted)
+            .ToListAsync(cancellationToken);
+        foreach (var autoBid in autoBids)
+        {
+            autoBid.IsDeleted = true;
+            autoBid.UpdatedAt = now;
+        }
 
         var feePercent = await _walletService.GetDecimalConfigAsync(
             PlatformConfigKeys.PlatformFeePercent, DefaultPlatformFeePercent, cancellationToken);
@@ -190,66 +140,71 @@ public class AuctionSettlementService : IAuctionSettlementService
         var feeAmount = Math.Round(finalPrice * feePercent / 100m, 2, MidpointRounding.AwayFromZero);
         var netToSeller = finalPrice - feeAmount;
 
-        var sellerWallet = await _walletService.GetOrCreateWalletAsync(auction.SellerId, cancellationToken);
-
-        // Tiền đến người bán: ghi 1 dòng cho khoản thu gộp, 1 dòng cho phí sàn đã trừ.
-        // Tách hai dòng để sổ cái đối soát được "tổng bán" và "phí", không phải suy ra từ hiệu số.
-        //
-        // Dùng EscrowReceive (KHÔNG phải EscrowRelease): đây là tiền VÀO số dư khả dụng
-        // của người nhận. EscrowRelease mang nghĩa "rời khỏi phần đang giữ của người trả"
-        // nên nếu dùng ở đây, VerifyLedgerConsistencyAsync sẽ trừ nhầm LockedBalance
-        // của người bán và báo lệch số dù tiền đúng.
-        await _walletService.CreditAsync(
-            sellerWallet,
-            WalletTransactionType.EscrowReceive,
-            finalPrice,
-            AuctionRefTypes.Settlement,
-            auction.Id,
-            $"Thu tiền bán đấu giá phiên {auction.Id}",
-            cancellationToken);
-
-        if (feeAmount > 0m)
-        {
-            await _walletService.DebitAsync(
-                sellerWallet,
-                WalletTransactionType.PlatformFee,
-                feeAmount,
-                AuctionRefTypes.Settlement,
-                auction.Id,
-                $"Phí nền tảng {feePercent}% trên phiên {auction.Id}",
-                cancellationToken);
-        }
-
-        await _db.SaveChangesAsync(cancellationToken);
-
         var ownershipId = await AssignOwnershipAsync(auction, winningBid.BidderId, now, cancellationToken);
 
-        var escrow = await UpsertEscrowAsync(
-            auction, winningBid.BidderId, auction.SellerId, finalPrice, feeAmount, now, cancellationToken);
-
-        // Đặt winner TRƯỚC khi tạo Deliverable — RecipientId lấy từ auction.WinnerId.
         auction.WinnerId = winningBid.BidderId;
         auction.FinalPrice = finalPrice;
         auction.SettledAt = now;
-
-        // Hạn thanh toán: cửa sổ để winner hoàn tất nghĩa vụ thanh toán.
-        // BẮT BUỘC phải ghi — không có nó thì endpoint xử lý quá hạn
-        // (/settlement/expire) luôn từ chối và trở thành endpoint chết, còn trường
-        // `paymentDeadline` trong mọi response luôn null.
-        auction.PaymentDeadline = now.AddHours(
-            (double)await GetPaymentWindowHoursAsync(cancellationToken));
-
-        auction.Status = AuctionStatus.Settled;
+        auction.PaymentDeadline = null; // Hệ thống giữ 100% tiền tươi, không dùng hạn thanh toán
         auction.UpdatedAt = now;
 
-        await _db.SaveChangesAsync(cancellationToken);
+        EscrowTransaction escrow;
 
-        await CreateDeliverableIfMissingAsync(auction, cancellationToken);
-        await _db.SaveChangesAsync(cancellationToken);
+        if (auction.HasPhysicalCopy)
+        {
+            // CÓ TRANH VẬT LÝ: Tiền tạm giữ ký quỹ sàn (Deposited). Chờ người mua quyết định trong 48h.
+            escrow = await UpsertEscrowAsync(
+                auction, winningBid.BidderId, auction.SellerId, finalPrice, feeAmount, now, EscrowStatus.Deposited, cancellationToken);
 
-        _logger.LogInformation(
-            "Chốt phiên {AuctionId}: winner={WinnerId}, final={FinalPrice}, fee={Fee}, net={Net}.",
-            auction.Id, winningBid.BidderId, finalPrice, feeAmount, netToSeller);
+            auction.Status = AuctionStatus.AwaitingPhysical;
+            auction.PhysicalChoiceDeadline = now.AddHours(48);
+            auction.RequiresPhysicalDelivery = null;
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation(
+                "Chốt phiên có tranh vật lý {AuctionId}: winner={WinnerId}, final={FinalPrice}. Tiền giữ ký quỹ tại sàn.",
+                auction.Id, winningBid.BidderId, finalPrice);
+        }
+        else
+        {
+            // KHÔNG CÓ TRANH VẬT LÝ: Tiền về ví người bán ngay lập tức.
+            var sellerWallet = await _walletService.GetOrCreateWalletAsync(auction.SellerId, cancellationToken);
+
+            await _walletService.CreditAsync(
+                sellerWallet,
+                WalletTransactionType.EscrowReceive,
+                finalPrice,
+                AuctionRefTypes.Settlement,
+                auction.Id,
+                $"Thu tiền bán đấu giá phiên {auction.Id}",
+                cancellationToken);
+
+            if (feeAmount > 0m)
+            {
+                await _walletService.DebitAsync(
+                    sellerWallet,
+                    WalletTransactionType.PlatformFee,
+                    feeAmount,
+                    AuctionRefTypes.Settlement,
+                    auction.Id,
+                    $"Phí nền tảng {feePercent}% trên phiên {auction.Id}",
+                    cancellationToken);
+            }
+
+            escrow = await UpsertEscrowAsync(
+                auction, winningBid.BidderId, auction.SellerId, finalPrice, feeAmount, now, EscrowStatus.Released, cancellationToken);
+
+            auction.Status = AuctionStatus.Settled;
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await CreateDeliverableIfMissingAsync(auction, cancellationToken);
+            await _db.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation(
+                "Chốt phiên {AuctionId}: winner={WinnerId}, final={FinalPrice}, fee={Fee}, net={Net}.",
+                auction.Id, winningBid.BidderId, finalPrice, feeAmount, netToSeller);
+        }
 
         await NotifyWinnerAsync(auction, winningBid.BidderId, finalPrice, cancellationToken);
 
@@ -322,32 +277,35 @@ public class AuctionSettlementService : IAuctionSettlementService
         var feeAmount = Math.Round(price * feePercent / 100m, 2, MidpointRounding.AwayFromZero);
         var netToSeller = price - feeAmount;
 
-        var sellerWallet = await _walletService.GetOrCreateWalletAsync(auction.SellerId, cancellationToken);
-
-        // Người bán nhận khoản gộp rồi bị trừ phí — ledger ghi đủ cả hai dòng
-        // để công thức đối soát (Deposit + EscrowReceive − PlatformFee ...) vẫn khớp.
-        await _walletService.CreditAsync(
-            sellerWallet,
-            WalletTransactionType.EscrowReceive,
-            price,
-            AuctionRefTypes.Settlement,
-            auction.Id,
-            $"Thu tiền bán đấu giá (mua ngay) phiên {auction.Id}",
-            cancellationToken);
-
-        if (feeAmount > 0m)
+        if (!auction.HasPhysicalCopy)
         {
-            await _walletService.DebitAsync(
+            var sellerWallet = await _walletService.GetOrCreateWalletAsync(auction.SellerId, cancellationToken);
+
+            // Người bán nhận khoản gộp rồi bị trừ phí — ledger ghi đủ cả hai dòng
+            // để công thức đối soát (Deposit + EscrowReceive − PlatformFee ...) vẫn khớp.
+            await _walletService.CreditAsync(
                 sellerWallet,
-                WalletTransactionType.PlatformFee,
-                feeAmount,
+                WalletTransactionType.EscrowReceive,
+                price,
                 AuctionRefTypes.Settlement,
                 auction.Id,
-                $"Phí nền tảng {feePercent}% trên phiên {auction.Id}",
+                $"Thu tiền bán đấu giá (mua ngay) phiên {auction.Id}",
                 cancellationToken);
-        }
 
-        await _db.SaveChangesAsync(cancellationToken);
+            if (feeAmount > 0m)
+            {
+                await _walletService.DebitAsync(
+                    sellerWallet,
+                    WalletTransactionType.PlatformFee,
+                    feeAmount,
+                    AuctionRefTypes.Settlement,
+                    auction.Id,
+                    $"Phí nền tảng {feePercent}% trên phiên {auction.Id}",
+                    cancellationToken);
+            }
+
+            await _db.SaveChangesAsync(cancellationToken);
+        }
 
         // Huỷ mọi bid đang dẫn đầu: mua ngay kết thúc phiên, các cọc phải được nhả.
         var leadingBids = await _db.Bids
@@ -366,28 +324,56 @@ public class AuctionSettlementService : IAuctionSettlementService
 
         await _db.SaveChangesAsync(cancellationToken);
 
+        // Dọn dẹp/Vô hiệu hóa các cấu hình Auto-bid của phiên này
+        var autoBids = await _db.AuctionAutoBids
+            .Where(ab => ab.AuctionId == auction.Id && !ab.IsDeleted)
+            .ToListAsync(cancellationToken);
+        foreach (var autoBid in autoBids)
+        {
+            autoBid.IsDeleted = true;
+            autoBid.UpdatedAt = now;
+        }
+
         var ownershipId = await AssignOwnershipAsync(auction, buyerId, now, cancellationToken);
 
-        var escrow = await UpsertEscrowAsync(
-            auction, buyerId, auction.SellerId, price, feeAmount, now, cancellationToken);
+        EscrowTransaction escrow;
 
-        // Đặt winner TRƯỚC khi tạo Deliverable — RecipientId lấy từ auction.WinnerId.
-        auction.WinnerId = buyerId;
-        auction.FinalPrice = price;
-        auction.CurrentPrice = price;
-        auction.SettledAt = now;
+        if (auction.HasPhysicalCopy)
+        {
+            escrow = await UpsertEscrowAsync(
+                auction, buyerId, auction.SellerId, price, feeAmount, now, EscrowStatus.Deposited, cancellationToken);
 
-        // Hạn thanh toán — xem ghi chú ở SettleWithHeldDepositAsync.
-        auction.PaymentDeadline = now.AddHours(
-            (double)await GetPaymentWindowHoursAsync(cancellationToken));
+            auction.WinnerId = buyerId;
+            auction.FinalPrice = price;
+            auction.CurrentPrice = price;
+            auction.SettledAt = now;
+            auction.PaymentDeadline = null;
+            auction.Status = AuctionStatus.AwaitingPhysical;
+            auction.PhysicalChoiceDeadline = now.AddHours(48);
+            auction.RequiresPhysicalDelivery = null;
+            auction.UpdatedAt = now;
 
-        auction.Status = AuctionStatus.Settled;
-        auction.UpdatedAt = now;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        else
+        {
+            escrow = await UpsertEscrowAsync(
+                auction, buyerId, auction.SellerId, price, feeAmount, now, EscrowStatus.Released, cancellationToken);
 
-        await _db.SaveChangesAsync(cancellationToken);
+            // Đặt winner TRƯỚC khi tạo Deliverable — RecipientId lấy từ auction.WinnerId.
+            auction.WinnerId = buyerId;
+            auction.FinalPrice = price;
+            auction.CurrentPrice = price;
+            auction.SettledAt = now;
+            auction.PaymentDeadline = null; // Mua ngay thanh toán 100%, không có hạn thanh toán
+            auction.Status = AuctionStatus.Settled;
+            auction.UpdatedAt = now;
 
-        await CreateDeliverableIfMissingAsync(auction, cancellationToken);
-        await _db.SaveChangesAsync(cancellationToken);
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await CreateDeliverableIfMissingAsync(auction, cancellationToken);
+            await _db.SaveChangesAsync(cancellationToken);
+        }
 
         _logger.LogInformation(
             "Mua ngay phiên {AuctionId}: buyer={BuyerId}, price={Price}, fee={Fee}.",
@@ -474,11 +460,16 @@ public class AuctionSettlementService : IAuctionSettlementService
         decimal amount,
         decimal feeAmount,
         DateTimeOffset now,
-        CancellationToken cancellationToken)
+        EscrowStatus status = EscrowStatus.Released,
+        CancellationToken cancellationToken = default)
     {
         var escrow = await _db.EscrowTransactions.FirstOrDefaultAsync(
             e => e.AuctionId == auction.Id && !e.IsDeleted,
             cancellationToken);
+
+        var isReleased = status == EscrowStatus.Released;
+        var releasedAmount = isReleased ? amount - feeAmount : 0m;
+        var releasedAt = isReleased ? now : (DateTimeOffset?)null;
 
         if (escrow is null)
         {
@@ -488,12 +479,12 @@ public class AuctionSettlementService : IAuctionSettlementService
                 PayerId = payerId,
                 PayeeId = payeeId,
                 Amount = amount,
-                ReleasedAmount = amount - feeAmount,
+                ReleasedAmount = releasedAmount,
                 RefundedAmount = 0m,
                 FeeAmount = feeAmount,
-                Status = EscrowStatus.Released,
-                ReleasedAt = now,
-                Note = $"Chốt phiên đấu giá {auction.Id}"
+                Status = status,
+                ReleasedAt = releasedAt,
+                Note = isReleased ? $"Chốt phiên đấu giá {auction.Id}" : $"Ký quỹ bảo chứng phiên {auction.Id}"
             };
 
             _db.EscrowTransactions.Add(escrow);
@@ -503,15 +494,81 @@ public class AuctionSettlementService : IAuctionSettlementService
             escrow.PayerId = payerId;
             escrow.PayeeId = payeeId;
             escrow.Amount = amount;
-            escrow.ReleasedAmount = amount - feeAmount;
+            escrow.ReleasedAmount = releasedAmount;
             escrow.FeeAmount = feeAmount;
-            escrow.Status = EscrowStatus.Released;
-            escrow.ReleasedAt ??= now;
+            escrow.Status = status;
+            escrow.ReleasedAt = releasedAt;
             escrow.UpdatedAt = now;
         }
 
         await _db.SaveChangesAsync(cancellationToken);
         return escrow;
+    }
+
+    public async Task<(bool Success, string[] Errors)> ReleaseEscrowToSellerAsync(
+        Domain.Entities.Auction.Auction auction,
+        CancellationToken cancellationToken = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var escrow = await _db.EscrowTransactions
+            .FirstOrDefaultAsync(e => e.AuctionId == auction.Id && !e.IsDeleted, cancellationToken);
+
+        if (escrow is null)
+        {
+            return (false, ["Không tìm thấy bản ghi ký quỹ của phiên."]);
+        }
+
+        if (escrow.Status == EscrowStatus.Released)
+        {
+            return (true, []);
+        }
+
+        var feePercent = await _walletService.GetDecimalConfigAsync(
+            PlatformConfigKeys.PlatformFeePercent, DefaultPlatformFeePercent, cancellationToken);
+        var finalPrice = escrow.Amount;
+        var feeAmount = escrow.FeeAmount > 0 ? escrow.FeeAmount : Math.Round(finalPrice * feePercent / 100m, 2, MidpointRounding.AwayFromZero);
+
+        var sellerWallet = await _walletService.GetOrCreateWalletAsync(auction.SellerId, cancellationToken);
+
+        await _walletService.CreditAsync(
+            sellerWallet,
+            WalletTransactionType.EscrowReceive,
+            finalPrice,
+            AuctionRefTypes.Settlement,
+            auction.Id,
+            $"Thu tiền bán đấu giá (giao tranh vật lý hoàn tất) phiên {auction.Id}",
+            cancellationToken);
+
+        if (feeAmount > 0m)
+        {
+            await _walletService.DebitAsync(
+                sellerWallet,
+                WalletTransactionType.PlatformFee,
+                feeAmount,
+                AuctionRefTypes.Settlement,
+                auction.Id,
+                $"Phí nền tảng {feePercent}% trên phiên {auction.Id}",
+                cancellationToken);
+        }
+
+        escrow.Status = EscrowStatus.Released;
+        escrow.ReleasedAt = now;
+        escrow.ReleasedAmount = finalPrice - feeAmount;
+        escrow.UpdatedAt = now;
+
+        auction.Status = AuctionStatus.Completed;
+        auction.UpdatedAt = now;
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        await CreateDeliverableIfMissingAsync(auction, cancellationToken);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Đã giải ngân ký quỹ phiên {AuctionId} cho Seller {SellerId}: {ReleasedAmount:N0} VND sau khi hoàn tất giao nhận vật lý.",
+            auction.Id, auction.SellerId, escrow.ReleasedAmount);
+
+        return (true, []);
     }
 
     /// <summary>
@@ -525,17 +582,23 @@ public class AuctionSettlementService : IAuctionSettlementService
         Domain.Entities.Auction.Auction auction,
         CancellationToken cancellationToken)
     {
-        var alreadyExists = await _db.Deliverables
-            .AnyAsync(d => d.AuctionId == auction.Id && !d.IsDeleted, cancellationToken);
-
-        if (alreadyExists)
+        // WinnerId phải được gán TRƯỚC khi gọi hàm này.
+        if (!auction.WinnerId.HasValue)
         {
             return;
         }
 
-        // WinnerId phải được gán TRƯỚC khi gọi hàm này.
-        if (!auction.WinnerId.HasValue)
+        var existingDeliverable = await _db.Deliverables
+            .FirstOrDefaultAsync(d => d.AuctionId == auction.Id && !d.IsDeleted, cancellationToken);
+
+        if (existingDeliverable is not null)
         {
+            // Nếu Creator đã đính kèm Master File Pack lúc tạo phiên, chuyển quyền nhận sang Winner
+            if (existingDeliverable.RecipientId != auction.WinnerId.Value)
+            {
+                existingDeliverable.RecipientId = auction.WinnerId.Value;
+                existingDeliverable.UpdatedAt = DateTimeOffset.UtcNow;
+            }
             return;
         }
 
@@ -550,15 +613,20 @@ public class AuctionSettlementService : IAuctionSettlementService
             return;
         }
 
-        var isPng = artwork.ImageUrl.Contains(".png", StringComparison.OrdinalIgnoreCase);
+        // Ưu tiên bản không watermark ImageUrl nếu có WatermarkedUrl riêng, hoặc file chất lượng cao
+        var masterFileUrl = !string.IsNullOrWhiteSpace(artwork.ImageUrl) ? artwork.ImageUrl : artwork.WatermarkedUrl ?? string.Empty;
+        var isZip = masterFileUrl.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+        var isPng = masterFileUrl.Contains(".png", StringComparison.OrdinalIgnoreCase);
+        var mimeType = isZip ? "application/zip" : (isPng ? "image/png" : "image/jpeg");
+        var ext = isZip ? "zip" : (isPng ? "png" : "jpg");
 
         _db.Deliverables.Add(new Deliverable
         {
             AuctionId = auction.Id,
             RecipientId = auction.WinnerId.Value,
-            FileName = $"{artwork.Title}.{(isPng ? "png" : "jpg")}",
-            FileUrl = artwork.ImageUrl,
-            MimeType = isPng ? "image/png" : "image/jpeg",
+            FileName = $"{artwork.Title}.{ext}",
+            FileUrl = masterFileUrl,
+            MimeType = mimeType,
             FileSizeBytes = artwork.FileSizeBytes,
             IsDelivered = false
         });

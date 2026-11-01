@@ -35,7 +35,8 @@ public class CreatePaymentOrderCommandValidator : AbstractValidator<CreatePaymen
 
         RuleFor(x => x.Amount)
             .GreaterThan(0).WithMessage("Số tiền nạp phải lớn hơn 0.")
-            .LessThanOrEqualTo(500_000_000m).WithMessage("Số tiền nạp tối đa 500.000.000 VND mỗi giao dịch.");
+            .LessThanOrEqualTo(500_000_000m).WithMessage("Số tiền nạp tối đa 500.000.000 VND mỗi giao dịch.")
+            .Must(a => a == decimal.Truncate(a)).WithMessage("Số tiền nạp phải là số nguyên (VND không hỗ trợ số thập phân).");
 
         RuleFor(x => x.Gateway)
             .NotEmpty().WithMessage("Vui lòng chọn cổng thanh toán.")

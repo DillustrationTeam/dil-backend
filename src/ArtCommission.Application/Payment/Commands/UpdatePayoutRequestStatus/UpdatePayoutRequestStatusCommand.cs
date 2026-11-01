@@ -95,6 +95,49 @@ public class UpdatePayoutRequestStatusCommandHandler
                 [$"Yêu cầu này đã ở trạng thái {payout.Status}, không thể xử lý lại."]);
         }
 
+        // B01: Khóa và cập nhật trạng thái nguyên tử (Atomic Claim) chống race condition duyệt/từ chối song song
+        int claimed;
+        if (_db.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        {
+            if (payout.Status == PayoutStatus.Pending)
+            {
+                payout.Status = targetStatus;
+                payout.ProcessedBy = request.AdminId;
+                payout.ProcessedAt = DateTimeOffset.UtcNow;
+                payout.UpdatedAt = DateTimeOffset.UtcNow;
+                claimed = 1;
+            }
+            else
+            {
+                claimed = 0;
+            }
+        }
+        else
+        {
+            claimed = await _db.PayoutRequests
+                .Where(p => p.Id == request.PayoutRequestId && p.Status == PayoutStatus.Pending && !p.IsDeleted)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(p => p.Status, targetStatus)
+                    .SetProperty(p => p.ProcessedBy, request.AdminId)
+                    .SetProperty(p => p.ProcessedAt, DateTimeOffset.UtcNow)
+                    .SetProperty(p => p.UpdatedAt, DateTimeOffset.UtcNow),
+                    cancellationToken);
+        }
+
+        if (claimed == 0)
+        {
+            await tx.RollbackAsync(cancellationToken);
+            var current = await _db.PayoutRequests.AsNoTracking().FirstOrDefaultAsync(p => p.Id == request.PayoutRequestId, cancellationToken);
+            var existing = current != null ? await LoadDtoAsync(current, cancellationToken) : null;
+            return (false, false, existing,
+                [$"Yêu cầu này đã được xử lý bởi quản trị viên khác (trạng thái: {current?.Status})."]);
+        }
+
+        payout.Status = targetStatus;
+        payout.ProcessedBy = request.AdminId;
+        payout.ProcessedAt = DateTimeOffset.UtcNow;
+        payout.UpdatedAt = DateTimeOffset.UtcNow;
+
         BankAccount? bankAccount = null;
 
         if (targetStatus == PayoutStatus.Rejected)
@@ -153,6 +196,7 @@ public class UpdatePayoutRequestStatusCommandHandler
 
                 if (!payoutResult.Success)
                 {
+                    await tx.RollbackAsync(cancellationToken);
                     return (false, false, null,
                         [$"Cổng payOS từ chối lệnh chi tiền: {payoutResult.Message} (Mã lỗi: {payoutResult.ErrorCode ?? "N/A"})"]);
                 }

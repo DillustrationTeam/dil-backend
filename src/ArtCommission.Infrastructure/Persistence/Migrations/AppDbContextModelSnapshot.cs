@@ -1118,6 +1118,11 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<bool>("HasPhysicalCopy")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
@@ -1125,6 +1130,16 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTimeOffset?>("PaymentDeadline")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("PhysicalChoiceDeadline")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("PhysicalDescription")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool?>("RequiresPhysicalDelivery")
+                        .HasColumnType("bit");
 
                     b.Property<decimal?>("ReservePrice")
                         .HasPrecision(18, 2)
@@ -1152,8 +1167,8 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<string>("Status")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
                         .HasDefaultValue("Scheduled");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
@@ -1223,6 +1238,105 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_AuctionAutoBids_ProxyOrder");
 
                     b.ToTable("AuctionAutoBids", (string)null);
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.Auction.AuctionDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AuctionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CarrierName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTimeOffset?>("ConfirmedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("DeliveredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeliveryReceiptUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("DisputeEvidenceUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("DisputeReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("NoteToSeller")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("PackageImageUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("RecipientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RecipientName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("RecipientPhone")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTimeOffset?>("ShippedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ShippingAddress")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ShippingReceiptUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("TrackingCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("TrackingUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuctionId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_AuctionDeliveries_Auction");
+
+                    b.HasIndex("RecipientId");
+
+                    b.ToTable("AuctionDeliveries", (string)null);
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.Auction.AuctionWatch", b =>
@@ -3450,7 +3564,8 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("UX_VoucherRedemption_Ref");
 
                     b.HasIndex("VoucherId", "UserId")
-                        .HasDatabaseName("IX_VoucherRedemption_Voucher_User");
+                        .IsUnique()
+                        .HasDatabaseName("UX_VoucherRedemption_Voucher_User");
 
                     b.ToTable("VoucherRedemption", (string)null);
                 });
@@ -4100,6 +4215,23 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Navigation("Auction");
                 });
 
+            modelBuilder.Entity("ArtCommission.Domain.Entities.Auction.AuctionDelivery", b =>
+                {
+                    b.HasOne("ArtCommission.Domain.Entities.Auction.Auction", "Auction")
+                        .WithOne("Delivery")
+                        .HasForeignKey("ArtCommission.Domain.Entities.Auction.AuctionDelivery", "AuctionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ArtCommission.Domain.Entities.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("RecipientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Auction");
+                });
+
             modelBuilder.Entity("ArtCommission.Domain.Entities.Auction.AuctionWatch", b =>
                 {
                     b.HasOne("ArtCommission.Domain.Entities.Auction.Auction", "Auction")
@@ -4702,6 +4834,8 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("ArtCommission.Domain.Entities.Auction.Auction", b =>
                 {
                     b.Navigation("Bids");
+
+                    b.Navigation("Delivery");
 
                     b.Navigation("Watches");
                 });

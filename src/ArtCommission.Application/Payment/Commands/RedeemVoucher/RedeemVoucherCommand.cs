@@ -102,6 +102,47 @@ public class RedeemVoucherCommandHandler
                 existing.RedeemedAt), []);
         }
 
+        // S02: Kiểm tra quyền sở hữu giao dịch phía server trước khi ghi nhận redemption
+        if (string.Equals(request.RefType, "Commission", StringComparison.OrdinalIgnoreCase))
+        {
+            var commission = await _db.Commissions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == request.RefId && !c.IsDeleted, cancellationToken);
+
+            if (commission is null)
+            {
+                return (false, false, null, ["Không tìm thấy đơn đặt vẽ tương ứng."]);
+            }
+
+            if (commission.ClientId != request.UserId)
+            {
+                _logger.LogWarning(
+                    "Từ chối redeem: người gọi không phải client của Commission. RefId={RefId} Caller={Caller} ClientId={ClientId}",
+                    request.RefId, request.UserId, commission.ClientId);
+                return (false, false, null, ["Bạn không có quyền áp dụng mã giảm giá cho đơn đặt vẽ này."]);
+            }
+        }
+        else if (string.Equals(request.RefType, "PaymentOrder", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(request.RefType, "Deposit", StringComparison.OrdinalIgnoreCase))
+        {
+            var order = await _db.PaymentOrders
+                .AsNoTracking()
+                .FirstOrDefaultAsync(o => o.Id == request.RefId && !o.IsDeleted, cancellationToken);
+
+            if (order is null)
+            {
+                return (false, false, null, ["Không tìm thấy đơn nạp tiền tương ứng."]);
+            }
+
+            if (order.UserId != request.UserId)
+            {
+                _logger.LogWarning(
+                    "Từ chối redeem: người gọi không sở hữu đơn nạp. RefId={RefId} Caller={Caller} OrderUserId={OrderUserId}",
+                    request.RefId, request.UserId, order.UserId);
+                return (false, false, null, ["Bạn không có quyền áp dụng mã giảm giá cho đơn nạp này."]);
+            }
+        }
+
         var check = await _voucherCheck.CheckAsync(
             request.UserId,
             request.VoucherCode,
@@ -122,16 +163,45 @@ public class RedeemVoucherCommandHandler
 
         try
         {
+            // B03: Chống đua lệnh vượt quy định 1 lần/người
+            var alreadyUsedByThisUser = await _db.VoucherRedemptions
+                .AnyAsync(r => r.VoucherId == voucher.Id && r.UserId == request.UserId, cancellationToken);
+            if (alreadyUsedByThisUser)
+            {
+                await tx.RollbackAsync(cancellationToken);
+                return (false, true, null, ["Bạn đã sử dụng mã giảm giá này rồi."]);
+            }
+
             // Atomic: chỉ tăng khi CÒN lượt. 0 dòng = vừa bị người khác tiêu hết.
-            var affected = await _db.Vouchers
-                .Where(v => v.Id == voucher.Id
-                            && !v.IsDeleted
-                            && v.IsActive
-                            && (v.UsageLimit == null || v.UsedCount < v.UsageLimit.Value))
-                .ExecuteUpdateAsync(
-                    s => s.SetProperty(v => v.UsedCount, v => v.UsedCount + 1)
-                          .SetProperty(v => v.UpdatedAt, now),
+            int affected;
+            if (_db.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+            {
+                var v = await _db.Vouchers.FirstOrDefaultAsync(
+                    x => x.Id == voucher.Id && !x.IsDeleted && x.IsActive && (x.UsageLimit == null || x.UsedCount < x.UsageLimit.Value),
                     cancellationToken);
+                if (v is not null)
+                {
+                    v.UsedCount++;
+                    v.UpdatedAt = now;
+                    affected = 1;
+                }
+                else
+                {
+                    affected = 0;
+                }
+            }
+            else
+            {
+                affected = await _db.Vouchers
+                    .Where(v => v.Id == voucher.Id
+                                && !v.IsDeleted
+                                && v.IsActive
+                                && (v.UsageLimit == null || v.UsedCount < v.UsageLimit.Value))
+                    .ExecuteUpdateAsync(
+                        s => s.SetProperty(v => v.UsedCount, v => v.UsedCount + 1)
+                              .SetProperty(v => v.UpdatedAt, now),
+                        cancellationToken);
+            }
 
             if (affected == 0)
             {
@@ -170,14 +240,14 @@ public class RedeemVoucherCommandHandler
         }
         catch (DbUpdateException ex) when (LooksLikeUniqueViolation(ex))
         {
-            // Đua nhau: request khác đã ghi redemption cho cùng giao dịch trước.
+            // Đua nhau: request khác đã ghi redemption cho cùng giao dịch hoặc cùng người dùng trước.
             await tx.RollbackAsync(cancellationToken);
 
             _logger.LogWarning(
-                "Voucher redeem trùng cho cùng giao dịch. RefType={RefType} RefId={RefId}",
-                request.RefType, request.RefId);
+                "Voucher redeem trùng cho cùng giao dịch hoặc cùng người dùng. RefType={RefType} RefId={RefId} UserId={UserId}",
+                request.RefType, request.RefId, request.UserId);
 
-            return (false, true, null, ["Giao dịch này đã được áp mã giảm giá rồi."]);
+            return (false, true, null, ["Mã giảm giá đã được sử dụng hoặc giao dịch này đã được áp mã."]);
         }
     }
 
