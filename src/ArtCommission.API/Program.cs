@@ -216,6 +216,7 @@ builder.Services.AddHttpClient<GeminiArtworkScanService>(client =>
 });
 builder.Services.AddScoped<IArtworkScanService, GeminiArtworkScanService>();
 builder.Services.AddScoped<IArtworkScanJob, ArtworkScanJob>();
+builder.Services.AddScoped<IArtworkScanQueue, HangfireArtworkScanQueue>();
 
 // 3j-bis. UC43 — DỊCH TIN NHẮN dùng Google Translate, KHÔNG dùng mô hình sinh văn bản:
 // nhanh hơn, rẻ hơn và không tự đổi ngôn ngữ đích. Có GoogleTranslate:ApiKey thì gọi
