@@ -13,7 +13,9 @@ using ArtCommission.Application.Commission.Interfaces;
 using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
 using ArtCommission.Application.Revenue.Common;
+using ArtCommission.Application.ArtistStudio.Moderation;
 using ArtCommission.Domain.Entities.Identity;
+using ArtCommission.Infrastructure.BackgroundJobs;
 using ArtCommission.Infrastructure.ExternalServices.Cloudinary;
 using ArtCommission.Infrastructure.ExternalServices.Common;
 using ArtCommission.Infrastructure.ExternalServices.Gemini;
@@ -205,6 +207,15 @@ builder.Services.AddHttpClient<GeminiAiClient>(client =>
 });
 
 builder.Services.AddScoped<IAiChatClient>(sp => sp.GetRequiredService<GeminiAiClient>());
+
+// 3j-ter. Quét nội dung tranh bằng Gemini Multimodal Vision API (SCR-20 / UC28)
+builder.Services.AddHttpClient<GeminiArtworkScanService>(client =>
+{
+    var timeoutSeconds = builder.Configuration.GetValue<int?>($"{GeminiOptions.SectionName}:TimeoutSeconds") ?? 60;
+    client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+});
+builder.Services.AddScoped<IArtworkScanService, GeminiArtworkScanService>();
+builder.Services.AddScoped<IArtworkScanJob, ArtworkScanJob>();
 
 // 3j-bis. UC43 — DỊCH TIN NHẮN dùng Google Translate, KHÔNG dùng mô hình sinh văn bản:
 // nhanh hơn, rẻ hơn và không tự đổi ngôn ngữ đích. Có GoogleTranslate:ApiKey thì gọi
