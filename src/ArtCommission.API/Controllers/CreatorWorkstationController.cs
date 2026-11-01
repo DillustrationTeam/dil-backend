@@ -56,6 +56,19 @@ public class CreatorWorkstationController : ApiControllerBase
         return result.Success ? OkEnvelope(result.Data) : BadRequestEnvelope(result.Errors);
     }
 
+    [HttpGet("creator/workstation/assets")]
+    public async Task<IActionResult> GetAssets([FromQuery] string? assetType, CancellationToken cancellationToken)
+    {
+        return OkEnvelope(await Mediator.Send(new GetCreatorAssetsQuery(CurrentUserId, assetType), cancellationToken));
+    }
+
+    [HttpPut("creator/workstation/assets/{id:guid}")]
+    public async Task<IActionResult> UpdateAsset(Guid id, [FromBody] CreateCreatorAssetRequest request, CancellationToken cancellationToken)
+    {
+        var result = await Mediator.Send(new CreatorWorkstationMutationCommand("update-asset", CurrentUserId, id, request), cancellationToken);
+        return result.Success ? OkEnvelope(result.Data) : BadRequestEnvelope(result.Errors);
+    }
+
     [HttpPost("creator/workstation/assets")]
     public async Task<IActionResult> CreateAsset([FromBody] CreateCreatorAssetRequest request, CancellationToken cancellationToken)
     {
