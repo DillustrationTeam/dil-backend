@@ -82,8 +82,9 @@ public class GetMyNotificationsQueryHandler
 
         if (!string.IsNullOrWhiteSpace(request.Cursor))
         {
+            var parts = request.Cursor.Split('|');
             if (!DateTimeOffset.TryParse(
-                    request.Cursor,
+                    parts[0],
                     System.Globalization.CultureInfo.InvariantCulture,
                     System.Globalization.DateTimeStyles.RoundtripKind,
                     out var cursorTime))
@@ -91,7 +92,14 @@ public class GetMyNotificationsQueryHandler
                 return (false, null, unreadCount, ["Cursor không hợp lệ."]);
             }
 
-            query = query.Where(n => n.CreatedAt < cursorTime);
+            if (parts.Length > 1 && Guid.TryParse(parts[1], out var cursorId))
+            {
+                query = query.Where(n => n.CreatedAt < cursorTime || (n.CreatedAt == cursorTime && n.Id < cursorId));
+            }
+            else
+            {
+                query = query.Where(n => n.CreatedAt < cursorTime);
+            }
         }
 
         var rows = await query
@@ -104,8 +112,8 @@ public class GetMyNotificationsQueryHandler
         if (rows.Count > limit)
         {
             rows.RemoveAt(rows.Count - 1);
-            nextCursor = rows[^1].CreatedAt.ToString(
-                "O", System.Globalization.CultureInfo.InvariantCulture);
+            var last = rows[^1];
+            nextCursor = $"{last.CreatedAt.ToString("O", System.Globalization.CultureInfo.InvariantCulture)}|{last.Id}";
         }
 
         var items = rows.Select(NotificationMapper.ToDto).ToList();

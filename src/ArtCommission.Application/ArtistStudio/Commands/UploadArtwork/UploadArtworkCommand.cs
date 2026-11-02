@@ -88,7 +88,7 @@ public class UploadArtworkCommandHandler : IRequestHandler<UploadArtworkCommand,
             ImageUrl = request.ImageUrl,
             ThumbnailUrl = request.ThumbnailUrl,
             IsAiGenerated = request.IsAiGenerated,
-            AiDetectionScore = request.AiDetectionScore,
+            AiDetectionScore = null,
             ModerationStatus = "Pending",
             ViewCount = 0
         };

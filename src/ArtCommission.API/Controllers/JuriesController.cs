@@ -23,6 +23,8 @@ public class JuriesController : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetJuries(
         [FromQuery] Guid? eventId = null,
+        [FromQuery] Guid? creatorId = null,
+        [FromQuery] Guid? userId = null,
         [FromQuery] string? role = null,
         [FromQuery] bool? isHeadJury = null,
         [FromQuery] string? name = null,
@@ -33,6 +35,8 @@ public class JuriesController : ApiControllerBase
     {
         var query = new GetJuriesQuery(
             EventId: eventId,
+            CreatorId: creatorId,
+            UserId: userId,
             Role: role,
             IsHeadJury: isHeadJury,
             Name: name,

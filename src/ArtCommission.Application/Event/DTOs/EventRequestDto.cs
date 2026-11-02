@@ -33,4 +33,13 @@ public sealed record EventRequestDto
     public DateTimeOffset VotingEndAt { get; set; }
 
     public DateTimeOffset ResultAnnouncementAt { get; set; }
+
+    public List<EventCriteriaRequestDto>? Criteria { get; set; }
+
+    public List<EventCriteriaRequestDto>? EventCriteria
+    {
+        get => Criteria;
+        set => Criteria = value;
+    }
 }
+

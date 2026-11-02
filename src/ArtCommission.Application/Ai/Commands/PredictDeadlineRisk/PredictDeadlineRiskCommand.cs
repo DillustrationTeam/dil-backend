@@ -171,7 +171,22 @@ public class PredictDeadlineRiskCommandHandler
             $"Đơn \"{commission.Title}\" đang ở mức rủi ro trễ hạn {AiAndRevenueEnumNames.ToContractName(assessment.Level)} " +
             $"(điểm {assessment.RiskScore}/100).";
 
-        foreach (var userId in new[] { commission.ClientId, commission.CreatorId }.Distinct())
+        var creatorUserId = await _db.CreatorProfiles
+            .AsNoTracking()
+            .Where(p => p.Id == commission.CreatorId && !p.IsDeleted)
+            .Select(p => p.UserId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (creatorUserId == Guid.Empty)
+        {
+            creatorUserId = commission.CreatorId;
+        }
+
+        var recipients = new[] { commission.ClientId, creatorUserId }
+            .Where(id => id != Guid.Empty)
+            .Distinct();
+
+        foreach (var userId in recipients)
         {
             try
             {

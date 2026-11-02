@@ -28,7 +28,7 @@ public class UploadsController : ApiControllerBase
 
     [HttpPost("profile-avatar")]
     [RequestSizeLimit(6 * 1024 * 1024)]
-    public async Task<IActionResult> UploadProfileAvatar([FromForm] IFormFile file, CancellationToken ct)
+    public async Task<IActionResult> UploadProfileAvatar(IFormFile file, CancellationToken ct)
     {
         if (CurrentUserId == Guid.Empty) return UnauthorizedEnvelope();
         if (file is null || file.Length == 0 || file.Length > 5 * 1024 * 1024)

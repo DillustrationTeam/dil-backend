@@ -25,7 +25,8 @@ public class CreatePayoutRequestCommandValidator : AbstractValidator<CreatePayou
     public CreatePayoutRequestCommandValidator()
     {
         RuleFor(x => x.Amount)
-            .GreaterThan(0).WithMessage("Số tiền rút phải lớn hơn 0.");
+            .GreaterThan(0).WithMessage("Số tiền rút phải lớn hơn 0.")
+            .Must(a => a == decimal.Truncate(a)).WithMessage("Số tiền rút phải là số nguyên (VND không hỗ trợ số thập phân).");
 
         RuleFor(x => x.BankAccountId)
             .NotEmpty().WithMessage("Vui lòng chọn tài khoản ngân hàng nhận tiền.");

@@ -59,7 +59,7 @@ public class PayOsPayoutService : IPayOsPayoutService
 
         _logger.LogInformation(
             "Gửi lệnh chi tiền payOS qua SDK: Ref {ReferenceId}, Amount {Amount}, To {ToBin}-{ToAccountNumber}",
-            request.ReferenceId, request.Amount, request.ToBin, request.ToAccountNumber);
+            request.ReferenceId, request.Amount, request.ToBin, ArtCommission.Application.Payment.Common.BankAccountMasker.Mask(request.ToAccountNumber));
 
         try
         {

@@ -26,6 +26,8 @@ public class EventSubmission
 
     public string? AdminNote { get; set; }
 
+    public bool IsDisqualified { get; set; } = false;
+
     public DateTimeOffset SubmittedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public PlatformEvent? Event { get; set; }

@@ -117,6 +117,7 @@ public class GetAuctionsQueryHandler
                 a.Artwork!.Title,
                 a.Artwork!.ThumbnailUrl,
                 a.Artwork!.ImageUrl,
+                a.Artwork!.WatermarkedUrl,
                 a.Artwork!.Style,
                 a.Watches.Count(w => !w.IsDeleted)))
             .ToListAsync(cancellationToken);
@@ -129,8 +130,8 @@ public class GetAuctionsQueryHandler
             Artwork: new AuctionArtworkDto(
                 r.ArtworkId,
                 r.Title,
-                r.ThumbnailUrl ?? r.ImageUrl,
-                r.ImageUrl,
+                r.ThumbnailUrl ?? r.WatermarkedUrl ?? r.ImageUrl,
+                r.WatermarkedUrl ?? r.ImageUrl,
                 r.Style),
             CurrentPrice: r.CurrentPrice,
             BidCount: r.BidCount,
@@ -213,6 +214,7 @@ public class GetAuctionsQueryHandler
         string Title,
         string? ThumbnailUrl,
         string? ImageUrl,
+        string? WatermarkedUrl,
         string? Style,
         int WatchCount);
 }

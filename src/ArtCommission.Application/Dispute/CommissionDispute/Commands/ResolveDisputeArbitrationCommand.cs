@@ -1,4 +1,5 @@
 using ArtCommission.Application.Common.Interfaces;
+using ArtCommission.Application.Concurrency;
 using ArtCommission.Application.Dispute.CommissionDispute.Validators;
 using ArtCommission.Application.Payment.Common;
 using ArtCommission.Domain.Entities.Payment;
@@ -52,14 +53,28 @@ public class ResolveDisputeArbitrationCommandHandler
             return (false, string.Empty, validationResult.Errors.Select(e => e.ErrorMessage).ToArray());
         }
 
-        // Chạy trong 1 EF Core DB Transaction (IApplicationDbContext.Database.BeginTransactionAsync)
-        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = $"resolve_dispute_{request.DisputeId:D}";
 
-        try
+        using (await AsyncKeyedLockManager.LockAsync(lockKey, cancellationToken))
         {
-            var dispute = await _db.Disputes
-                .Include(d => d.Commission)
-                .FirstOrDefaultAsync(d => d.Id == request.DisputeId && !d.IsDeleted, cancellationToken);
+            var isSqlServer = _db.Database.IsRelational() &&
+                              _db.Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true;
+
+            // Chạy trong 1 EF Core DB Transaction (IApplicationDbContext.Database.BeginTransactionAsync)
+            await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+
+            try
+            {
+                if (isSqlServer)
+                {
+                    await _db.Database.ExecuteSqlInterpolatedAsync(
+                        $"EXEC sp_getapplock @Resource = {lockKey}, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;",
+                        cancellationToken);
+                }
+
+                var dispute = await _db.Disputes
+                    .Include(d => d.Commission)
+                    .FirstOrDefaultAsync(d => d.Id == request.DisputeId && !d.IsDeleted, cancellationToken);
 
             if (dispute == null)
             {
@@ -220,6 +235,7 @@ public class ResolveDisputeArbitrationCommandHandler
             await transaction.RollbackAsync(cancellationToken);
             return (false, string.Empty, new[] { $"Lỗi xử lý giao dịch phân xử tranh chấp: {ex.Message}" });
         }
+    }
     }
 
     private async Task PublishResolutionNotificationSafeAsync(

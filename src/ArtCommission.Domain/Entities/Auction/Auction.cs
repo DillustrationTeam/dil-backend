@@ -58,6 +58,18 @@ public class Auction : BaseEntity
     /// <summary>Token SQL Server thay đổi mỗi lần ghi, dùng để phát hiện bid cạnh tranh.</summary>
     public byte[] RowVersion { get; set; } = [];
 
+    /// <summary>Người bán có thể cung cấp bản tranh vật lý hay không.</summary>
+    public bool HasPhysicalCopy { get; set; }
+
+    /// <summary>Mô tả chi tiết tranh vật lý: kích thước, chất liệu, khung, trọng lượng...</summary>
+    public string? PhysicalDescription { get; set; }
+
+    /// <summary>Người thắng có yêu cầu giao tranh vật lý hay không: null (chưa quyết định), false (chỉ nhận file số), true (yêu cầu giao tranh vật lý).</summary>
+    public bool? RequiresPhysicalDelivery { get; set; }
+
+    /// <summary>Hạn chót để người thắng lựa chọn nhận tranh vật lý (mặc định 48h sau chốt phiên).</summary>
+    public DateTimeOffset? PhysicalChoiceDeadline { get; set; }
+
     /// <summary>
     /// Lý do huỷ phiên. Bắt buộc có giá trị khi <see cref="Status"/> là Cancelled hoặc Expired
     /// để tra soát về sau.
@@ -66,6 +78,7 @@ public class Auction : BaseEntity
 
     // Navigation
     public Artwork? Artwork { get; set; }
+    public AuctionDelivery? Delivery { get; set; }
     public ICollection<Bid> Bids { get; set; } = [];
     public ICollection<AuctionWatch> Watches { get; set; } = [];
 }

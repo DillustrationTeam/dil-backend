@@ -42,6 +42,7 @@ public sealed class PlaceBidCommandHandler
     : IRequestHandler<PlaceBidCommand, (bool Success, PlaceBidResultDto? Data, string[] Errors, AuctionBidConflictDto? Conflict)>
 {
     private static readonly TimeSpan AntiSnipeWindow = TimeSpan.FromMinutes(3);
+    private static readonly TimeSpan MaxAntiSnipeExtension = TimeSpan.FromHours(2);
     private const int MaxLimit = 100;
 
     private readonly IApplicationDbContext _db;
@@ -305,7 +306,11 @@ public sealed class PlaceBidCommandHandler
             auction.BidCount += leaderChanged && winner.BidderId != request.UserId ? 2 : 1;
             auction.UpdatedAt = now;
 
-            var extended = auction.EndAt > now && auction.EndAt - now <= AntiSnipeWindow;
+            // Giới hạn chống gia hạn vô tận: thời gian kết thúc không được vượt quá StartAt + MaxDuration + MaxAntiSnipeExtension
+            var maxAllowedEndAt = auction.StartAt.AddDays(7).Add(MaxAntiSnipeExtension);
+            var extended = auction.EndAt > now 
+                && auction.EndAt - now <= AntiSnipeWindow
+                && auction.EndAt.Add(AntiSnipeWindow) <= maxAllowedEndAt;
             if (extended)
             {
                 auction.EndAt = auction.EndAt.Add(AntiSnipeWindow);

@@ -35,6 +35,8 @@ public class GetJuryByIdQueryHandler
                 EventId = j.EventId,
                 EventTitle = j.Event != null ? j.Event.Title : null,
                 CreatorId = j.CreatorId,
+                CreatorUserId = j.Creator != null ? j.Creator.UserId : (Guid?)null,
+                UserId = j.Creator != null ? j.Creator.UserId : (Guid?)null,
                 CreatorName = j.Creator != null && j.Creator.User != null ? j.Creator.User.FullName : null,
                 CreatorDisplayName = j.Creator != null ? j.Creator.DisplayName : null,
                 CreatorAvatarUrl = null,

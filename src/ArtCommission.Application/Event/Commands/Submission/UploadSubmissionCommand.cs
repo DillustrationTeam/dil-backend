@@ -182,6 +182,7 @@ public class UploadSubmissionCommandHandler
             VoteCount = submission.VoteCount,
             Score = submission.Score,
             AdminNote = submission.AdminNote,
+            IsDisqualified = submission.IsDisqualified,
             SubmittedAt = submission.SubmittedAt
         };
 
