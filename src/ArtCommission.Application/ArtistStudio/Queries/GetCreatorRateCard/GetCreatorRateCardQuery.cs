@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard;
 
 public record RateCardMilestoneDto(int Sequence, string Title, decimal Price, int MaxRevisions = 3);
-public record RateCardPackageDto(Guid Id, string Name, string? Description, decimal Price, List<RateCardMilestoneDto> Milestones);
+public record RateCardPackageDto(Guid Id, string Name, string? Description, decimal Price, List<RateCardMilestoneDto> Milestones, int MaxRevisions = 3, decimal ExtraRevisionPrice = 0, List<string>? SampleUrls = null, int OrderCount = 0);
 
 // Older stored packages used slugs. Map them consistently to IDs for display and ordering.
 public sealed class RateCardIdConverter : JsonConverter<Guid>
@@ -54,6 +54,18 @@ public class GetCreatorRateCardQueryHandler : IRequestHandler<GetCreatorRateCard
         try
         {
             var packages = JsonSerializer.Deserialize<List<RateCardPackageDto>>(profile.RateCardJson, JsonOptions) ?? new List<RateCardPackageDto>();
+            if (packages.Count > 0)
+            {
+                var packageIds = packages.Select(p => (Guid?)p.Id).ToList();
+                var counts = await _db.Set<Domain.Entities.Commission.Commission>()
+                    .AsNoTracking()
+                    .Where(c => c.CreatorId == profile.Id && c.PackageId != null && packageIds.Contains(c.PackageId))
+                    .GroupBy(c => c.PackageId!.Value)
+                    .Select(g => new { PackageId = g.Key, Count = g.Count() })
+                    .ToDictionaryAsync(x => x.PackageId, x => x.Count, cancellationToken);
+
+                packages = packages.Select(p => p with { OrderCount = counts.GetValueOrDefault(p.Id, 0) }).ToList();
+            }
             return (true, packages, Array.Empty<string>());
         }
         catch

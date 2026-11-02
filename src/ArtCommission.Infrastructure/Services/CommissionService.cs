@@ -107,7 +107,7 @@ public class CommissionService : ICommissionService
         var totalPrice = selectedPackage.Price;
         var milestones = stages.OrderBy(stage => stage.Sequence).Select(stage => new Milestone
         {
-            Sequence = stage.Sequence, Title = stage.Title, Price = stage.Price, MaxRevisions = stage.MaxRevisions, Status = MilestoneStatus.Pending
+            Sequence = stage.Sequence, Title = stage.Title, Price = stage.Price, MaxRevisions = stage.MaxRevisions > 0 ? stage.MaxRevisions : (selectedPackage.MaxRevisions > 0 ? selectedPackage.MaxRevisions : 3), Status = MilestoneStatus.Pending
         }).ToList();
         var multiplier = request.LicenseType == "Commercial"
             ? await _dbContext.CreatorTerms.AsNoTracking()

@@ -128,7 +128,18 @@ public class AddonService(AppDbContext db, IWalletService wallets) : IAddonServi
             c.FinalPrice += a.Price; c.TotalPrice += a.Price; c.EscrowHeldAmount += a.Price;
             c.DeadlineAt = c.DeadlineAt?.AddDays(a.ExtendDays);
             c.UpdatedAt = DateTimeOffset.UtcNow;
-            milestone.Price += a.Price; milestone.UpdatedAt = DateTimeOffset.UtcNow;
+            milestone.Price += a.Price;
+            if (a.Title.Contains("Sửa đổi", StringComparison.OrdinalIgnoreCase) || a.Title.Contains("Revision", StringComparison.OrdinalIgnoreCase))
+            {
+                milestone.MaxRevisions += 1;
+                if (!string.IsNullOrWhiteSpace(a.Description))
+                {
+                    milestone.Status = MilestoneStatus.RevisionRequested;
+                    milestone.RevisionCount += 1;
+                    milestone.RevisionFeedback = a.Description;
+                }
+            }
+            milestone.UpdatedAt = DateTimeOffset.UtcNow;
             a.Status = target; a.UpdatedAt = DateTimeOffset.UtcNow;
             await wallets.HoldFundsAsync(wallet, WalletTransactionType.EscrowHold, a.Price, nameof(CommissionAddon), a.Id, "Ký quỹ phụ phí: " + a.Title, ct);
         }

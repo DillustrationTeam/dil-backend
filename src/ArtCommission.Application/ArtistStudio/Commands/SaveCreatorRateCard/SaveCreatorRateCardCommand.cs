@@ -38,8 +38,10 @@ public class SaveCreatorRateCardCommandHandler
             p.Milestones.Any(m => m is null || string.IsNullOrWhiteSpace(m.Title) || m.Title.Length > 200 ||
                 m.Price <= 0 || decimal.Truncate(m.Price) != m.Price || m.Price > 1000000000000m || m.MaxRevisions is < 0 or > 20) ||
             !p.Milestones.Select(m => m.Sequence).SequenceEqual(Enumerable.Range(1, p.Milestones.Count)) ||
-            p.Price != p.Milestones.Sum(m => m.Price)))
-            return (false, null, new[] { "Gói cần 1–10 mốc, giá VND nguyên dương, tổng giá đúng và 0–20 lần sửa mỗi mốc." });
+            p.Price != p.Milestones.Sum(m => m.Price) ||
+            p.SampleUrls?.Count > 10 ||
+            p.SampleUrls?.Any(u => string.IsNullOrWhiteSpace(u) || u.Length > 2000) == true))
+            return (false, null, new[] { "Gói cần 1–10 mốc, giá VND nguyên dương, tổng giá đúng, 0–20 lần sửa và tối đa 10 ảnh mẫu hợp lệ." });
 
         try
         {
