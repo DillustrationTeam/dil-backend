@@ -35,4 +35,10 @@ public static class PlatformConfigKeys
     public const string MaxRevisionCountSqlKey = "max_revision_count";
 
     public const string PresignedUrlExpirationMinutes = "PresignedUrlExpirationMinutes";
+
+    // AI Scan & Content Moderation Thresholds (SCR-20 / UC28)
+    public const string AiScanAdultThreshold = "AiScanAdultThreshold";
+    public const string AiScanViolenceThreshold = "AiScanViolenceThreshold";
+    public const string AiScanAiDetectionThreshold = "AiScanAiDetectionThreshold";
+    public const string AiScanAutoTaggingEnabled = "AiScanAutoTaggingEnabled";
 }

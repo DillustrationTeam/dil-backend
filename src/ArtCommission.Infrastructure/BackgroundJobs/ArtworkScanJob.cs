@@ -1,6 +1,7 @@
 using ArtCommission.Application.ArtistStudio.Moderation;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Entities.ArtistStudio;
+using ArtCommission.Domain.Entities.Payment;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -59,17 +60,76 @@ public class ArtworkScanJob : IArtworkScanJob
             return;
         }
 
+        // Đọc cấu hình ngưỡng AI scan từ PlatformConfig (nếu Admin có cấu hình)
+        var configs = await _db.PlatformConfigs
+            .AsNoTracking()
+            .Where(c => !c.IsDeleted && (
+                c.Key == PlatformConfigKeys.AiScanAdultThreshold ||
+                c.Key == PlatformConfigKeys.AiScanViolenceThreshold ||
+                c.Key == PlatformConfigKeys.AiScanAiDetectionThreshold ||
+                c.Key == PlatformConfigKeys.AiScanAutoTaggingEnabled))
+            .ToDictionaryAsync(c => c.Key, c => c.Value, cancellationToken);
+
+        decimal adultThreshold = 0.70m;
+        if (configs.TryGetValue(PlatformConfigKeys.AiScanAdultThreshold, out var adultVal) &&
+            decimal.TryParse(adultVal, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsedAdult))
+        {
+            adultThreshold = Math.Clamp(parsedAdult, 0.0m, 1.0m);
+        }
+
+        decimal violenceThreshold = 0.70m;
+        if (configs.TryGetValue(PlatformConfigKeys.AiScanViolenceThreshold, out var violenceVal) &&
+            decimal.TryParse(violenceVal, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsedViolence))
+        {
+            violenceThreshold = Math.Clamp(parsedViolence, 0.0m, 1.0m);
+        }
+
+        decimal aiThreshold = 0.75m;
+        if (configs.TryGetValue(PlatformConfigKeys.AiScanAiDetectionThreshold, out var aiVal) &&
+            decimal.TryParse(aiVal, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsedAi))
+        {
+            aiThreshold = Math.Clamp(parsedAi, 0.0m, 1.0m);
+        }
+
+        bool autoTaggingEnabled = true;
+        if (configs.TryGetValue(PlatformConfigKeys.AiScanAutoTaggingEnabled, out var tagVal) &&
+            bool.TryParse(tagVal, out var parsedTag))
+        {
+            autoTaggingEnabled = parsedTag;
+        }
+
+        var adultScore = scanResult.AdultScore ?? 0m;
+        var violenceScore = scanResult.ViolenceScore ?? 0m;
+        var aiScore = scanResult.AiDetectionScore ?? 0m;
+
+        bool isAiGenerated = scanResult.IsAiGenerated || (aiScore >= aiThreshold);
+        string? flagReason = scanResult.FlagReason;
+
+        // Đánh giá lại FlagReason theo ngưỡng PlatformConfig hiện hành
+        if (adultScore >= adultThreshold)
+        {
+            flagReason = "AI NSFW Threshold Exceeded";
+        }
+        else if (violenceScore >= violenceThreshold)
+        {
+            flagReason = "Violence/Gore Detected";
+        }
+        else if (isAiGenerated && string.IsNullOrWhiteSpace(flagReason))
+        {
+            flagReason = "AI Generated Elements Detected";
+        }
+
         // Cập nhật các chỉ số AI
         artwork.SafeScore = scanResult.SafeScore;
         artwork.AdultScore = scanResult.AdultScore;
         artwork.ViolenceScore = scanResult.ViolenceScore;
-        artwork.IsAiGenerated = scanResult.IsAiGenerated;
+        artwork.IsAiGenerated = isAiGenerated;
         artwork.AiDetectionScore = scanResult.AiDetectionScore;
-        artwork.FlagReason = scanResult.FlagReason;
+        artwork.FlagReason = flagReason;
         artwork.UpdatedAt = DateTimeOffset.UtcNow;
 
-        // Auto-tagging: Gợi ý thêm tag phong cách từ AI nếu chưa có
-        if (scanResult.SuggestedTags is { Count: > 0 })
+        // Auto-tagging: Gợi ý thêm tag phong cách từ AI nếu được bật trong PlatformConfig
+        if (autoTaggingEnabled && scanResult.SuggestedTags is { Count: > 0 })
         {
             foreach (var tagName in scanResult.SuggestedTags.Take(5))
             {
