@@ -1,3 +1,4 @@
+using ArtCommission.Application.ArtistStudio.Moderation;
 using ArtCommission.Application.ArtistStudio.Moderation.Commands;
 using ArtCommission.Application.ArtistStudio.Moderation.DTOs;
 using ArtCommission.Application.ArtistStudio.Moderation.Queries;
@@ -103,5 +104,35 @@ public class AdminModerationController : ApiControllerBase
         }
 
         return OkEnvelope(new { message });
+    }
+
+    /// <summary>
+    /// Yêu cầu quét lại AI cho tác phẩm (SCR-20 / UC28).
+    /// Đưa tác phẩm vào hàng đợi quét nền của Hangfire để cập nhật các chỉ số NSFW và AI generation.
+    /// </summary>
+    [HttpPost("{artworkId:guid}/rescan")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RescanArtwork(
+        Guid artworkId,
+        [FromServices] IArtworkScanQueue scanQueue,
+        CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var artwork = await Mediator.Send(new GetArtworkInspectionDetailQuery(artworkId), cancellationToken);
+        if (artwork == null)
+        {
+            return NotFoundEnvelope("Không tìm thấy tác phẩm để quét lại.");
+        }
+
+        scanQueue.Enqueue(artworkId);
+
+        return OkEnvelope(new { message = "Yêu cầu quét lại AI đã được đưa vào hàng đợi xử lý." });
     }
 }

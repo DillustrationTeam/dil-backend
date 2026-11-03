@@ -1,4 +1,5 @@
 using ArtCommission.Application.ArtistStudio.DTOs;
+using ArtCommission.Application.ArtistStudio.Moderation;
 using ArtCommission.Application.Common.Interfaces;
 using FluentValidation;
 using MediatR;
@@ -45,10 +46,12 @@ public class UploadArtworkCommandValidator : AbstractValidator<UploadArtworkComm
 public class UploadArtworkCommandHandler : IRequestHandler<UploadArtworkCommand, (bool Success, ArtworkDto? Data, string[] Errors)>
 {
     private readonly IApplicationDbContext _db;
+    private readonly IArtworkScanQueue? _scanQueue;
 
-    public UploadArtworkCommandHandler(IApplicationDbContext db)
+    public UploadArtworkCommandHandler(IApplicationDbContext db, IArtworkScanQueue? scanQueue = null)
     {
         _db = db;
+        _scanQueue = scanQueue;
     }
 
     public async Task<(bool Success, ArtworkDto? Data, string[] Errors)> Handle(UploadArtworkCommand request, CancellationToken cancellationToken)
@@ -123,6 +126,9 @@ public class UploadArtworkCommandHandler : IRequestHandler<UploadArtworkCommand,
 
             await _db.SaveChangesAsync(cancellationToken);
         }
+
+        // Đưa tác phẩm vào hàng đợi quét AI bất đồng bộ (SCR-20 / UC28)
+        _scanQueue?.Enqueue(artwork.Id);
 
         return (true, new ArtworkDto(
             artwork.Id,
