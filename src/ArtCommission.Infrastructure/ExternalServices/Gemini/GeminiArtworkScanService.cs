@@ -58,35 +58,45 @@ public class GeminiArtworkScanService : IArtworkScanService
                 flagReason: null);
         }
 
-        // 1. Tải dữ liệu ảnh sang Base64
+        // 1. Tải dữ liệu ảnh sang Base64 (hỗ trợ cả file cục bộ trong wwwroot lẫn URL HTTP)
         byte[] imageBytes;
         string mimeType;
-        try
+
+        var (localBytes, localMime) = TryLoadFromLocalFile(imageUrl);
+        if (localBytes != null && localMime != null)
         {
-            using var imgRequest = new HttpRequestMessage(HttpMethod.Get, imageUrl);
-            using var imgResponse = await _httpClient.SendAsync(imgRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-            if (!imgResponse.IsSuccessStatusCode)
-            {
-                return ArtworkScanResult.Fail($"Không thể tải ảnh tác phẩm từ URL ({imgResponse.StatusCode}).");
-            }
-
-            if (imgResponse.Content.Headers.ContentLength > MaxImageDownloadSizeBytes)
-            {
-                return ArtworkScanResult.Fail("Dung lượng ảnh vượt quá giới hạn 25MB cho phép phân tích AI.");
-            }
-
-            mimeType = imgResponse.Content.Headers.ContentType?.MediaType ?? "image/jpeg";
-            imageBytes = await imgResponse.Content.ReadAsByteArrayAsync(cancellationToken);
+            imageBytes = localBytes;
+            mimeType = localMime;
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        else
         {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Lỗi khi tải ảnh tác phẩm từ URL {ImageUrl}.", imageUrl);
-            return ArtworkScanResult.Fail($"Lỗi khi tải ảnh: {ex.Message}");
+            try
+            {
+                using var imgRequest = new HttpRequestMessage(HttpMethod.Get, imageUrl);
+                using var imgResponse = await _httpClient.SendAsync(imgRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+                if (!imgResponse.IsSuccessStatusCode)
+                {
+                    return ArtworkScanResult.Fail($"Không thể tải ảnh tác phẩm từ URL ({imgResponse.StatusCode}).");
+                }
+
+                if (imgResponse.Content.Headers.ContentLength > MaxImageDownloadSizeBytes)
+                {
+                    return ArtworkScanResult.Fail("Dung lượng ảnh vượt quá giới hạn 25MB cho phép phân tích AI.");
+                }
+
+                mimeType = imgResponse.Content.Headers.ContentType?.MediaType ?? "image/jpeg";
+                imageBytes = await imgResponse.Content.ReadAsByteArrayAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Lỗi khi tải ảnh tác phẩm từ URL {ImageUrl}.", imageUrl);
+                return ArtworkScanResult.Fail($"Lỗi khi tải ảnh: {ex.Message}");
+            }
         }
 
         var base64Data = Convert.ToBase64String(imageBytes);
@@ -382,6 +392,56 @@ public class GeminiArtworkScanService : IArtworkScanService
 
         [JsonPropertyName("suggestedTags")]
         public List<string>? SuggestedTags { get; set; }
+    }
+
+    private static (byte[]? bytes, string? mimeType) TryLoadFromLocalFile(string imageUrl)
+    {
+        try
+        {
+            string? relativePath = null;
+            if (imageUrl.StartsWith("/") || imageUrl.StartsWith("\\"))
+            {
+                relativePath = imageUrl.TrimStart('/', '\\');
+            }
+            else if (Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri) &&
+                     (uri.IsLoopback || uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || uri.Host.Equals("127.0.0.1")))
+            {
+                relativePath = uri.AbsolutePath.TrimStart('/', '\\');
+            }
+
+            if (!string.IsNullOrWhiteSpace(relativePath))
+            {
+                var candidates = new[]
+                {
+                    Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", relativePath),
+                    Path.Combine(Directory.GetCurrentDirectory(), relativePath),
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot", relativePath),
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, relativePath)
+                };
+
+                foreach (var candidate in candidates)
+                {
+                    if (File.Exists(candidate))
+                    {
+                        var ext = Path.GetExtension(candidate).ToLowerInvariant();
+                        var mime = ext switch
+                        {
+                            ".png" => "image/png",
+                            ".webp" => "image/webp",
+                            ".gif" => "image/gif",
+                            _ => "image/jpeg"
+                        };
+                        return (File.ReadAllBytes(candidate), mime);
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Bỏ qua lỗi đọc file cục bộ, tiếp tục với HTTP client
+        }
+
+        return (null, null);
     }
 }
 
