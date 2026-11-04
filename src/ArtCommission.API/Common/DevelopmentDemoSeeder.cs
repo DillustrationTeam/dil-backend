@@ -86,7 +86,7 @@ internal static class DevelopmentDemoSeeder
         foreach (var c in creatorsData)
         {
             var user = await EnsureUserAsync(userManager, c.Email, c.FullName, ["Client", "Creator"]);
-            await EnsureWalletAsync(dbContext, user.Id, 5_000_000m, 0m, cancellationToken);
+            await EnsureWalletAsync(dbContext, user.Id, 15_000_000m, 0m, cancellationToken);
 
             var profile = await dbContext.CreatorProfiles.FirstOrDefaultAsync(p => p.UserId == user.Id, cancellationToken);
             if (profile is null)
@@ -117,10 +117,23 @@ internal static class DevelopmentDemoSeeder
             createdCreators.Add((user, profile));
         }
 
-        // Tạo Client demo & Admin
+        // Tạo Client demo & Admin với số dư từ 15M đến 100M VND
         var adminUser = await EnsureUserAsync(userManager, "admin@dillustration.vn", "Hệ Thống Quản Trị", ["Administrator", "Admin", "Client"]);
-        var clientUser = await EnsureUserAsync(userManager, "client.demo@dillustration.test", "Minh Trí (Collector)", ["Client"]);
-        await EnsureWalletAsync(dbContext, clientUser.Id, 25_000_000m, 5_000_000m, cancellationToken);
+        await EnsureWalletAsync(dbContext, adminUser.Id, 100_000_000m, 0m, cancellationToken);
+
+        var client1 = await EnsureUserAsync(userManager, "client.demo@dillustration.test", "Minh Trí (VIP Collector)", ["Client"]);
+        await EnsureWalletAsync(dbContext, client1.Id, 50_000_000m, 5_000_000m, cancellationToken);
+
+        var client2 = await EnsureUserAsync(userManager, "whale.collector@dillustration.vn", "Gia Hưng (Art Investor)", ["Client"]);
+        await EnsureWalletAsync(dbContext, client2.Id, 100_000_000m, 0m, cancellationToken);
+
+        var client3 = await EnsureUserAsync(userManager, "hoang.nam@dillustration.vn", "Hoàng Nam (Indie Game Dev)", ["Client"]);
+        await EnsureWalletAsync(dbContext, client3.Id, 30_000_000m, 0m, cancellationToken);
+
+        var client4 = await EnsureUserAsync(userManager, "thao.my@dillustration.vn", "Thảo My (Visual Novel Producer)", ["Client"]);
+        await EnsureWalletAsync(dbContext, client4.Id, 20_000_000m, 0m, cancellationToken);
+
+        var clientUser = client1;
 
         // ==========================================
         // 2. TẠO KHO TRANH CHUYÊN NGHIỆP (PORTFOLIO & GALLERY)
@@ -419,8 +432,16 @@ internal static class DevelopmentDemoSeeder
         decimal lockedBalance,
         CancellationToken cancellationToken)
     {
-        if (await dbContext.Wallets.AnyAsync(wallet => wallet.UserId == userId, cancellationToken))
+        var existingWallet = await dbContext.Wallets.FirstOrDefaultAsync(w => w.UserId == userId, cancellationToken);
+        if (existingWallet != null)
+        {
+            if (existingWallet.Balance < balance)
+            {
+                existingWallet.Balance = balance;
+                existingWallet.LockedBalance = lockedBalance;
+            }
             return;
+        }
 
         var wallet = new Wallet
         {
@@ -431,6 +452,5 @@ internal static class DevelopmentDemoSeeder
         };
 
         dbContext.Wallets.Add(wallet);
-        await dbContext.SaveChangesAsync(cancellationToken);
     }
 }
