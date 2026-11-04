@@ -2541,6 +2541,8 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.HasIndex("EventId", "Score", "VoteCount");
 
                     b.ToTable("EventSubmissions", (string)null);
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.Event.EventVote", b =>
@@ -2559,6 +2561,8 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.HasIndex("VoterId");
 
                     b.ToTable("EventVotes", (string)null);
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.Event.Invitation", b =>
@@ -3772,6 +3776,50 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("UX_RevenueSnapshots_Creator_Scope_Date");
 
                     b.ToTable("RevenueSnapshots", (string)null);
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.Support.BugReport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AdminNote")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PageUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ReporterEmail")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("ReporterId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("BugReports");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", b =>

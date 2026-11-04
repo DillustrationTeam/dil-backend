@@ -374,7 +374,7 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(
                 "http://localhost:3000",
                 "https://localhost:3000",
-                "https://dillustration-api.netlify.app"
+                "https://dillustration-api.netlify.app", "https://dil-frontend.onrender.com"
             )
               .AllowAnyHeader()
               .AllowAnyMethod()
@@ -385,7 +385,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowScalarDocs", policy =>
     {
         policy.WithOrigins(
-                "https://dillustration-api.netlify.app"
+                "https://dillustration-api.netlify.app", "https://dil-frontend.onrender.com"
             )
               .AllowAnyHeader()
               .WithMethods("GET")
@@ -456,7 +456,7 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddScoped<ICommissionService, CommissionService>();
 builder.Services.AddScoped<IAddonService, AddonService>();
 builder.Services.AddScoped<IWatermarkService, WatermarkService>();
-if (builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(builder.Configuration["CloudflareR2:AccountId"]))
+if (string.IsNullOrWhiteSpace(builder.Configuration["CloudflareR2:AccountId"]))
 {
     builder.Services.AddScoped<IStorageService, LocalFileStorageService>();
 }
@@ -517,12 +517,9 @@ if (!isDocumentGeneration)
 
             await DatabaseSeeder.SeedAsync(services);
 
-            if (app.Environment.IsDevelopment())
-            {
-                var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
-                var roleManager = services.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
-                await DevelopmentDemoSeeder.SeedAsync(dbContext, userManager, roleManager);
-            }
+            var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
+            var roleManager = services.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
+            await DevelopmentDemoSeeder.SeedAsync(dbContext, userManager, roleManager);
 
             logger.LogInformation("Database initialized successfully.");
         }

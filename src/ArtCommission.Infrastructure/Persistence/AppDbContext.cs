@@ -1,3 +1,4 @@
+using ArtCommission.Domain.Entities.Support;
 using System.Reflection;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Entities.Ai;
@@ -118,6 +119,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<Jury> Juries => Set<Jury>();
     public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<SubmissionDispute> SubmissionDisputes => Set<SubmissionDispute>();
+    public DbSet<BugReport> BugReports => Set<BugReport>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
