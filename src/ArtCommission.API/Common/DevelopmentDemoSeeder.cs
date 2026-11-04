@@ -20,7 +20,7 @@ internal static class DevelopmentDemoSeeder
         RoleManager<IdentityRole<Guid>> roleManager,
         CancellationToken cancellationToken = default)
     {
-        foreach (var roleName in new[] { "Admin", "Client", "Creator" })
+        foreach (var roleName in new[] { "Administrator", "Admin", "Moderator", "Client", "Creator" })
         {
             if (!await roleManager.RoleExistsAsync(roleName))
                 await roleManager.CreateAsync(new IdentityRole<Guid>(roleName));
@@ -118,7 +118,7 @@ internal static class DevelopmentDemoSeeder
         }
 
         // Tạo Client demo & Admin
-        var adminUser = await EnsureUserAsync(userManager, "admin@dillustration.vn", "Hệ Thống Quản Trị", ["Admin", "Client"]);
+        var adminUser = await EnsureUserAsync(userManager, "admin@dillustration.vn", "Hệ Thống Quản Trị", ["Administrator", "Admin", "Client"]);
         var clientUser = await EnsureUserAsync(userManager, "client.demo@dillustration.test", "Minh Trí (Collector)", ["Client"]);
         await EnsureWalletAsync(dbContext, clientUser.Id, 25_000_000m, 5_000_000m, cancellationToken);
 
