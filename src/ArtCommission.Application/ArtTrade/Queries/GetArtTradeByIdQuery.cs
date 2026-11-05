@@ -41,7 +41,7 @@ public class GetArtTradeByIdQueryHandler : IRequestHandler<GetArtTradeByIdQuery,
             return (false, null, ["Bạn không có quyền xem chi tiết giao dịch này."]);
         }
 
-        return (true, TradeMapper.ToDto(trade), []);
+        return (true, ArtTradeDto.FromEntity(trade), []);
     }
 }
 

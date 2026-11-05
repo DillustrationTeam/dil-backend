@@ -1,12 +1,12 @@
-using ArtCommission.Domain.Entities.Trade;
+using ArtTradeEntity = ArtCommission.Domain.Entities.Trade.ArtTrade;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace ArtCommission.Infrastructure.Persistence.Configurations.ArtTrade;
 
-public class ArtTradeConfiguration : IEntityTypeConfiguration<ArtTrade>
+public class ArtTradeConfiguration : IEntityTypeConfiguration<ArtTradeEntity>
 {
-    public void Configure(EntityTypeBuilder<ArtTrade> builder)
+    public void Configure(EntityTypeBuilder<ArtTradeEntity> builder)
     {
         builder.ToTable("ArtTrades");
 

@@ -93,7 +93,7 @@ public class CancelTradeCommandHandler : IRequestHandler<CancelTradeCommand, (bo
         }
 
         await _db.SaveChangesAsync(cancellationToken);
-        return (true, TradeMapper.ToDto(trade), []);
+        return (true, ArtTradeDto.FromEntity(trade), []);
     }
 }
 

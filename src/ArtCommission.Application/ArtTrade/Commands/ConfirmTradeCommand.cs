@@ -92,7 +92,7 @@ public class ConfirmTradeCommandHandler : IRequestHandler<ConfirmTradeCommand, (
         }
 
         await _db.SaveChangesAsync(cancellationToken);
-        return (true, TradeMapper.ToDto(trade), []);
+        return (true, ArtTradeDto.FromEntity(trade), []);
     }
 
     private async Task TransferOwnershipIfApplicableAsync(

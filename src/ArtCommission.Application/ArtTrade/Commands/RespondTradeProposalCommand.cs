@@ -104,7 +104,7 @@ public class RespondTradeProposalCommandHandler : IRequestHandler<RespondTradePr
         }
 
         await _db.SaveChangesAsync(cancellationToken);
-        return (true, TradeMapper.ToDto(trade), []);
+        return (true, ArtTradeDto.FromEntity(trade), []);
     }
 }
 

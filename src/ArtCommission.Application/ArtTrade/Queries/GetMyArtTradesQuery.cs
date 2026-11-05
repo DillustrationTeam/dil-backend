@@ -47,7 +47,7 @@ public class GetMyArtTradesQueryHandler : IRequestHandler<GetMyArtTradesQuery, (
             .Take(pageSize)
             .ToListAsync(cancellationToken);
 
-        var items = trades.Select(t => TradeMapper.ToSummaryDto(t, request.UserId)).ToList();
+        var items = trades.Select(t => ArtTradeSummaryDto.FromEntity(t, request.UserId)).ToList();
         return (true, items, totalCount);
     }
 }

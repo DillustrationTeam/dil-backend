@@ -1,4 +1,4 @@
--- ============================================================================
+﻿-- ============================================================================
 -- DATABASE SCHEMA CREATION SCRIPT — ArtCommission (Dillustration)
 -- Target DBMS: Microsoft SQL Server 2019+ / Azure SQL Database
 -- Total Tables: 40 Tables (24 Core Entities + 16 Feature Entities)
@@ -883,6 +883,123 @@ BEGIN
         CONSTRAINT FK_PlatformSettings_Admin FOREIGN KEY (UpdatedByAdminId) REFERENCES dbo.AspNetUsers(Id),
         CONSTRAINT UX_PlatformSettings_Key UNIQUE ([Key])
     );
+END
+GO
+
+-- ============================================================================
+-- 15. ART TRADE & TRADE DISPUTES MODULE (🚀 CẢI TIẾN)
+-- ============================================================================
+
+-- Bảng Trao đổi tranh (Art Trade) giữa 2 nghệ sĩ
+IF OBJECT_ID(N'dbo.ArtTrades', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.ArtTrades (
+        Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_ArtTrades PRIMARY KEY DEFAULT NEWID(),
+        InitiatorId UNIQUEIDENTIFIER NOT NULL,
+        ReceiverId UNIQUEIDENTIFIER NOT NULL,
+        Title NVARCHAR(200) NOT NULL,
+        Description NVARCHAR(2000) NULL,
+        InitiatorRequestNote NVARCHAR(2000) NULL,
+        ReceiverRequestNote NVARCHAR(2000) NULL,
+        InitiatorArtworkId UNIQUEIDENTIFIER NULL,
+        ReceiverArtworkId UNIQUEIDENTIFIER NULL,
+        InitiatorOriginalFileUrl NVARCHAR(500) NULL,
+        InitiatorPreviewUrl NVARCHAR(500) NULL,
+        InitiatorSubmittedAt DATETIMEOFFSET NULL,
+        ReceiverOriginalFileUrl NVARCHAR(500) NULL,
+        ReceiverPreviewUrl NVARCHAR(500) NULL,
+        ReceiverSubmittedAt DATETIMEOFFSET NULL,
+        IsInitiatorConfirmed BIT NOT NULL DEFAULT 0,
+        InitiatorConfirmedAt DATETIMEOFFSET NULL,
+        IsReceiverConfirmed BIT NOT NULL DEFAULT 0,
+        ReceiverConfirmedAt DATETIMEOFFSET NULL,
+        Status NVARCHAR(50) NOT NULL DEFAULT 'Proposed', -- Proposed, Accepted, BothSubmitted, Completed, Rejected, Cancelled, Disputed
+        SubmissionDeadlineAt DATETIMEOFFSET NULL,
+        ConfirmationDeadlineAt DATETIMEOFFSET NULL,
+        CompletedAt DATETIMEOFFSET NULL,
+        CancelledAt DATETIMEOFFSET NULL,
+        CancelledById UNIQUEIDENTIFIER NULL,
+        CancellationReason NVARCHAR(500) NULL,
+        RejectionReason NVARCHAR(500) NULL,
+        CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        UpdatedAt DATETIMEOFFSET NULL,
+        IsDeleted BIT NOT NULL DEFAULT 0,
+        CONSTRAINT FK_ArtTrades_Initiator FOREIGN KEY (InitiatorId) REFERENCES dbo.AspNetUsers(Id),
+        CONSTRAINT FK_ArtTrades_Receiver FOREIGN KEY (ReceiverId) REFERENCES dbo.AspNetUsers(Id),
+        CONSTRAINT FK_ArtTrades_CancelledBy FOREIGN KEY (CancelledById) REFERENCES dbo.AspNetUsers(Id),
+        CONSTRAINT FK_ArtTrades_InitiatorArtwork FOREIGN KEY (InitiatorArtworkId) REFERENCES dbo.Artworks(Id) ON DELETE SET NULL,
+        CONSTRAINT FK_ArtTrades_ReceiverArtwork FOREIGN KEY (ReceiverArtworkId) REFERENCES dbo.Artworks(Id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IX_ArtTrades_InitiatorId_CreatedAt ON dbo.ArtTrades(InitiatorId, CreatedAt DESC);
+    CREATE INDEX IX_ArtTrades_ReceiverId_CreatedAt ON dbo.ArtTrades(ReceiverId, CreatedAt DESC);
+    CREATE INDEX IX_ArtTrades_Status_UpdatedAt ON dbo.ArtTrades(Status, UpdatedAt DESC);
+    CREATE INDEX IX_ArtTrades_InitiatorArtworkId ON dbo.ArtTrades(InitiatorArtworkId);
+    CREATE INDEX IX_ArtTrades_ReceiverArtworkId ON dbo.ArtTrades(ReceiverArtworkId);
+    CREATE INDEX IX_ArtTrades_CancelledById ON dbo.ArtTrades(CancelledById);
+END
+GO
+
+-- Bảng Đóng băng slot trao đổi tranh (Trade Slot Freeze) phạt bùng kèo / vi phạm deadline / tranh chấp
+IF OBJECT_ID(N'dbo.TradeSlotFreezes', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.TradeSlotFreezes (
+        Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_TradeSlotFreezes PRIMARY KEY DEFAULT NEWID(),
+        UserId UNIQUEIDENTIFIER NOT NULL,
+        ArtTradeId UNIQUEIDENTIFIER NOT NULL,
+        FrozenFrom DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        FrozenUntil DATETIMEOFFSET NOT NULL,
+        Reason NVARCHAR(500) NULL,
+        IsRevoked BIT NOT NULL DEFAULT 0,
+        RevokedReason NVARCHAR(500) NULL,
+        RevokedAt DATETIMEOFFSET NULL,
+        RevokedByAdminId UNIQUEIDENTIFIER NULL,
+        CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        UpdatedAt DATETIMEOFFSET NULL,
+        IsDeleted BIT NOT NULL DEFAULT 0,
+        CONSTRAINT FK_TradeSlotFreezes_User FOREIGN KEY (UserId) REFERENCES dbo.AspNetUsers(Id),
+        CONSTRAINT FK_TradeSlotFreezes_ArtTrade FOREIGN KEY (ArtTradeId) REFERENCES dbo.ArtTrades(Id),
+        CONSTRAINT FK_TradeSlotFreezes_RevokedByAdmin FOREIGN KEY (RevokedByAdminId) REFERENCES dbo.AspNetUsers(Id)
+    );
+
+    CREATE INDEX IX_TradeSlotFreezes_User_Active ON dbo.TradeSlotFreezes(UserId, FrozenUntil, IsRevoked, IsDeleted);
+    CREATE INDEX IX_TradeSlotFreezes_ArtTradeId ON dbo.TradeSlotFreezes(ArtTradeId);
+    CREATE INDEX IX_TradeSlotFreezes_RevokedByAdminId ON dbo.TradeSlotFreezes(RevokedByAdminId);
+END
+GO
+
+-- Bảng Khiếu nại tranh chấp trong trao đổi tranh (Trade Disputes)
+IF OBJECT_ID(N'dbo.TradeDisputes', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.TradeDisputes (
+        Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_TradeDisputes PRIMARY KEY DEFAULT NEWID(),
+        ArtTradeId UNIQUEIDENTIFIER NOT NULL,
+        RaisedById UNIQUEIDENTIFIER NOT NULL,
+        Reason NVARCHAR(2000) NOT NULL,
+        EvidenceUrls NVARCHAR(MAX) NULL,                -- JSON array url bằng chứng
+        Status NVARCHAR(50) NOT NULL DEFAULT 'Pending', -- Pending, UnderReview, Resolved, Dismissed
+        Resolution NVARCHAR(50) NULL,                  -- FaultInitiator, FaultReceiver, MutualCancel, Dismissed
+        AdminNote NVARCHAR(2000) NULL,
+        ResolvedAt DATETIMEOFFSET NULL,
+        CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        UpdatedAt DATETIMEOFFSET NULL,
+        IsDeleted BIT NOT NULL DEFAULT 0,
+        CONSTRAINT FK_TradeDisputes_ArtTrade FOREIGN KEY (ArtTradeId) REFERENCES dbo.ArtTrades(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_TradeDisputes_RaisedBy FOREIGN KEY (RaisedById) REFERENCES dbo.AspNetUsers(Id)
+    );
+
+    CREATE INDEX IX_TradeDisputes_ArtTradeId ON dbo.TradeDisputes(ArtTradeId);
+    CREATE INDEX IX_TradeDisputes_RaisedById ON dbo.TradeDisputes(RaisedById);
+    CREATE INDEX IX_TradeDisputes_Status ON dbo.TradeDisputes(Status);
+END
+GO
+
+-- Cập nhật cột ArtTradeId vào ArtworkOwnerships (nếu bảng tồn tại)
+IF OBJECT_ID(N'dbo.ArtworkOwnerships', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.ArtworkOwnerships', N'ArtTradeId') IS NULL
+BEGIN
+    ALTER TABLE dbo.ArtworkOwnerships ADD ArtTradeId UNIQUEIDENTIFIER NULL;
+    ALTER TABLE dbo.ArtworkOwnerships ADD CONSTRAINT FK_ArtworkOwnerships_ArtTrade FOREIGN KEY (ArtTradeId) REFERENCES dbo.ArtTrades(Id) ON DELETE SET NULL;
+    CREATE INDEX IX_ArtworkOwnerships_ArtTradeId ON dbo.ArtworkOwnerships(ArtTradeId);
 END
 GO
 

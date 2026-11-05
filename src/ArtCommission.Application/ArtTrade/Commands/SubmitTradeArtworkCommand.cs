@@ -126,7 +126,7 @@ public class SubmitTradeArtworkCommandHandler : IRequestHandler<SubmitTradeArtwo
         }
 
         await _db.SaveChangesAsync(cancellationToken);
-        return (true, TradeMapper.ToDto(trade), []);
+        return (true, ArtTradeDto.FromEntity(trade), []);
     }
 }
 

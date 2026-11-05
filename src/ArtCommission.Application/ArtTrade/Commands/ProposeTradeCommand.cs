@@ -109,6 +109,6 @@ public class ProposeTradeCommandHandler : IRequestHandler<ProposeTradeCommand, (
         await _db.Entry(trade).Reference(t => t.Initiator).LoadAsync(cancellationToken);
         await _db.Entry(trade).Reference(t => t.Receiver).LoadAsync(cancellationToken);
 
-        return (true, TradeMapper.ToDto(trade), []);
+        return (true, ArtTradeDto.FromEntity(trade), []);
     }
 }

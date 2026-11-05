@@ -19,18 +19,16 @@ public class TradeDisputeDto
     public DateTimeOffset CreatedAt { get; set; }
 }
 
-public class CreateTradeDisputeRequest
-{
-    public Guid ArtTradeId { get; set; }
-    public string Reason { get; set; } = string.Empty;
-    public List<string>? EvidenceUrls { get; set; }
-}
+public sealed record CreateTradeDisputeRequest(
+    Guid ArtTradeId,
+    string Reason,
+    List<string>? EvidenceUrls = null
+);
 
-public class ResolveTradeDisputeRequest
-{
-    public string Resolution { get; set; } = string.Empty;
-    public string? AdminNote { get; set; }
-}
+public sealed record ResolveTradeDisputeRequest(
+    string Resolution,
+    string? AdminNote = null
+);
 
 public static class TradeDisputeResolutions
 {
