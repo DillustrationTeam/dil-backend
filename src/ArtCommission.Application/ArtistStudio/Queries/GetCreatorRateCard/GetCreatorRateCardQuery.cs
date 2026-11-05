@@ -54,6 +54,13 @@ public class GetCreatorRateCardQueryHandler : IRequestHandler<GetCreatorRateCard
         try
         {
             var packages = JsonSerializer.Deserialize<List<RateCardPackageDto>>(profile.RateCardJson, JsonOptions) ?? new List<RateCardPackageDto>();
+            packages = packages.Select(p => p with
+            {
+                Milestones = p.Milestones is { Count: > 0 }
+                    ? p.Milestones
+                    : new List<RateCardMilestoneDto> { new(1, "Hoàn thiện (Final)", p.Price, p.MaxRevisions) },
+                SampleUrls = p.SampleUrls ?? new List<string>()
+            }).ToList();
             if (packages.Count > 0)
             {
                 var packageIds = packages.Select(p => (Guid?)p.Id).ToList();
