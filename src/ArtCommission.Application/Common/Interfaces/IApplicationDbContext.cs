@@ -1,11 +1,13 @@
 using ArtCommission.Domain.Entities.Ai;
 using ArtCommission.Domain.Entities.ArtistStudio;
 using ArtCommission.Domain.Entities.Chat;
+using ArtCommission.Domain.Entities.Dispute;
 using ArtCommission.Domain.Entities.Event;
 using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Domain.Entities.Notifications;
 using ArtCommission.Domain.Entities.Payment;
 using ArtCommission.Domain.Entities.Revenue;
+using ArtCommission.Domain.Entities.Trade;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 
@@ -85,6 +87,9 @@ public interface IApplicationDbContext
     DbSet<ArtworkOwnershipEntity> ArtworkOwnerships { get; }
     DbSet<EscrowTransactionEntity> EscrowTransactions { get; }
     DbSet<DeliverableEntity> Deliverables { get; }
+    DbSet<ArtTrade> ArtTrades { get; }
+    DbSet<TradeSlotFreeze> TradeSlotFreezes { get; }
+    DbSet<TradeDispute> TradeDisputes { get; }
 
     // Module Workroom Chat (UC43)
     DbSet<ChatRoom> ChatRooms { get; }

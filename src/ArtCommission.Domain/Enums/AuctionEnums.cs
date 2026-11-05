@@ -117,6 +117,9 @@ public enum OwnershipTransferReason
     /// <summary>Chuyển do đơn đặt vẽ hoàn tất (commission).</summary>
     CommissionCompleted,
 
+    /// <summary>Chuyển do trao đổi tranh (Art Trade) hoàn tất.</summary>
+    ArtTrade,
+
     /// <summary>Admin gán tay để sửa sai lệch.</summary>
     AdminAdjustment
 }
