@@ -10,6 +10,7 @@ using ArtCommission.API.BackgroundWorkers;
 using ArtCommission.API.Common;
 using ArtCommission.API.Hubs;
 using ArtCommission.Application.Ai.Common;
+using ArtCommission.Application.ArtTrade.Common;
 using ArtCommission.Application.Auth.Commands.Register;
 using ArtCommission.Application.Auction.Common;
 using ArtCommission.Application.Chat.Common;
@@ -463,7 +464,9 @@ if (string.IsNullOrWhiteSpace(builder.Configuration["CloudflareR2:AccountId"]))
 else
 {
     builder.Services.AddScoped<IStorageService, CloudflareR2StorageService>();
+
 }
+builder.Services.AddScoped<ITradeSlotService, TradeSlotService>();
 
 
 builder.Services.Configure<ArtworkAiOptions>(builder.Configuration.GetSection("ArtworkAi"));

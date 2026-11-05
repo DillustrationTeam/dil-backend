@@ -21,6 +21,7 @@ using AuctionWatchEntity = ArtCommission.Domain.Entities.Auction.AuctionWatch;
 using ArtworkOwnershipEntity = ArtCommission.Domain.Entities.Auction.ArtworkOwnership;
 using EscrowTransactionEntity = ArtCommission.Domain.Entities.Auction.EscrowTransaction;
 using DeliverableEntity = ArtCommission.Domain.Entities.Auction.Deliverable;
+using ArtTradeEntity = ArtCommission.Domain.Entities.Trade.ArtTrade;
 
 namespace ArtCommission.Application.Common.Interfaces;
 
@@ -87,7 +88,7 @@ public interface IApplicationDbContext
     DbSet<ArtworkOwnershipEntity> ArtworkOwnerships { get; }
     DbSet<EscrowTransactionEntity> EscrowTransactions { get; }
     DbSet<DeliverableEntity> Deliverables { get; }
-    DbSet<ArtTrade> ArtTrades { get; }
+    DbSet<ArtTradeEntity> ArtTrades { get; }
     DbSet<TradeSlotFreeze> TradeSlotFreezes { get; }
     DbSet<TradeDispute> TradeDisputes { get; }
 
