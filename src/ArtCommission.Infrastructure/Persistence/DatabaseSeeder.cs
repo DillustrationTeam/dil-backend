@@ -150,7 +150,11 @@ public static class DatabaseSeeder
             [PlatformConfigKeys.EscrowHoldDaysSqlKey] = ("7", "Số ngày tạm giữ tiền escrow sau khi hoàn thành commission (database.sql)"),
             [PlatformConfigKeys.DefaultFreeRevisionLimit] = ("2", "Số lượt yêu cầu sửa đổi miễn phí mặc định cho mỗi dịch vụ/cột mốc"),
             [PlatformConfigKeys.MaxRevisionCountSqlKey] = ("2", "Số lần yêu cầu sửa đổi tối đa mặc định cho 1 milestone (database.sql)"),
-            [PlatformConfigKeys.PresignedUrlExpirationMinutes] = ("15", "Thời gian hết hạn của AWS S3 / Cloudinary presigned URL (phút, BR-39)")
+            [PlatformConfigKeys.PresignedUrlExpirationMinutes] = ("15", "Thời gian hết hạn của AWS S3 / Cloudinary presigned URL (phút, BR-39)"),
+            [PlatformConfigKeys.AiScanAdultThreshold] = ("0.70", "Ngưỡng cảnh báo nội dung người lớn (Adult/NSFW) từ AI (0.0 - 1.0)"),
+            [PlatformConfigKeys.AiScanViolenceThreshold] = ("0.70", "Ngưỡng cảnh báo bạo lực/máu me (Violence/Gore) từ AI (0.0 - 1.0)"),
+            [PlatformConfigKeys.AiScanAiDetectionThreshold] = ("0.75", "Ngưỡng xác suất tranh do AI tạo để tự động gắn cờ (0.0 - 1.0)"),
+            [PlatformConfigKeys.AiScanAutoTaggingEnabled] = ("true", "Bật/tắt tính năng AI tự động gợi ý và gắn tag phong cách cho tác phẩm (true/false)")
         };
 
         var configKeys = defaultConfigs.Keys.ToList();
