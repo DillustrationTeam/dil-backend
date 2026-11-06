@@ -1,4 +1,5 @@
 using ArtCommission.Application.Ai.Commands.CreateAiConversation;
+using ArtCommission.Application.Ai.Commands.HelpCommissionBrief;
 using ArtCommission.Application.Ai.Commands.CreateDeadlineReminder;
 using ArtCommission.Application.Ai.Commands.PredictDeadlineRisk;
 using ArtCommission.Application.Ai.Commands.SendAiMessage;
@@ -11,6 +12,14 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ArtCommission.API.Controllers;
+
+/// <summary>Thân request hỗ trợ soạn brief đơn vẽ bằng AI (AI-UC21).</summary>
+public sealed record HelpCommissionBriefRequest(
+    string? Description,
+    string? Title = null,
+    string? Style = null,
+    decimal? Budget = null,
+    bool? SurpriseMe = false);
 
 /// <summary>Thân request mở phiên hội thoại AI.</summary>
 public sealed record CreateAiConversationRequest(
@@ -263,6 +272,36 @@ public class AiController : ApiControllerBase
                 request.EmailEnabled,
                 request.PushEnabled,
                 request.LeadHours),
+            cancellationToken);
+
+        return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
+    }
+
+    // =================================================================
+    // AI-UC21 — Hỗ trợ soạn thảo Commission Brief bằng AI
+    // =================================================================
+
+    /// <summary>Chuẩn hóa ý tưởng thô thành Commission Brief bài bản (AI-UC21).</summary>
+    [HttpPost("brief-helper")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> HelpCommissionBrief(
+        [FromBody] HelpCommissionBriefRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var (success, data, errors) = await Mediator.Send(
+            new HelpCommissionBriefCommand(
+                request.Description,
+                request.Title,
+                request.Style,
+                request.Budget,
+                request.SurpriseMe ?? false),
             cancellationToken);
 
         return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
