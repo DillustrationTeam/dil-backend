@@ -1,5 +1,6 @@
 using ArtCommission.Application.Ai.Commands.CreateAiConversation;
 using ArtCommission.Application.Ai.Commands.HelpCommissionBrief;
+using ArtCommission.Application.Ai.Commands.StandardizeRevision;
 using ArtCommission.Application.Ai.Commands.CreateDeadlineReminder;
 using ArtCommission.Application.Ai.Commands.PredictDeadlineRisk;
 using ArtCommission.Application.Ai.Commands.SendAiMessage;
@@ -20,6 +21,11 @@ public sealed record HelpCommissionBriefRequest(
     string? Style = null,
     decimal? Budget = null,
     bool? SurpriseMe = false);
+
+/// <summary>Thân request chuẩn hóa phản hồi chỉnh sửa bằng AI (AI-UC26).</summary>
+public sealed record StandardizeRevisionRequest(
+    string Feedback,
+    string? MilestoneTitle = null);
 
 /// <summary>Thân request mở phiên hội thoại AI.</summary>
 public sealed record CreateAiConversationRequest(
@@ -302,6 +308,33 @@ public class AiController : ApiControllerBase
                 request.Style,
                 request.Budget,
                 request.SurpriseMe ?? false),
+            cancellationToken);
+
+        return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
+    }
+
+    // =================================================================
+    // AI-UC26 — Chuẩn hóa phản hồi yêu cầu sửa đổi (Revision)
+    // =================================================================
+
+    /// <summary>Chuẩn hóa phản hồi chỉnh sửa thành checklist kỹ thuật (AI-UC26).</summary>
+    [HttpPost("standardize-revision")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> StandardizeRevision(
+        [FromBody] StandardizeRevisionRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var (success, data, errors) = await Mediator.Send(
+            new StandardizeRevisionCommand(
+                request.Feedback,
+                request.MilestoneTitle),
             cancellationToken);
 
         return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
