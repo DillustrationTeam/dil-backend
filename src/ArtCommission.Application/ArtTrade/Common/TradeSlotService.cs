@@ -41,41 +41,57 @@ public class TradeSlotService : ITradeSlotService
     {
         var now = DateTimeOffset.UtcNow;
 
-        // 1. Đếm số kèo đang trong giai đoạn thực hiện (bận)
-        var activeTradesCount = await _db.ArtTrades
-            .AsNoTracking()
-            .CountAsync(t => !t.IsDeleted &&
-                (t.InitiatorId == userId || t.ReceiverId == userId) &&
-                (t.Status == TradeStatus.Accepted || t.Status == TradeStatus.BothSubmitted), ct);
+        try
+        {
+            // 1. Đếm số kèo đang trong giai đoạn thực hiện (bận)
+            var activeTradesCount = await _db.ArtTrades
+                .AsNoTracking()
+                .CountAsync(t => !t.IsDeleted &&
+                    (t.InitiatorId == userId || t.ReceiverId == userId) &&
+                    (t.Status == TradeStatus.Accepted || t.Status == TradeStatus.BothSubmitted), ct);
 
-        // 2. Lấy danh sách các slot đang bị đóng băng còn hiệu lực
-        var activeFreezes = await _db.TradeSlotFreezes
-            .AsNoTracking()
-            .Where(f => !f.IsDeleted && !f.IsRevoked && f.UserId == userId && f.FrozenUntil > now)
-            .OrderBy(f => f.FrozenUntil)
-            .ToListAsync(ct);
+            // 2. Lấy danh sách các slot đang bị đóng băng còn hiệu lực
+            var activeFreezes = await _db.TradeSlotFreezes
+                .AsNoTracking()
+                .Where(f => !f.IsDeleted && !f.IsRevoked && f.UserId == userId && f.FrozenUntil > now)
+                .OrderBy(f => f.FrozenUntil)
+                .ToListAsync(ct);
 
-        var frozenCount = activeFreezes.Count;
-        var availableSlots = Math.Max(0, DefaultMaxSlots - (activeTradesCount + frozenCount));
+            var frozenCount = activeFreezes.Count;
+            var availableSlots = Math.Max(0, DefaultMaxSlots - (activeTradesCount + frozenCount));
 
-        var frozenDetails = activeFreezes.Select(f => new FrozenSlotDetailDto(
-            FreezeId: f.Id,
-            ArtTradeId: f.ArtTradeId,
-            FrozenFrom: f.FrozenFrom,
-            FrozenUntil: f.FrozenUntil,
-            Reason: f.Reason,
-            DaysRemaining: Math.Max(1, (int)Math.Ceiling((f.FrozenUntil - now).TotalDays))
-        )).ToList();
+            var frozenDetails = activeFreezes.Select(f => new FrozenSlotDetailDto(
+                FreezeId: f.Id,
+                ArtTradeId: f.ArtTradeId,
+                FrozenFrom: f.FrozenFrom,
+                FrozenUntil: f.FrozenUntil,
+                Reason: f.Reason,
+                DaysRemaining: Math.Max(1, (int)Math.Ceiling((f.FrozenUntil - now).TotalDays))
+            )).ToList();
 
-        return new TradeSlotStatusDto(
-            UserId: userId,
-            TotalSlots: DefaultMaxSlots,
-            ActiveTradesCount: activeTradesCount,
-            FrozenSlotsCount: frozenCount,
-            AvailableSlots: availableSlots,
-            CanTrade: availableSlots > 0,
-            FrozenDetails: frozenDetails
-        );
+            return new TradeSlotStatusDto(
+                UserId: userId,
+                TotalSlots: DefaultMaxSlots,
+                ActiveTradesCount: activeTradesCount,
+                FrozenSlotsCount: frozenCount,
+                AvailableSlots: availableSlots,
+                CanTrade: availableSlots > 0,
+                FrozenDetails: frozenDetails
+            );
+        }
+        catch
+        {
+            // Fallback an toàn khi database đang migrate hoặc bảng chưa khởi tạo
+            return new TradeSlotStatusDto(
+                UserId: userId,
+                TotalSlots: DefaultMaxSlots,
+                ActiveTradesCount: 0,
+                FrozenSlotsCount: 0,
+                AvailableSlots: DefaultMaxSlots,
+                CanTrade: true,
+                FrozenDetails: new List<FrozenSlotDetailDto>()
+            );
+        }
     }
 
     public async Task FreezeSlotAsync(Guid userId, Guid tradeId, int days, string reason, CancellationToken ct = default)

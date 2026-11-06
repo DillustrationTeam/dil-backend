@@ -5067,7 +5067,7 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.HasOne("ArtCommission.Domain.Entities.ArtistStudio.Artwork", "InitiatorArtwork")
                         .WithMany()
                         .HasForeignKey("InitiatorArtworkId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("ArtCommission.Domain.Entities.Identity.ApplicationUser", "Initiator")
                         .WithMany()
@@ -5078,7 +5078,7 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.HasOne("ArtCommission.Domain.Entities.ArtistStudio.Artwork", "ReceiverArtwork")
                         .WithMany()
                         .HasForeignKey("ReceiverArtworkId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("ArtCommission.Domain.Entities.Identity.ApplicationUser", "Receiver")
                         .WithMany()

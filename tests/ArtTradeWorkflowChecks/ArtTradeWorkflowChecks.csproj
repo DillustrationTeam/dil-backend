@@ -6,8 +6,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../src/ArtCommission.Infrastructure/ArtCommission.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\ArtCommission.Domain\ArtCommission.Domain.csproj" />
+    <ProjectReference Include="..\..\src\ArtCommission.Application\ArtCommission.Application.csproj" />
+    <ProjectReference Include="..\..\src\ArtCommission.Infrastructure\ArtCommission.Infrastructure.csproj" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.8" />
   </ItemGroup>
 </Project>
-

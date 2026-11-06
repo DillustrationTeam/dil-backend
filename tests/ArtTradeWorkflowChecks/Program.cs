@@ -88,7 +88,20 @@ var adminUser = new ApplicationUser
     Email = "admin@test.com"
 };
 
-db.Users.AddRange(artistA, artistB, artistC, adminUser);
+var regularClient = new ApplicationUser
+{
+    Id = Guid.NewGuid(),
+    UserName = "regular_client",
+    FullName = "Client User",
+    Email = "client@test.com"
+};
+
+db.Users.AddRange(artistA, artistB, artistC, adminUser, regularClient);
+db.CreatorProfiles.AddRange(
+    new CreatorProfile { Id = Guid.NewGuid(), UserId = artistA.Id, DisplayName = "Artist Alpha", IsApproved = true },
+    new CreatorProfile { Id = Guid.NewGuid(), UserId = artistB.Id, DisplayName = "Artist Beta", IsApproved = true },
+    new CreatorProfile { Id = Guid.NewGuid(), UserId = artistC.Id, DisplayName = "Artist Charlie", IsApproved = true }
+);
 await db.SaveChangesAsync();
 
 // =============================================================
@@ -118,6 +131,18 @@ AssertTrue(selfErrors.Any(e => e.Contains("chính mình")), "Error contains cann
 var emptyTitleCmd = new ProposeTradeCommand(artistA.Id, artistB.Id, "", null, null);
 var (emptySuccess, _, emptyErrors) = await proposeHandler.Handle(emptyTitleCmd, default);
 AssertTrue(!emptySuccess, "Empty title fails validation");
+
+// Non-creator initiator cannot propose trade
+var nonCreatorCmd = new ProposeTradeCommand(regularClient.Id, artistB.Id, "Trade", null, null);
+var (nonCreatorSuccess, _, nonCreatorErrors) = await proposeHandler.Handle(nonCreatorCmd, default);
+AssertTrue(!nonCreatorSuccess, "Non-creator initiator trade blocked");
+AssertTrue(nonCreatorErrors.Any(e => e.Contains("Creator")), "Error states trade is only for Creator");
+
+// Proposing to non-creator receiver is blocked
+var toNonCreatorCmd = new ProposeTradeCommand(artistA.Id, regularClient.Id, "Trade", null, null);
+var (toNonCreatorSuccess, _, toNonCreatorErrors) = await proposeHandler.Handle(toNonCreatorCmd, default);
+AssertTrue(!toNonCreatorSuccess, "Trade to non-creator receiver blocked");
+AssertTrue(toNonCreatorErrors.Any(e => e.Contains("Creator")), "Error states receiver must be a Creator");
 
 // =============================================================
 // TEST 3: PROPOSE TRADE SUCCESS & SLOT RESERVATION

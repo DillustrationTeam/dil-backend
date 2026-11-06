@@ -69,12 +69,12 @@ public class ArtTradeConfiguration : IEntityTypeConfiguration<ArtTradeEntity>
         builder.HasOne(t => t.InitiatorArtwork)
             .WithMany()
             .HasForeignKey(t => t.InitiatorArtworkId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(t => t.ReceiverArtwork)
             .WithMany()
             .HasForeignKey(t => t.ReceiverArtworkId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.Restrict);
 
         // Indexes for performance
         builder.HasIndex(t => new { t.InitiatorId, t.CreatedAt })

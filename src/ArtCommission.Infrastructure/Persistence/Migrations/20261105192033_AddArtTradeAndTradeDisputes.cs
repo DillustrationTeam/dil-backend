@@ -60,13 +60,13 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         column: x => x.InitiatorArtworkId,
                         principalTable: "Artworks",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.SetNull);
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_ArtTrades_Artworks_ReceiverArtworkId",
                         column: x => x.ReceiverArtworkId,
                         principalTable: "Artworks",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.SetNull);
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_ArtTrades_Users_CancelledById",
                         column: x => x.CancelledById,

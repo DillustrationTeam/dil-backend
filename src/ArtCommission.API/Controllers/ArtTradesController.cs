@@ -1,4 +1,5 @@
 using ArtCommission.Application.ArtTrade.Commands;
+using ArtCommission.Application.ArtTrade.Common;
 using ArtCommission.Application.ArtTrade.DTOs;
 using ArtCommission.Application.ArtTrade.Queries;
 using ArtCommission.Domain.Enums;
@@ -14,6 +15,23 @@ namespace ArtCommission.API.Controllers;
 [Route("api/v1/art-trades")]
 public class ArtTradesController : ApiControllerBase
 {
+    /// <summary>
+    /// Tìm kiếm nghệ sĩ (Creator) để gửi đề nghị trao đổi tranh.
+    /// </summary>
+    [HttpGet("creators/search")]
+    [ProducesResponseType(typeof(List<CreatorTradeSearchDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> SearchCreators(
+        [FromQuery] string? query,
+        [FromQuery] int limit = 10,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await Mediator.Send(
+            new SearchCreatorsForTradeQuery(query, CurrentUserId, limit),
+            cancellationToken);
+
+        return OkEnvelope(result);
+    }
+
     /// <summary>
     /// Khởi tạo đề nghị trao đổi tranh mới (Propose Art Trade).
     /// </summary>
@@ -37,7 +55,8 @@ public class ArtTradesController : ApiControllerBase
             Title: request.Title,
             Description: request.Description,
             RequestNote: request.RequestNote,
-            DurationDays: request.DurationDays
+            DurationDays: request.DurationDays,
+            ReceiverDisplayName: request.ReceiverDisplayName
         );
 
         var (success, data, errors) = await Mediator.Send(command, cancellationToken);
@@ -277,10 +296,25 @@ public class ArtTradesController : ApiControllerBase
             return UnauthorizedEnvelope();
         }
 
-        var query = new GetMyTradeSlotStatusQuery(UserId: CurrentUserId);
-        var (success, data) = await Mediator.Send(query, cancellationToken);
-
-        return OkEnvelope(data);
+        try
+        {
+            var query = new GetMyTradeSlotStatusQuery(UserId: CurrentUserId);
+            var (success, data) = await Mediator.Send(query, cancellationToken);
+            return OkEnvelope(data);
+        }
+        catch (Exception ex)
+        {
+            var fallback = new TradeSlotStatusDto(
+                UserId: CurrentUserId,
+                TotalSlots: TradeSlotService.DefaultMaxSlots,
+                ActiveTradesCount: 0,
+                FrozenSlotsCount: 0,
+                AvailableSlots: TradeSlotService.DefaultMaxSlots,
+                CanTrade: true,
+                FrozenDetails: new List<FrozenSlotDetailDto>()
+            );
+            return OkEnvelope(fallback, new { warning = "Slot fallback used: " + ex.Message });
+        }
     }
 
     /// <summary>

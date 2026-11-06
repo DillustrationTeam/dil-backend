@@ -192,17 +192,30 @@ public sealed record TradeDownloadUrlDto(
     string FileName
 );
 
+public sealed record CreatorTradeSearchDto(
+    Guid CreatorProfileId,
+    Guid UserId,
+    string DisplayName,
+    string? Headline,
+    string? Specialties,
+    string? AvatarUrl,
+    int AvailableSlots,
+    bool IsAcceptingOrders
+);
+
 public sealed record CreateArtTradeRequest(
-    Guid ReceiverId,
-    string Title,
+    Guid? ReceiverId = null,
+    string? ReceiverDisplayName = null,
+    string Title = "",
     string? Description = null,
     string? RequestNote = null,
     int? DurationDays = 14
 );
 
 public sealed record ProposeTradeRequest(
-    Guid ReceiverId,
-    string Title,
+    Guid? ReceiverId = null,
+    string? ReceiverDisplayName = null,
+    string Title = "",
     string? Description = null,
     string? RequestNote = null,
     int? DurationDays = 14
