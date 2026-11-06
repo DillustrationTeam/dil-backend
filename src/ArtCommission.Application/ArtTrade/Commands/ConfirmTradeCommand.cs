@@ -1,6 +1,7 @@
 using ArtCommission.Application.ArtTrade.Common;
 using ArtCommission.Application.ArtTrade.DTOs;
 using ArtCommission.Application.Common.Interfaces;
+using INotificationPublisher = ArtCommission.Application.Notifications.Common.INotificationPublisher;
 using ArtCommission.Domain.Entities.Auction;
 using ArtCommission.Domain.Enums;
 using ArtTradeEntity = ArtCommission.Domain.Entities.Trade.ArtTrade;
@@ -27,10 +28,14 @@ public class ConfirmTradeCommandValidator : AbstractValidator<ConfirmTradeComman
 public class ConfirmTradeCommandHandler : IRequestHandler<ConfirmTradeCommand, (bool Success, ArtTradeDto? Data, string[] Errors)>
 {
     private readonly IApplicationDbContext _db;
+    private readonly INotificationPublisher _notifPublisher;
 
-    public ConfirmTradeCommandHandler(IApplicationDbContext db)
+    public ConfirmTradeCommandHandler(
+        IApplicationDbContext db,
+        INotificationPublisher notifPublisher)
     {
         _db = db;
+        _notifPublisher = notifPublisher;
     }
 
     public async Task<(bool Success, ArtTradeDto? Data, string[] Errors)> Handle(ConfirmTradeCommand request, CancellationToken cancellationToken)
@@ -92,6 +97,42 @@ public class ConfirmTradeCommandHandler : IRequestHandler<ConfirmTradeCommand, (
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        if (trade.Status == TradeStatus.Completed)
+        {
+            try
+            {
+                var title = "Giao dịch trao đổi tranh hoàn tất! 🎉";
+                var body = $"Cả hai bên đã xác nhận hài lòng cho phiên \"{trade.Title}\". Bạn có thể tải file tranh gốc và tác phẩm đã được thêm vào bộ sưu tập sở hữu của bạn.";
+
+                await _notifPublisher.PublishAsync(
+                    userId: trade.InitiatorId,
+                    notificationType: NotificationType.ArtTradeCompleted,
+                    title: title,
+                    body: body,
+                    refType: "ArtTrade",
+                    refId: trade.Id,
+                    dedupKey: $"ArtTradeCompleted:{trade.Id}:{trade.InitiatorId}",
+                    cancellationToken: cancellationToken
+                );
+
+                await _notifPublisher.PublishAsync(
+                    userId: trade.ReceiverId,
+                    notificationType: NotificationType.ArtTradeCompleted,
+                    title: title,
+                    body: body,
+                    refType: "ArtTrade",
+                    refId: trade.Id,
+                    dedupKey: $"ArtTradeCompleted:{trade.Id}:{trade.ReceiverId}",
+                    cancellationToken: cancellationToken
+                );
+            }
+            catch
+            {
+                // Bỏ qua lỗi gửi thông báo để không ảnh hưởng đến giao dịch hoàn tất
+            }
+        }
+
         return (true, ArtTradeDto.FromEntity(trade), []);
     }
 

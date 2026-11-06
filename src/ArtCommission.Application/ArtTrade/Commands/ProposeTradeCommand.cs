@@ -1,6 +1,7 @@
 using ArtCommission.Application.ArtTrade.Common;
 using ArtCommission.Application.ArtTrade.DTOs;
 using ArtCommission.Application.Common.Interfaces;
+using INotificationPublisher = ArtCommission.Application.Notifications.Common.INotificationPublisher;
 using ArtCommission.Domain.Entities.ArtistStudio;
 using ArtTradeEntity = ArtCommission.Domain.Entities.Trade.ArtTrade;
 using ArtCommission.Domain.Enums;
@@ -52,11 +53,16 @@ public class ProposeTradeCommandHandler : IRequestHandler<ProposeTradeCommand, (
 {
     private readonly IApplicationDbContext _db;
     private readonly ITradeSlotService _slotService;
+    private readonly INotificationPublisher _notifPublisher;
 
-    public ProposeTradeCommandHandler(IApplicationDbContext db, ITradeSlotService slotService)
+    public ProposeTradeCommandHandler(
+        IApplicationDbContext db,
+        ITradeSlotService slotService,
+        INotificationPublisher notifPublisher)
     {
         _db = db;
         _slotService = slotService;
+        _notifPublisher = notifPublisher;
     }
 
     public async Task<(bool Success, ArtTradeDto? Data, string[] Errors)> Handle(ProposeTradeCommand request, CancellationToken cancellationToken)
@@ -170,6 +176,25 @@ public class ProposeTradeCommandHandler : IRequestHandler<ProposeTradeCommand, (
         // Load navigation properties for DTO mapping
         await _db.Entry(trade).Reference(t => t.Initiator).LoadAsync(cancellationToken);
         await _db.Entry(trade).Reference(t => t.Receiver).LoadAsync(cancellationToken);
+
+        try
+        {
+            var senderName = trade.Initiator?.FullName ?? "Một họa sĩ";
+            await _notifPublisher.PublishAsync(
+                userId: trade.ReceiverId,
+                notificationType: NotificationType.ArtTradeProposed,
+                title: "Lời mời trao đổi tác phẩm mới",
+                body: $"Họa sĩ {senderName} đã gửi cho bạn đề nghị trao đổi tranh: \"{trade.Title}\".",
+                refType: "ArtTrade",
+                refId: trade.Id,
+                dedupKey: $"ArtTradeProposed:{trade.Id}:{trade.ReceiverId}",
+                cancellationToken: cancellationToken
+            );
+        }
+        catch
+        {
+            // Bỏ qua lỗi gửi thông báo để không ảnh hưởng giao dịch
+        }
 
         return (true, ArtTradeDto.FromEntity(trade), []);
     }

@@ -2,6 +2,7 @@ using ArtCommission.Application.ArtTrade.Common;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.Dispute.TradeDispute.DTOs;
 using ArtCommission.Application.Dispute.TradeDispute.Validators;
+using INotificationPublisher = ArtCommission.Application.Notifications.Common.INotificationPublisher;
 using ArtCommission.Domain.Enums;
 using FluentValidation;
 using MediatR;
@@ -21,11 +22,16 @@ public class ResolveTradeDisputeCommandHandler
 {
     private readonly IApplicationDbContext _db;
     private readonly ITradeSlotService _slotService;
+    private readonly INotificationPublisher _notifPublisher;
 
-    public ResolveTradeDisputeCommandHandler(IApplicationDbContext db, ITradeSlotService slotService)
+    public ResolveTradeDisputeCommandHandler(
+        IApplicationDbContext db,
+        ITradeSlotService slotService,
+        INotificationPublisher notifPublisher)
     {
         _db = db;
         _slotService = slotService;
+        _notifPublisher = notifPublisher;
     }
 
     public async Task<(bool Success, string Message, string[] Errors)> Handle(
@@ -116,6 +122,43 @@ public class ResolveTradeDisputeCommandHandler
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            var isDismissed = request.Resolution == TradeDisputeResolutions.Dismissed;
+            var body = isDismissed
+                ? $"Quản trị viên đã bác bỏ khiếu nại phiên trao đổi \"{trade.Title}\" và khôi phục giao dịch.{(string.IsNullOrWhiteSpace(request.AdminNote) ? "" : $" Ghi chú: {request.AdminNote}")}"
+                : $"Quản trị viên đã phân xử khiếu nại phiên trao đổi \"{trade.Title}\". Kết quả: {request.Resolution}.{(string.IsNullOrWhiteSpace(request.AdminNote) ? "" : $" Ghi chú: {request.AdminNote}")}";
+
+            var title = "Khiếu nại trao đổi tranh đã được xử lý";
+
+            await _notifPublisher.PublishAsync(
+                userId: trade.InitiatorId,
+                notificationType: NotificationType.TradeDisputeResolved,
+                title: title,
+                body: body,
+                refType: "ArtTrade",
+                refId: trade.Id,
+                dedupKey: $"TradeDisputeResolved:{dispute.Id}:{trade.InitiatorId}",
+                cancellationToken: cancellationToken
+            );
+
+            await _notifPublisher.PublishAsync(
+                userId: trade.ReceiverId,
+                notificationType: NotificationType.TradeDisputeResolved,
+                title: title,
+                body: body,
+                refType: "ArtTrade",
+                refId: trade.Id,
+                dedupKey: $"TradeDisputeResolved:{dispute.Id}:{trade.ReceiverId}",
+                cancellationToken: cancellationToken
+            );
+        }
+        catch
+        {
+            // Bỏ qua lỗi gửi thông báo để không ảnh hưởng phân xử
+        }
+
         return (true, $"Đã giải quyết khiếu nại thành công theo phán quyết {request.Resolution}.", []);
     }
 }

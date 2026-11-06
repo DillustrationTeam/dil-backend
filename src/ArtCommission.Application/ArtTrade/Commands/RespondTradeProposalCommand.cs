@@ -1,6 +1,7 @@
 using ArtCommission.Application.ArtTrade.Common;
 using ArtCommission.Application.ArtTrade.DTOs;
 using ArtCommission.Application.Common.Interfaces;
+using INotificationPublisher = ArtCommission.Application.Notifications.Common.INotificationPublisher;
 using ArtCommission.Domain.Enums;
 using FluentValidation;
 using MediatR;
@@ -37,11 +38,16 @@ public class RespondTradeProposalCommandHandler : IRequestHandler<RespondTradePr
 {
     private readonly IApplicationDbContext _db;
     private readonly ITradeSlotService _slotService;
+    private readonly INotificationPublisher _notifPublisher;
 
-    public RespondTradeProposalCommandHandler(IApplicationDbContext db, ITradeSlotService slotService)
+    public RespondTradeProposalCommandHandler(
+        IApplicationDbContext db,
+        ITradeSlotService slotService,
+        INotificationPublisher notifPublisher)
     {
         _db = db;
         _slotService = slotService;
+        _notifPublisher = notifPublisher;
     }
 
     public async Task<(bool Success, ArtTradeDto? Data, string[] Errors)> Handle(RespondTradeProposalCommand request, CancellationToken cancellationToken)
@@ -104,6 +110,42 @@ public class RespondTradeProposalCommandHandler : IRequestHandler<RespondTradePr
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            var partnerName = trade.Receiver?.FullName ?? "Đối tác";
+            if (!request.Accept)
+            {
+                await _notifPublisher.PublishAsync(
+                    userId: trade.InitiatorId,
+                    notificationType: NotificationType.ArtTradeDeclined,
+                    title: "Đề nghị trao đổi bị từ chối",
+                    body: $"Họa sĩ {partnerName} đã từ chối lời mời trao đổi \"{trade.Title}\".",
+                    refType: "ArtTrade",
+                    refId: trade.Id,
+                    dedupKey: $"ArtTradeDeclined:{trade.Id}:{trade.InitiatorId}",
+                    cancellationToken: cancellationToken
+                );
+            }
+            else
+            {
+                await _notifPublisher.PublishAsync(
+                    userId: trade.InitiatorId,
+                    notificationType: NotificationType.ArtTradeAccepted,
+                    title: "Đề nghị trao đổi đã được chấp nhận!",
+                    body: $"Họa sĩ {partnerName} đã chấp nhận lời mời trao đổi \"{trade.Title}\". Phòng vẽ tranh đã chính thức mở!",
+                    refType: "ArtTrade",
+                    refId: trade.Id,
+                    dedupKey: $"ArtTradeAccepted:{trade.Id}:{trade.InitiatorId}",
+                    cancellationToken: cancellationToken
+                );
+            }
+        }
+        catch
+        {
+            // Bỏ qua lỗi gửi thông báo để không ảnh hưởng giao dịch chính
+        }
+
         return (true, ArtTradeDto.FromEntity(trade), []);
     }
 }

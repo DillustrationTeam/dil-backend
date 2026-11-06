@@ -1,5 +1,6 @@
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.Dispute.TradeDispute.Validators;
+using INotificationPublisher = ArtCommission.Application.Notifications.Common.INotificationPublisher;
 using ArtCommission.Domain.Enums;
 using FluentValidation;
 using MediatR;
@@ -19,10 +20,12 @@ public class CreateTradeDisputeCommandHandler
     : IRequestHandler<CreateTradeDisputeCommand, (bool Success, string Message, Guid? DisputeId, string[] Errors)>
 {
     private readonly IApplicationDbContext _db;
+    private readonly INotificationPublisher _notifPublisher;
 
-    public CreateTradeDisputeCommandHandler(IApplicationDbContext db)
+    public CreateTradeDisputeCommandHandler(IApplicationDbContext db, INotificationPublisher notifPublisher)
     {
         _db = db;
+        _notifPublisher = notifPublisher;
     }
 
     public async Task<(bool Success, string Message, Guid? DisputeId, string[] Errors)> Handle(
@@ -90,6 +93,25 @@ public class CreateTradeDisputeCommandHandler
 
         _db.TradeDisputes.Add(dispute);
         await _db.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            var opponentId = trade.InitiatorId == request.RaisedById ? trade.ReceiverId : trade.InitiatorId;
+            await _notifPublisher.PublishAsync(
+                userId: opponentId,
+                notificationType: NotificationType.TradeDisputeCreated,
+                title: "Khiếu nại giao dịch trao đổi tranh",
+                body: $"Đối tác đã mở khiếu nại cho phiên trao đổi \"{trade.Title}\". Lý do: {dispute.Reason}",
+                refType: "ArtTrade",
+                refId: trade.Id,
+                dedupKey: $"TradeDisputeCreated:{dispute.Id}:{opponentId}",
+                cancellationToken: cancellationToken
+            );
+        }
+        catch
+        {
+            // Bỏ qua lỗi gửi thông báo để không gián đoạn việc tạo khiếu nại
+        }
 
         return (true, "Đã gửi khiếu nại thành công. Quản trị viên sẽ xem xét và phản hồi.", dispute.Id, []);
     }

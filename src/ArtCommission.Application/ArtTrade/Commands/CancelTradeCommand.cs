@@ -1,6 +1,7 @@
 using ArtCommission.Application.ArtTrade.Common;
 using ArtCommission.Application.ArtTrade.DTOs;
 using ArtCommission.Application.Common.Interfaces;
+using INotificationPublisher = ArtCommission.Application.Notifications.Common.INotificationPublisher;
 using ArtCommission.Domain.Enums;
 using FluentValidation;
 using MediatR;
@@ -32,11 +33,16 @@ public class CancelTradeCommandHandler : IRequestHandler<CancelTradeCommand, (bo
 {
     private readonly IApplicationDbContext _db;
     private readonly ITradeSlotService _slotService;
+    private readonly INotificationPublisher _notifPublisher;
 
-    public CancelTradeCommandHandler(IApplicationDbContext db, ITradeSlotService slotService)
+    public CancelTradeCommandHandler(
+        IApplicationDbContext db,
+        ITradeSlotService slotService,
+        INotificationPublisher notifPublisher)
     {
         _db = db;
         _slotService = slotService;
+        _notifPublisher = notifPublisher;
     }
 
     public async Task<(bool Success, ArtTradeDto? Data, string[] Errors)> Handle(CancelTradeCommand request, CancellationToken cancellationToken)
@@ -93,6 +99,27 @@ public class CancelTradeCommandHandler : IRequestHandler<CancelTradeCommand, (bo
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            var recipientId = request.UserId == trade.InitiatorId ? trade.ReceiverId : trade.InitiatorId;
+            var cancellerName = request.UserId == trade.InitiatorId ? (trade.Initiator?.FullName ?? "Người khởi tạo") : (trade.Receiver?.FullName ?? "Đối tác");
+            await _notifPublisher.PublishAsync(
+                userId: recipientId,
+                notificationType: NotificationType.ArtTradeCancelled,
+                title: "Giao dịch trao đổi tranh đã bị hủy",
+                body: $"{cancellerName} đã hủy phiên trao đổi \"{trade.Title}\". Lý do: {trade.CancellationReason}",
+                refType: "ArtTrade",
+                refId: trade.Id,
+                dedupKey: $"ArtTradeCancelled:{trade.Id}:{recipientId}",
+                cancellationToken: cancellationToken
+            );
+        }
+        catch
+        {
+            // Bỏ qua lỗi gửi thông báo để không ảnh hưởng giao dịch chính
+        }
+
         return (true, ArtTradeDto.FromEntity(trade), []);
     }
 }

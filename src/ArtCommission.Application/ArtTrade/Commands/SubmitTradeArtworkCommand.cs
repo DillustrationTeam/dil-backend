@@ -2,6 +2,7 @@ using ArtCommission.Application.ArtTrade.Common;
 using ArtCommission.Application.ArtTrade.DTOs;
 using ArtCommission.Application.Commission.Interfaces;
 using ArtCommission.Application.Common.Interfaces;
+using INotificationPublisher = ArtCommission.Application.Notifications.Common.INotificationPublisher;
 using ArtCommission.Domain.Enums;
 using FluentValidation;
 using MediatR;
@@ -43,15 +44,18 @@ public class SubmitTradeArtworkCommandHandler : IRequestHandler<SubmitTradeArtwo
     private readonly IApplicationDbContext _db;
     private readonly IStorageService _storageService;
     private readonly IWatermarkService _watermarkService;
+    private readonly INotificationPublisher _notifPublisher;
 
     public SubmitTradeArtworkCommandHandler(
         IApplicationDbContext db,
         IStorageService storageService,
-        IWatermarkService watermarkService)
+        IWatermarkService watermarkService,
+        INotificationPublisher notifPublisher)
     {
         _db = db;
         _storageService = storageService;
         _watermarkService = watermarkService;
+        _notifPublisher = notifPublisher;
     }
 
     public async Task<(bool Success, ArtTradeDto? Data, string[] Errors)> Handle(SubmitTradeArtworkCommand request, CancellationToken cancellationToken)
@@ -126,6 +130,27 @@ public class SubmitTradeArtworkCommandHandler : IRequestHandler<SubmitTradeArtwo
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            var recipientId = isInitiator ? trade.ReceiverId : trade.InitiatorId;
+            var submitterName = (isInitiator ? trade.Initiator?.FullName : trade.Receiver?.FullName) ?? "Đối tác";
+            await _notifPublisher.PublishAsync(
+                userId: recipientId,
+                notificationType: NotificationType.ArtTradeArtworkSubmitted,
+                title: "Đối tác đã nộp tác phẩm trao đổi",
+                body: $"Họa sĩ {submitterName} đã nộp tranh cho phiên \"{trade.Title}\". Hãy vào xem bản watermark và kiểm tra chất lượng!",
+                refType: "ArtTrade",
+                refId: trade.Id,
+                dedupKey: $"ArtTradeArtworkSubmitted:{trade.Id}:{request.UserId}",
+                cancellationToken: cancellationToken
+            );
+        }
+        catch
+        {
+            // Bỏ qua lỗi gửi thông báo để không gián đoạn thao tác nộp tranh
+        }
+
         return (true, ArtTradeDto.FromEntity(trade), []);
     }
 }
