@@ -79,6 +79,11 @@ public class RespondTradeProposalCommandHandler : IRequestHandler<RespondTradePr
             return (false, null, [$"Giao dịch đang ở trạng thái {trade.Status}, không thể phản hồi."]);
         }
 
+        if (request.Accept && trade.ReceiverAcceptedAt.HasValue)
+        {
+            return (false, null, ["Bạn đã chấp nhận đề nghị này, đang chờ đối tác xác nhận."]);
+        }
+
         var now = DateTimeOffset.UtcNow;
 
         if (!request.Accept)
@@ -103,9 +108,12 @@ public class RespondTradeProposalCommandHandler : IRequestHandler<RespondTradePr
                 return (false, null, ["Người gửi lời mời hiện đã kín Slot hoặc bị đóng băng slot, không thể bắt đầu giao dịch."]);
             }
 
-            trade.Status = TradeStatus.Accepted;
-            trade.ReceiverRequestNote = request.RequestNote?.Trim();
-            trade.SubmissionDeadlineAt = now.AddDays(14); // 14 ngày kể từ khi hai bên chốt vẽ
+            // Side B chấp nhận nhưng giao dịch chưa bắt đầu: cần Side A xác nhận lại (cả 2 bên cùng accept)
+            trade.ReceiverAcceptedAt = now;
+            if (!string.IsNullOrWhiteSpace(request.RequestNote))
+            {
+                trade.ReceiverResponseNote = request.RequestNote.Trim();
+            }
             trade.UpdatedAt = now;
         }
 
@@ -132,11 +140,11 @@ public class RespondTradeProposalCommandHandler : IRequestHandler<RespondTradePr
                 await _notifPublisher.PublishAsync(
                     userId: trade.InitiatorId,
                     notificationType: NotificationType.ArtTradeAccepted,
-                    title: "Đề nghị trao đổi đã được chấp nhận!",
-                    body: $"Họa sĩ {partnerName} đã chấp nhận lời mời trao đổi \"{trade.Title}\". Phòng vẽ tranh đã chính thức mở!",
+                    title: "Đối tác đã chấp nhận đề nghị trao đổi",
+                    body: $"Họa sĩ {partnerName} đã chấp nhận \"{trade.Title}\". Hãy xem lại yêu cầu của họ và xác nhận để bắt đầu vẽ.",
                     refType: "ArtTrade",
                     refId: trade.Id,
-                    dedupKey: $"ArtTradeAccepted:{trade.Id}:{trade.InitiatorId}",
+                    dedupKey: $"ArtTradeReceiverAccepted:{trade.Id}:{trade.InitiatorId}",
                     cancellationToken: cancellationToken
                 );
             }

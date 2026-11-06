@@ -2,6 +2,7 @@ using ArtCommission.Application.ArtTrade.Commands;
 using ArtCommission.Application.ArtTrade.Common;
 using ArtCommission.Application.ArtTrade.DTOs;
 using ArtCommission.Application.ArtTrade.Queries;
+using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -15,6 +16,12 @@ namespace ArtCommission.API.Controllers;
 [Route("api/v1/art-trades")]
 public class ArtTradesController : ApiControllerBase
 {
+    private readonly IFileStorageService _fileStorage;
+
+    public ArtTradesController(IFileStorageService fileStorage)
+    {
+        _fileStorage = fileStorage;
+    }
     /// <summary>
     /// Tìm kiếm nghệ sĩ (Creator) để gửi đề nghị trao đổi tranh.
     /// </summary>
@@ -56,7 +63,9 @@ public class ArtTradesController : ApiControllerBase
             Description: request.Description,
             RequestNote: request.RequestNote,
             DurationDays: request.DurationDays,
-            ReceiverDisplayName: request.ReceiverDisplayName
+            ReceiverDisplayName: request.ReceiverDisplayName,
+            InitiatorRequestNote: request.InitiatorRequestNote,
+            ReceiverRequestNote: request.ReceiverRequestNote
         );
 
         var (success, data, errors) = await Mediator.Send(command, cancellationToken);
@@ -66,6 +75,36 @@ public class ArtTradesController : ApiControllerBase
         }
 
         return OkEnvelope(data);
+    }
+
+    /// <summary>
+    /// Tải lên ảnh đính kèm / ảnh mẫu tham khảo (Reference image) cho giao dịch trao đổi tranh.
+    /// </summary>
+    [HttpPost("attachments")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(10 * 1024 * 1024)] // 10MB
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> UploadAttachment(IFormFile file, CancellationToken ct)
+    {
+        if (CurrentUserId == Guid.Empty) return UnauthorizedEnvelope();
+        if (file is null || file.Length == 0 || file.Length > 10 * 1024 * 1024)
+            return BadRequestEnvelope(new[] { "File ảnh phải có dung lượng tối đa 10MB." });
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        var allowedExts = new[] { ".jpg", ".jpeg", ".png", ".webp" };
+        if (!allowedExts.Contains(ext))
+            return BadRequestEnvelope(new[] { "Chỉ chấp nhận ảnh định dạng JPG, PNG, WebP." });
+
+        var uniqueName = $"{Guid.NewGuid():N}{ext}";
+        await using var stream = file.OpenReadStream();
+        var url = await _fileStorage.SaveAsync(stream, uniqueName, file.ContentType, $"trades/references/{CurrentUserId}", ct);
+
+        var absoluteUrl = Uri.TryCreate(url, UriKind.Absolute, out var absolute) && absolute.Scheme is "http" or "https"
+            ? url : $"{Request.Scheme}://{Request.Host}{url}";
+
+        return OkEnvelope(new { url = absoluteUrl });
     }
 
     /// <summary>
@@ -89,11 +128,34 @@ public class ArtTradesController : ApiControllerBase
             TradeId: id,
             UserId: CurrentUserId,
             Accept: request.Accept,
-            RequestNote: request.RequestNote,
+            RequestNote: request.ResponseNote ?? request.RequestNote,
             RejectionReason: request.RejectionReason
         );
 
         var (success, data, errors) = await Mediator.Send(command, cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(data);
+    }
+
+    /// <summary>
+    /// Side A xác nhận đề nghị sau khi Side B đã chấp nhận (cả 2 bên accept mới bắt đầu).
+    /// </summary>
+    [HttpPost("{id:guid}/confirm-proposal")]
+    [ProducesResponseType(typeof(ArtTradeDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ConfirmTradeProposal(Guid id, CancellationToken cancellationToken = default)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var (success, data, errors) = await Mediator.Send(new ConfirmTradeProposalCommand(id, CurrentUserId), cancellationToken);
         if (!success)
         {
             return BadRequestEnvelope(errors);

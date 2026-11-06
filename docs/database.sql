@@ -1,4 +1,4 @@
-﻿-- ============================================================================
+-- ============================================================================
 -- DATABASE SCHEMA CREATION SCRIPT — ArtCommission (Dillustration)
 -- Target DBMS: Microsoft SQL Server 2019+ / Azure SQL Database
 -- Total Tables: 40 Tables (24 Core Entities + 16 Feature Entities)
@@ -846,6 +846,8 @@ BEGIN
         Description NVARCHAR(2000) NULL,
         InitiatorRequestNote NVARCHAR(2000) NULL,
         ReceiverRequestNote NVARCHAR(2000) NULL,
+        ReceiverResponseNote NVARCHAR(2000) NULL,
+        ReceiverAcceptedAt DATETIMEOFFSET NULL,
         InitiatorArtworkId UNIQUEIDENTIFIER NULL,
         ReceiverArtworkId UNIQUEIDENTIFIER NULL,
         InitiatorOriginalFileUrl NVARCHAR(500) NULL,
@@ -886,6 +888,10 @@ BEGIN
         EXEC(N'ALTER TABLE dbo.ArtTrades ADD InitiatorRequestNote NVARCHAR(2000) NULL;');
     IF COL_LENGTH(N'dbo.ArtTrades', N'ReceiverRequestNote') IS NULL
         EXEC(N'ALTER TABLE dbo.ArtTrades ADD ReceiverRequestNote NVARCHAR(2000) NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'ReceiverResponseNote') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD ReceiverResponseNote NVARCHAR(2000) NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'ReceiverAcceptedAt') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD ReceiverAcceptedAt DATETIMEOFFSET NULL;');
     IF COL_LENGTH(N'dbo.ArtTrades', N'InitiatorArtworkId') IS NULL
         EXEC(N'ALTER TABLE dbo.ArtTrades ADD InitiatorArtworkId UNIQUEIDENTIFIER NULL;');
     IF COL_LENGTH(N'dbo.ArtTrades', N'ReceiverArtworkId') IS NULL

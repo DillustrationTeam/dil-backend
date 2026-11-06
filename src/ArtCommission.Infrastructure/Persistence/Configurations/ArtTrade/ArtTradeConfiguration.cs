@@ -27,6 +27,11 @@ public class ArtTradeConfiguration : IEntityTypeConfiguration<ArtTradeEntity>
         builder.Property(t => t.ReceiverRequestNote)
             .HasMaxLength(2000);
 
+        builder.Property(t => t.ReceiverAcceptedAt);
+
+        builder.Property(t => t.ReceiverResponseNote)
+            .HasMaxLength(2000);
+
         builder.Property(t => t.InitiatorOriginalFileUrl)
             .HasMaxLength(500);
 

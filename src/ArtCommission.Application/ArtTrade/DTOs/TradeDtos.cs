@@ -25,6 +25,8 @@ public sealed record ArtTradeDto(
     UserSummaryDto Receiver,
     string? InitiatorRequestNote,
     string? ReceiverRequestNote,
+    string? ReceiverResponseNote,
+    DateTimeOffset? ReceiverAcceptedAt,
     Guid? InitiatorArtworkId,
     Guid? ReceiverArtworkId,
     ArtworkSummaryDto? InitiatorArtwork,
@@ -87,6 +89,8 @@ public sealed record ArtTradeDto(
             Receiver: receiverSummary,
             InitiatorRequestNote: trade.InitiatorRequestNote,
             ReceiverRequestNote: trade.ReceiverRequestNote,
+            ReceiverResponseNote: trade.ReceiverResponseNote,
+            ReceiverAcceptedAt: trade.ReceiverAcceptedAt,
             InitiatorArtworkId: trade.InitiatorArtworkId,
             ReceiverArtworkId: trade.ReceiverArtworkId,
             InitiatorArtwork: initiatorArt,
@@ -209,7 +213,9 @@ public sealed record CreateArtTradeRequest(
     string Title = "",
     string? Description = null,
     string? RequestNote = null,
-    int? DurationDays = 14
+    int? DurationDays = 14,
+    string? InitiatorRequestNote = null,
+    string? ReceiverRequestNote = null
 );
 
 public sealed record ProposeTradeRequest(
@@ -218,12 +224,15 @@ public sealed record ProposeTradeRequest(
     string Title = "",
     string? Description = null,
     string? RequestNote = null,
-    int? DurationDays = 14
+    int? DurationDays = 14,
+    string? InitiatorRequestNote = null,
+    string? ReceiverRequestNote = null
 );
 
 public sealed record RespondTradeProposalRequest(
     bool Accept,
     string? RequestNote = null,
+    string? ResponseNote = null,
     string? RejectionReason = null
 );
 

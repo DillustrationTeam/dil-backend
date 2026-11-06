@@ -18,6 +18,7 @@ public class ArtTrade : BaseEntity
 
     public string? InitiatorRequestNote { get; set; }
     public string? ReceiverRequestNote { get; set; }
+    public string? ReceiverResponseNote { get; set; }
 
     public Guid? InitiatorArtworkId { get; set; }
     public Guid? ReceiverArtworkId { get; set; }
@@ -35,6 +36,9 @@ public class ArtTrade : BaseEntity
 
     public bool IsReceiverConfirmed { get; set; }
     public DateTimeOffset? ReceiverConfirmedAt { get; set; }
+
+    /// <summary>Thời điểm Side B chấp nhận đề nghị. Trade chỉ chuyển Accepted khi Side A cũng xác nhận.</summary>
+    public DateTimeOffset? ReceiverAcceptedAt { get; set; }
 
     public TradeStatus Status { get; set; } = TradeStatus.Proposed;
 

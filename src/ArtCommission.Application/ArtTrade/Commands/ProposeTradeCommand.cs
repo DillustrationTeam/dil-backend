@@ -18,7 +18,9 @@ public sealed record ProposeTradeCommand(
     string? Description = null,
     string? RequestNote = null,
     int? DurationDays = 14,
-    string? ReceiverDisplayName = null
+    string? ReceiverDisplayName = null,
+    string? InitiatorRequestNote = null,
+    string? ReceiverRequestNote = null
 ) : IRequest<(bool Success, ArtTradeDto? Data, string[] Errors)>;
 
 public class ProposeTradeCommandValidator : AbstractValidator<ProposeTradeCommand>
@@ -165,7 +167,8 @@ public class ProposeTradeCommandHandler : IRequestHandler<ProposeTradeCommand, (
             ReceiverId = resolvedReceiverId,
             Title = request.Title.Trim(),
             Description = request.Description?.Trim(),
-            InitiatorRequestNote = request.RequestNote?.Trim(),
+            InitiatorRequestNote = (request.InitiatorRequestNote ?? request.RequestNote)?.Trim(),
+            ReceiverRequestNote = request.ReceiverRequestNote?.Trim(),
             Status = TradeStatus.Proposed,
             SubmissionDeadlineAt = DateTimeOffset.UtcNow.AddDays(durationDays)
         };
