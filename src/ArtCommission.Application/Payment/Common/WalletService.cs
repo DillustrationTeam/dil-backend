@@ -347,7 +347,11 @@ public class WalletService : IWalletService
                 Fee = g.Where(t => t.Type == WalletTransactionType.PlatformFee)
                        .Sum(t => (decimal?)t.Amount) ?? 0m,
                 Adjustment = g.Where(t => t.Type == WalletTransactionType.Adjustment)
-                              .Sum(t => (decimal?)t.Amount) ?? 0m
+                              .Sum(t => (decimal?)t.Amount) ?? 0m,
+                TipReceived = g.Where(t => t.Type == WalletTransactionType.TipReceived)
+                               .Sum(t => (decimal?)t.Amount) ?? 0m,
+                TipSent = g.Where(t => t.Type == WalletTransactionType.TipSent)
+                            .Sum(t => (decimal?)t.Amount) ?? 0m
             })
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -376,10 +380,12 @@ public class WalletService : IWalletService
                               + sums.Refund
                               + sums.RefundFromHold
                               + sums.EscrowReceive
+                              + sums.TipReceived
                               + sums.Adjustment
                               - sums.Hold
                               - sums.Payout
-                              - sums.Fee;
+                              - sums.Fee
+                              - sums.TipSent;
 
         if (expectedBalance != wallet.Balance)
         {

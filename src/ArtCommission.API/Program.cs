@@ -590,17 +590,27 @@ app.Use(async (context, next) =>
         return;
     }
 
-    var privateKey = Uri.UnescapeDataString(remaining.Value?.TrimStart('/') ?? string.Empty);
+    var rawKey = remaining.Value?.TrimStart('/') ?? string.Empty;
+    var unescapedKey = Uri.UnescapeDataString(rawKey);
     var signingKey = ArtCommission.Infrastructure.ExternalServices.R2.LocalPresignedUrlSigner
         .GetSigningKey(context.RequestServices.GetRequiredService<IConfiguration>());
-    if (!ArtCommission.Infrastructure.ExternalServices.R2.LocalPresignedUrlSigner.IsValid(
-            privateKey,
-            context.Request.Query["expires"],
-            context.Request.Query["signature"],
-            signingKey))
+    var expires = context.Request.Query["expires"];
+    var signature = context.Request.Query["signature"];
+    var isValid = ArtCommission.Infrastructure.ExternalServices.R2.LocalPresignedUrlSigner.IsValid(
+            rawKey, expires, signature, signingKey)
+        || ArtCommission.Infrastructure.ExternalServices.R2.LocalPresignedUrlSigner.IsValid(
+            unescapedKey, expires, signature, signingKey);
+
+    if (!isValid)
     {
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
         return;
+    }
+
+    var fileName = Path.GetFileName(unescapedKey);
+    if (!string.IsNullOrEmpty(fileName))
+    {
+        context.Response.Headers["Content-Disposition"] = $"attachment; filename=\"{Uri.EscapeDataString(fileName)}\"";
     }
 
     await next();
