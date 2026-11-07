@@ -1,5 +1,6 @@
 using ArtCommission.Application.ArtTrade.Common;
 using ArtCommission.Application.ArtTrade.DTOs;
+using ArtCommission.Application.Commission.Interfaces;
 using ArtCommission.Application.Common.Interfaces;
 using INotificationPublisher = ArtCommission.Application.Notifications.Common.INotificationPublisher;
 using ArtCommission.Domain.Entities.Auction;
@@ -13,7 +14,8 @@ namespace ArtCommission.Application.ArtTrade.Commands;
 
 public sealed record ConfirmTradeCommand(
     Guid TradeId,
-    Guid UserId
+    Guid UserId,
+    string? Side = null
 ) : IRequest<(bool Success, ArtTradeDto? Data, string[] Errors)>;
 
 public class ConfirmTradeCommandValidator : AbstractValidator<ConfirmTradeCommand>
@@ -29,13 +31,16 @@ public class ConfirmTradeCommandHandler : IRequestHandler<ConfirmTradeCommand, (
 {
     private readonly IApplicationDbContext _db;
     private readonly INotificationPublisher _notifPublisher;
+    private readonly IStorageService _storageService;
 
     public ConfirmTradeCommandHandler(
         IApplicationDbContext db,
-        INotificationPublisher notifPublisher)
+        INotificationPublisher notifPublisher,
+        IStorageService storageService)
     {
         _db = db;
         _notifPublisher = notifPublisher;
+        _storageService = storageService;
     }
 
     public async Task<(bool Success, ArtTradeDto? Data, string[] Errors)> Handle(ConfirmTradeCommand request, CancellationToken cancellationToken)
@@ -66,28 +71,43 @@ public class ConfirmTradeCommandHandler : IRequestHandler<ConfirmTradeCommand, (
             return (false, null, ["Bạn không tham gia vào giao dịch này."]);
         }
 
-        if (trade.Status != TradeStatus.BothSubmitted)
+        if (trade.Status != TradeStatus.BothSubmitted && trade.Status != TradeStatus.Accepted)
         {
-            return (false, null, ["Chỉ có thể xác nhận hài lòng khi cả 2 bên đã nộp tranh (BothSubmitted)."]);
+            return (false, null, ["Chỉ có thể xác nhận hài lòng khi giao dịch đang vẽ tranh hoặc đã nộp tranh."]);
         }
 
         var now = DateTimeOffset.UtcNow;
+        var sideNorm = request.Side?.Trim().ToLowerInvariant();
 
-        if (isInitiator)
+        if (sideNorm == "initiator")
         {
             trade.IsInitiatorConfirmed = true;
             trade.InitiatorConfirmedAt = now;
         }
-        else
+        else if (sideNorm == "receiver")
         {
             trade.IsReceiverConfirmed = true;
             trade.ReceiverConfirmedAt = now;
         }
+        else
+        {
+            if (isInitiator)
+            {
+                trade.IsInitiatorConfirmed = true;
+                trade.InitiatorConfirmedAt = now;
+            }
+            if (isReceiver)
+            {
+                trade.IsReceiverConfirmed = true;
+                trade.ReceiverConfirmedAt = now;
+            }
+        }
 
         trade.UpdatedAt = now;
 
-        // Nếu cả 2 bên cùng xác nhận hài lòng -> Hoàn tất giao dịch
-        if (trade.IsInitiatorConfirmed && trade.IsReceiverConfirmed)
+        // Nếu cả 2 bên cùng xác nhận hài lòng VÀ cả 2 bên đã nộp file -> Hoàn tất giao dịch
+        var bothSubmitted = !string.IsNullOrEmpty(trade.InitiatorOriginalFileUrl) && !string.IsNullOrEmpty(trade.ReceiverOriginalFileUrl);
+        if (trade.IsInitiatorConfirmed && trade.IsReceiverConfirmed && bothSubmitted)
         {
             trade.Status = TradeStatus.Completed;
             trade.CompletedAt = now;
@@ -133,7 +153,7 @@ public class ConfirmTradeCommandHandler : IRequestHandler<ConfirmTradeCommand, (
             }
         }
 
-        return (true, ArtTradeDto.FromEntity(trade), []);
+        return (true, ArtTradeDto.FromEntity(trade, _storageService), []);
     }
 
     private async Task TransferOwnershipIfApplicableAsync(

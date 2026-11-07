@@ -1,3 +1,4 @@
+using ArtCommission.Application.Commission.Interfaces;
 using ArtCommission.Domain.Enums;
 using ArtTradeEntity = ArtCommission.Domain.Entities.Trade.ArtTrade;
 
@@ -50,7 +51,7 @@ public sealed record ArtTradeDto(
     DateTimeOffset? UpdatedAt
 )
 {
-    public static ArtTradeDto FromEntity(ArtTradeEntity trade)
+    public static ArtTradeDto FromEntity(ArtTradeEntity trade, IStorageService? storageService = null)
     {
         var initiatorSummary = new UserSummaryDto(
             Id: trade.InitiatorId,
@@ -80,6 +81,37 @@ public sealed record ArtTradeDto(
                 trade.ReceiverArtwork.ImageUrl)
             : null;
 
+        var initPreviewUrl = trade.InitiatorPreviewUrl;
+        var recvPreviewUrl = trade.ReceiverPreviewUrl;
+
+        // Khi cả 2 bên đã hoàn tất (Completed), gỡ bỏ watermark bằng cách cung cấp link ảnh gốc không gắn watermark
+        if (trade.Status == TradeStatus.Completed && storageService != null)
+        {
+            if (!string.IsNullOrEmpty(trade.InitiatorOriginalFileUrl))
+            {
+                try
+                {
+                    initPreviewUrl = storageService.GeneratePresignedDownloadUrl(trade.InitiatorOriginalFileUrl, TimeSpan.FromHours(24));
+                }
+                catch
+                {
+                    // Fallback to existing preview if error
+                }
+            }
+
+            if (!string.IsNullOrEmpty(trade.ReceiverOriginalFileUrl))
+            {
+                try
+                {
+                    recvPreviewUrl = storageService.GeneratePresignedDownloadUrl(trade.ReceiverOriginalFileUrl, TimeSpan.FromHours(24));
+                }
+                catch
+                {
+                    // Fallback to existing preview if error
+                }
+            }
+        }
+
         return new ArtTradeDto(
             Id: trade.Id,
             Title: trade.Title,
@@ -95,8 +127,8 @@ public sealed record ArtTradeDto(
             ReceiverArtworkId: trade.ReceiverArtworkId,
             InitiatorArtwork: initiatorArt,
             ReceiverArtwork: receiverArt,
-            InitiatorPreviewUrl: trade.InitiatorPreviewUrl,
-            ReceiverPreviewUrl: trade.ReceiverPreviewUrl,
+            InitiatorPreviewUrl: initPreviewUrl,
+            ReceiverPreviewUrl: recvPreviewUrl,
             InitiatorSubmittedAt: trade.InitiatorSubmittedAt,
             ReceiverSubmittedAt: trade.ReceiverSubmittedAt,
             IsInitiatorConfirmed: trade.IsInitiatorConfirmed,

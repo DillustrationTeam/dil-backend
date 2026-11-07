@@ -220,6 +220,7 @@ public class ArtTradesController : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> ConfirmTrade(
         Guid id,
+        [FromQuery] string? side = null,
         CancellationToken cancellationToken = default)
     {
         if (CurrentUserId == Guid.Empty)
@@ -229,7 +230,8 @@ public class ArtTradesController : ApiControllerBase
 
         var command = new ConfirmTradeCommand(
             TradeId: id,
-            UserId: CurrentUserId
+            UserId: CurrentUserId,
+            Side: side
         );
 
         var (success, data, errors) = await Mediator.Send(command, cancellationToken);

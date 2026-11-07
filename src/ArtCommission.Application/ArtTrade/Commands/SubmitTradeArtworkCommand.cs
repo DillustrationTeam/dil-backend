@@ -122,11 +122,19 @@ public class SubmitTradeArtworkCommandHandler : IRequestHandler<SubmitTradeArtwo
 
         trade.UpdatedAt = now;
 
-        // Nếu cả hai bên đều đã nộp bài -> Chuyển sang BothSubmitted và kích hoạt 72h duyệt
+        // Nếu cả hai bên đều đã nộp bài -> Chuyển sang BothSubmitted (hoặc Completed nếu cả 2 bên đã xác nhận hài lòng trước)
         if (trade.InitiatorSubmittedAt.HasValue && trade.ReceiverSubmittedAt.HasValue)
         {
-            trade.Status = TradeStatus.BothSubmitted;
-            trade.ConfirmationDeadlineAt = now.AddHours(72);
+            if (trade.IsInitiatorConfirmed && trade.IsReceiverConfirmed)
+            {
+                trade.Status = TradeStatus.Completed;
+                trade.CompletedAt = now;
+            }
+            else
+            {
+                trade.Status = TradeStatus.BothSubmitted;
+                trade.ConfirmationDeadlineAt = now.AddHours(72);
+            }
         }
 
         await _db.SaveChangesAsync(cancellationToken);
@@ -151,7 +159,7 @@ public class SubmitTradeArtworkCommandHandler : IRequestHandler<SubmitTradeArtwo
             // Bỏ qua lỗi gửi thông báo để không gián đoạn thao tác nộp tranh
         }
 
-        return (true, ArtTradeDto.FromEntity(trade), []);
+        return (true, ArtTradeDto.FromEntity(trade, _storageService), []);
     }
 }
 

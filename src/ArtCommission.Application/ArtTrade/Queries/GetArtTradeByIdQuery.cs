@@ -1,5 +1,6 @@
 using ArtCommission.Application.ArtTrade.Common;
 using ArtCommission.Application.ArtTrade.DTOs;
+using ArtCommission.Application.Commission.Interfaces;
 using ArtCommission.Application.Common.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -14,10 +15,12 @@ public sealed record GetArtTradeByIdQuery(
 public class GetArtTradeByIdQueryHandler : IRequestHandler<GetArtTradeByIdQuery, (bool Success, ArtTradeDto? Data, string[] Errors)>
 {
     private readonly IApplicationDbContext _db;
+    private readonly IStorageService _storageService;
 
-    public GetArtTradeByIdQueryHandler(IApplicationDbContext db)
+    public GetArtTradeByIdQueryHandler(IApplicationDbContext db, IStorageService storageService)
     {
         _db = db;
+        _storageService = storageService;
     }
 
     public async Task<(bool Success, ArtTradeDto? Data, string[] Errors)> Handle(GetArtTradeByIdQuery request, CancellationToken cancellationToken)
@@ -41,7 +44,7 @@ public class GetArtTradeByIdQueryHandler : IRequestHandler<GetArtTradeByIdQuery,
             return (false, null, ["Bạn không có quyền xem chi tiết giao dịch này."]);
         }
 
-        return (true, ArtTradeDto.FromEntity(trade), []);
+        return (true, ArtTradeDto.FromEntity(trade, _storageService), []);
     }
 }
 
