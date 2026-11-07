@@ -1,3 +1,4 @@
+using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Commission.DTOs;
 using ArtCommission.Application.Commission.Interfaces;
@@ -26,10 +27,11 @@ public class CommissionService : ICommissionService
     private readonly IVoucherCheckService _voucherCheckService;
     private readonly INotificationPublisher? _notifications;
     private readonly ILogger<CommissionService>? _logger;
+    private readonly IEmailService? _emailService;
 
     public CommissionService(AppDbContext dbContext, IWalletService walletService, IWatermarkService watermarkService,
         IStorageService storageService, IVoucherCheckService voucherCheckService,
-        INotificationPublisher? notifications = null, ILogger<CommissionService>? logger = null)
+        INotificationPublisher? notifications = null, ILogger<CommissionService>? logger = null, IEmailService? emailService = null)
     {
         _dbContext = dbContext;
         _walletService = walletService;
@@ -38,6 +40,7 @@ public class CommissionService : ICommissionService
         _voucherCheckService = voucherCheckService;
         _notifications = notifications;
         _logger = logger;
+        _emailService = emailService;
     }
 
     private static void RequireClient(Commission commission, Guid userId)
@@ -197,6 +200,8 @@ public class CommissionService : ICommissionService
             $"Khách hàng đã gửi yêu cầu “{commission.Title}”.",
             commission.Id, $"CommissionCreated:{commission.Id}:{creator.UserId}", cancellationToken,
             refType: "CreatorCommissionRequests");
+
+
 
         return MapToDto(commission);
     }
@@ -423,6 +428,28 @@ public class CommissionService : ICommissionService
             $"Khách hàng đã ký quỹ {commission.FinalPrice:N0} VND cho “{commission.Title}”.",
             commission.Id, $"EscrowDeposited:{commission.Id}:{creatorUserId}", cancellationToken);
 
+        // Gửi email biên nhận ký quỹ Escrow cho khách hàng
+        try
+        {
+            var clientUser = await _dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == clientId, cancellationToken);
+            if (clientUser?.Email != null && _emailService != null)
+            {
+                var creatorUser = await _dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == creatorUserId, cancellationToken);
+                var clientName = clientUser.FullName ?? "Khách hàng";
+                var creatorName = creatorUser?.FullName ?? "Creator";
+                var mList = commission.Milestones.OrderBy(m => m.Sequence)
+                    .Select(m => (m.Title ?? $"Mốc #{m.Sequence}", commission.FinalPrice > 0 ? (int)Math.Round((double)m.Price / (double)commission.FinalPrice * 100) : 33, m.Price))
+                    .ToList();
+                await _emailService.SendEscrowReceiptEmailAsync(
+                    clientUser.Email, clientName, creatorName, commission.Title,
+                    commission.FinalPrice, commission.Id.ToString(), commission.LicenseType, mList, cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Không thể gửi email biên lai ký quỹ cho commission {CommissionId}", commission.Id);
+        }
+
         return MapToDto(commission);
     }
 
@@ -584,6 +611,27 @@ public class CommissionService : ICommissionService
             throw new InvalidOperationException("Commission is not ready for completion.");
 
         commission.Status = CommissionStatus.Completed;
+        // Gửi email chứng nhận bản quyền số & nghiệm thu cho khách hàng
+        try
+        {
+            var clientUser = await _dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == clientId, cancellationToken);
+            if (clientUser?.Email != null && _emailService != null)
+            {
+                var creatorUserId = await CreatorUserIdAsync(commission.CreatorId, cancellationToken);
+                var creatorUser = await _dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == creatorUserId, cancellationToken);
+                var clientName = clientUser.FullName ?? "Khách hàng";
+                var creatorName = creatorUser?.FullName ?? "Creator";
+                var lastM = commission.Milestones.OrderByDescending(m => m.Sequence).FirstOrDefault();
+                await _emailService.SendCertificateCompletedEmailAsync(
+                    clientUser.Email, clientName, creatorName, commission.Title,
+                    commission.Id.ToString(), commission.LicenseType, lastM?.WipPreviewUrl, cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Không thể gửi email chứng nhận hoàn thành cho commission {CommissionId}", commission.Id);
+        }
+
         commission.EscrowStatus = EscrowStatus.Released;
         commission.UpdatedAt = DateTimeOffset.UtcNow;
 
@@ -832,6 +880,112 @@ public class CommissionService : ICommissionService
         return MapToReviewDto(review);
     }
 
+    public async Task<TipResultDto> SendTipAsync(Guid id, SendTipRequest request, Guid clientId, CancellationToken cancellationToken = default)
+    {
+        RequireUser(clientId);
+        if (request.Amount < 1000 || request.Amount > 100_000_000)
+            throw new ArgumentException("Số tiền tip phải từ 1.000 VND đến 100.000.000 VND.");
+
+        var commission = await _dbContext.Commissions
+            .FirstOrDefaultAsync(c => c.Id == id && !c.IsDeleted, cancellationToken)
+            ?? throw new KeyNotFoundException("Không tìm thấy đơn hàng.");
+
+        RequireClient(commission, clientId);
+
+        if (commission.Status != CommissionStatus.Completed && commission.Status != CommissionStatus.Delivered)
+            throw new InvalidOperationException("Chỉ có thể gửi tip khi đơn hàng đã hoàn thành hoặc đã bàn giao.");
+
+        var clientWallet = await _walletService.GetOrCreateWalletAsync(clientId, cancellationToken);
+        if (clientWallet.Balance < request.Amount)
+        {
+            throw new InvalidOperationException($"Số dư ví không đủ ({clientWallet.Balance:N0} VND). Vui lòng nạp thêm tiền vào ví để gửi tip.");
+        }
+
+        var creatorProfile = await _dbContext.CreatorProfiles
+            .Include(p => p.User)
+            .FirstOrDefaultAsync(p => p.Id == commission.CreatorId, cancellationToken)
+            ?? throw new KeyNotFoundException("Không tìm thấy thông tin họa sĩ.");
+
+        var creatorUserId = creatorProfile.UserId;
+        var creatorWallet = await _walletService.GetOrCreateWalletAsync(creatorUserId, cancellationToken);
+
+        var tipId = Guid.NewGuid();
+        var tipNote = string.IsNullOrWhiteSpace(request.Message)
+            ? $"Gửi tip đơn hàng #{commission.Id.ToString()[..8]}"
+            : request.Message.Trim();
+
+        await using var tx = await BeginTransactionAsync(cancellationToken);
+
+        // Trừ tiền ví Client
+        await _walletService.DebitAsync(
+            clientWallet,
+            WalletTransactionType.TipSent,
+            request.Amount,
+            "CommissionTip",
+            tipId,
+            $"Gửi tip cho họa sĩ {creatorProfile.User?.FullName ?? creatorProfile.DisplayName ?? "Creator"}: {tipNote}",
+            cancellationToken);
+
+        // Cộng tiền ví Creator
+        await _walletService.CreditAsync(
+            creatorWallet,
+            WalletTransactionType.TipReceived,
+            request.Amount,
+            "CommissionTip",
+            tipId,
+            $"Nhận tip từ khách hàng đơn hàng #{commission.Id.ToString()[..8]}: {tipNote}",
+            cancellationToken);
+
+        // Đăng thông báo vào phòng chat nếu có phòng
+        try
+        {
+            var chatRoom = await _dbContext.ChatRooms
+                .FirstOrDefaultAsync(r => r.CommissionId == id && !r.IsDeleted, cancellationToken);
+            if (chatRoom != null)
+            {
+                var sysMsg = new ArtCommission.Domain.Entities.Chat.Message
+                {
+                    RoomId = chatRoom.Id,
+                    CommissionId = id,
+                    SenderId = clientId,
+                    MessageType = MessageTypes.SystemEvent,
+                    Body = $"🎁 Khách hàng đã gửi tặng họa sĩ {request.Amount:N0} VND tiền tip! Lời nhắn: \"{tipNote}\""
+                };
+                _dbContext.Messages.Add(sysMsg);
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Không thể ghi tin nhắn hệ thống phòng chat cho tip commission {CommissionId}", id);
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        if (tx is not null)
+            await tx.CommitAsync(cancellationToken);
+
+        // Phát thông báo realtime cho Creator
+        var creatorDisplayName = creatorProfile.DisplayName ?? creatorProfile.User?.FullName ?? "Creator";
+        await PublishSafeAsync(
+            creatorUserId,
+            NotificationType.PaymentSucceeded,
+            "Bạn nhận được tiền tip!",
+            $"Khách hàng vừa gửi tặng bạn {request.Amount:N0} VND tiền tip cho đơn hàng {commission.Title}.",
+            id,
+            $"CommissionTip:{tipId}",
+            cancellationToken);
+
+        return new TipResultDto(
+            commission.Id,
+            request.Amount,
+            clientWallet.Balance,
+            creatorDisplayName,
+            DateTimeOffset.UtcNow,
+            tipNote
+        );
+    }
+
+
     public async Task<ReviewDto> ReplyReviewAsync(Guid id, string replyComment, Guid creatorId, CancellationToken cancellationToken = default)
     {
         var review = await _dbContext.Reviews.FirstOrDefaultAsync(r => r.CommissionId == id || r.Id == id, cancellationToken);
@@ -909,6 +1063,70 @@ public class CommissionService : ICommissionService
                 "Không phát được thông báo commission. UserId={UserId} CommissionId={CommissionId} Type={Type}",
                 userId, commissionId, type);
         }
+    }
+
+    
+    public async Task<RenameCommissionResultDto> RenameCommissionAsync(
+        Guid id,
+        string newTitle,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        var commission = await PartyCommissionAsync(id, userId, cancellationToken);
+        var trimmedTitle = newTitle?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedTitle) || trimmedTitle.Length > 200)
+        {
+            throw new ArgumentException("Tên dự án không được để trống và tối đa 200 ký tự.");
+        }
+
+        commission.Title = trimmedTitle;
+        commission.UpdatedAt = DateTimeOffset.UtcNow;
+
+        var chatRooms = await _dbContext.ChatRooms
+            .Where(r => r.CommissionId == id && !r.IsDeleted)
+            .ToListAsync(cancellationToken);
+
+        foreach (var r in chatRooms)
+        {
+            r.Title = trimmedTitle;
+            r.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
+        var isClient = commission.ClientId == userId;
+        var user = await _dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        var userDisplayName = user?.FullName ?? (isClient ? "Khách hàng" : "Họa sĩ");
+        var roleName = isClient ? "Khách hàng" : "Họa sĩ";
+
+        var mainChatRoom = chatRooms.FirstOrDefault();
+        ArtCommission.Domain.Entities.Chat.Message? sysMsg = null;
+        var now = DateTimeOffset.UtcNow;
+
+        if (mainChatRoom != null)
+        {
+            sysMsg = new ArtCommission.Domain.Entities.Chat.Message
+            {
+                RoomId = mainChatRoom.Id,
+                CommissionId = id,
+                SenderId = userId,
+                MessageType = MessageTypes.SystemEvent,
+                Body = $"✏️ {roleName} ({userDisplayName}) đã đổi tên dự án thành: \"{trimmedTitle}\"",
+                SentAt = now
+            };
+            _dbContext.Messages.Add(sysMsg);
+            mainChatRoom.LastMessageAt = now;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new RenameCommissionResultDto(
+            commission.Id,
+            trimmedTitle,
+            userDisplayName,
+            mainChatRoom?.Id,
+            sysMsg?.Id,
+            sysMsg?.Body,
+            sysMsg?.SentAt
+        );
     }
 
     private async Task<Commission> PartyCommissionAsync(Guid id, Guid userId, CancellationToken cancellationToken)

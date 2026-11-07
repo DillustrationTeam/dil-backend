@@ -31,4 +31,6 @@ public interface ICommissionService
     Task<ArtCommission.Application.Dispute.CommissionDispute.DTOs.CommissionDisputeDto?> GetDisputeByCommissionIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
     Task<ReviewDto> CreateReviewAsync(Guid id, CreateReviewRequest request, Guid reviewerId, CancellationToken cancellationToken = default);
     Task<ReviewDto> ReplyReviewAsync(Guid id, string replyComment, Guid creatorId, CancellationToken cancellationToken = default);
+    Task<TipResultDto> SendTipAsync(Guid id, SendTipRequest request, Guid clientId, CancellationToken cancellationToken = default);
+    Task<RenameCommissionResultDto> RenameCommissionAsync(Guid id, string newTitle, Guid userId, CancellationToken cancellationToken = default);
 }

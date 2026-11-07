@@ -1,3 +1,7 @@
+using Microsoft.AspNetCore.SignalR;
+using ArtCommission.API.Hubs;
+using ArtCommission.Application.Auction.DTOs;
+using ArtCommission.Domain.Enums;
 using System.Security.Claims;
 using ArtCommission.API.Common;
 using ArtCommission.Application.Commission.DTOs;
@@ -29,10 +33,12 @@ public class CommissionsController : ControllerBase
         "image/vnd.adobe.photoshop", "application/octet-stream"
     ];
     private readonly ICommissionService _commissionService;
+    private readonly IHubContext<ChatHub> _chatHub;
 
-    public CommissionsController(ICommissionService commissionService)
+    public CommissionsController(ICommissionService commissionService, IHubContext<ChatHub> chatHub)
     {
         _commissionService = commissionService;
+        _chatHub = chatHub;
     }
 
     private Guid GetCurrentUserId()
@@ -303,6 +309,19 @@ public class CommissionsController : ControllerBase
     }
 
     /// <summary>
+    /// POST /api/v1/commissions/{id}/tip
+    /// </summary>
+    [HttpPost("{id:guid}/tip")]
+    [Authorize(Roles = "Client")]
+    public async Task<IActionResult> SendTip(Guid id, [FromBody] SendTipRequest request, CancellationToken ct)
+    {
+        var clientId = GetCurrentUserId();
+        var result = await _commissionService.SendTipAsync(id, request, clientId, ct);
+        return Ok(new ApiResponse<TipResultDto>(result));
+    }
+
+
+    /// <summary>
     /// POST /api/v1/commissions/{id}/reviews/reply
     /// Creator đăng phản hồi đối với đánh giá của Client
     /// </summary>
@@ -321,5 +340,52 @@ public class CommissionsController : ControllerBase
         if (file.Length > maxSize) throw new ArgumentException($"{label} file exceeds the size limit.");
         if (!allowedContentTypes.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase))
             throw new ArgumentException($"Unsupported {label} file type.");
+    }
+
+    /// <summary>
+    /// PATCH /api/v1/commissions/{id}/rename
+    /// Đổi tên dự án / phòng workroom (Client hoặc Creator)
+    /// </summary>
+    [HttpPatch("{id:guid}/rename")]
+    [ProducesResponseType(typeof(ApiResponse<RenameCommissionResultDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> RenameCommission(
+        Guid id,
+        [FromBody] RenameCommissionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        var result = await _commissionService.RenameCommissionAsync(id, request.Title, userId, cancellationToken);
+
+        // Broadcast realtime qua SignalR nếu có phòng chat
+        if (result.RoomId.HasValue && result.MessageId.HasValue)
+        {
+            try
+            {
+                var chatMsgDto = new ChatMessageDto(
+                    MessageId: result.MessageId.Value,
+                    RoomId: result.RoomId.Value,
+                    SenderId: userId,
+                    SenderFullName: result.UpdatedBy,
+                    Body: result.MessageBody ?? string.Empty,
+                    TranslatedBody: null,
+                    SourceLang: null,
+                    TargetLang: null,
+                    TranslationStatus: "Completed",
+                    MessageType: MessageTypes.SystemEvent,
+                    SentAt: result.SentAt ?? DateTimeOffset.UtcNow,
+                    IsRead: false,
+                    Attachments: []
+                );
+
+                await _chatHub.Clients.Group(ChatHub.RoomGroup(result.RoomId.Value))
+                    .SendAsync("ReceiveMessage", chatMsgDto, cancellationToken);
+            }
+            catch
+            {
+                // Realtime broadcast failure does not block rename success
+            }
+        }
+
+        return Ok(new ApiResponse<RenameCommissionResultDto>(result));
     }
 }
