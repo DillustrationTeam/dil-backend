@@ -43,6 +43,7 @@ public class PlatformEventConfiguration : IEntityTypeConfiguration<PlatformEvent
             .HasConversion<string>()
             .HasMaxLength(50)
             .HasDefaultValue(EventStatus.Draft)
+            .HasSentinel((EventStatus)0)
             .IsRequired();
 
         builder.Property(e => e.SubmissionStartAt)
