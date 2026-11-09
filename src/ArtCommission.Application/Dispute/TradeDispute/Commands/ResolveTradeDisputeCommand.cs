@@ -126,9 +126,18 @@ public class ResolveTradeDisputeCommandHandler
         try
         {
             var isDismissed = request.Resolution == TradeDisputeResolutions.Dismissed;
+            var resolutionLabel = request.Resolution switch
+            {
+                TradeDisputeResolutions.Dismissed => "Bác bỏ khiếu nại (khôi phục giao dịch)",
+                TradeDisputeResolutions.MutualCancel => "Hủy giao dịch theo thỏa thuận / không lỗi bên nào",
+                TradeDisputeResolutions.FaultInitiator => "Phán quyết lỗi thuộc về người khởi tạo (Side A)",
+                TradeDisputeResolutions.FaultReceiver => "Phán quyết lỗi thuộc về đối tác nhận (Side B)",
+                _ => request.Resolution
+            };
+
             var body = isDismissed
                 ? $"Quản trị viên đã bác bỏ khiếu nại phiên trao đổi \"{trade.Title}\" và khôi phục giao dịch.{(string.IsNullOrWhiteSpace(request.AdminNote) ? "" : $" Ghi chú: {request.AdminNote}")}"
-                : $"Quản trị viên đã phân xử khiếu nại phiên trao đổi \"{trade.Title}\". Kết quả: {request.Resolution}.{(string.IsNullOrWhiteSpace(request.AdminNote) ? "" : $" Ghi chú: {request.AdminNote}")}";
+                : $"Quản trị viên đã xử lý khiếu nại phiên trao đổi \"{trade.Title}\". Kết quả: {resolutionLabel}.{(string.IsNullOrWhiteSpace(request.AdminNote) ? "" : $" Ghi chú: {request.AdminNote}")}";
 
             var title = "Khiếu nại trao đổi tranh đã được xử lý";
 
