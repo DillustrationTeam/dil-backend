@@ -456,7 +456,10 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddScoped<ICommissionService, CommissionService>();
 builder.Services.AddScoped<IAddonService, AddonService>();
 builder.Services.AddScoped<IWatermarkService, WatermarkService>();
-if (string.IsNullOrWhiteSpace(builder.Configuration["CloudflareR2:AccountId"]))
+builder.Services.AddScoped<IArtworkWatermarkService, ArtworkWatermarkService>();
+var r2AccountId = builder.Configuration["CloudflareR2:AccountId"];
+var r2Domain = builder.Configuration["CloudflareR2:PublicDomain"];
+if (string.IsNullOrWhiteSpace(r2AccountId) || r2Domain?.Contains("pub-xxxx") == true || r2AccountId.StartsWith("REPLACE", StringComparison.OrdinalIgnoreCase))
 {
     builder.Services.AddScoped<IStorageService, LocalFileStorageService>();
 }

@@ -16,6 +16,35 @@ public static class DatabaseSeeder
         var userManager = serviceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         var dbContext = serviceProvider.GetRequiredService<AppDbContext>();
 
+        await dbContext.Database.ExecuteSqlRawAsync(@"
+            IF OBJECT_ID('dbo.ArtworkWatermarkReceipts', 'U') IS NULL
+            BEGIN
+                CREATE TABLE [dbo].[ArtworkWatermarkReceipts] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [ArtworkId] uniqueidentifier NOT NULL,
+                    [ReceiptToken] nvarchar(64) NOT NULL,
+                    [NumericPayload] bigint NULL,
+                    [ViewerUserId] uniqueidentifier NULL,
+                    [ViewerEmail] nvarchar(256) NULL,
+                    [ViewerName] nvarchar(256) NULL,
+                    [IpAddress] nvarchar(64) NOT NULL,
+                    [UserAgent] nvarchar(500) NULL,
+                    [SessionId] nvarchar(128) NULL,
+                    [WatermarkType] nvarchar(50) NOT NULL DEFAULT 'DwtForensic',
+                    [Status] nvarchar(50) NOT NULL DEFAULT 'Active',
+                    [Notes] nvarchar(1000) NULL,
+                    [CreatedAt] datetimeoffset NOT NULL,
+                    [UpdatedAt] datetimeoffset NULL,
+                    [IsDeleted] bit NOT NULL DEFAULT 0,
+                    CONSTRAINT [FK_ArtworkWatermarkReceipts_Artworks_ArtworkId]
+                        FOREIGN KEY ([ArtworkId]) REFERENCES [dbo].[Artworks] ([Id]) ON DELETE CASCADE
+                );
+                CREATE UNIQUE INDEX [IX_ArtworkWatermarkReceipts_ReceiptToken] ON [dbo].[ArtworkWatermarkReceipts] ([ReceiptToken]);
+                CREATE INDEX [IX_ArtworkWatermarkReceipts_ArtworkId] ON [dbo].[ArtworkWatermarkReceipts] ([ArtworkId]);
+                CREATE INDEX [IX_ArtworkWatermarkReceipts_ViewerUserId] ON [dbo].[ArtworkWatermarkReceipts] ([ViewerUserId]);
+                CREATE INDEX [IX_ArtworkWatermarkReceipts_CreatedAt] ON [dbo].[ArtworkWatermarkReceipts] ([CreatedAt]);
+            END");
+
         var roles = new[]
         {
             UserRoleNames.Administrator,

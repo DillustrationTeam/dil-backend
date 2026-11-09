@@ -23,7 +23,7 @@ public class CloudflareR2StorageService : IStorageService
         var secretKey = configuration["CloudflareR2:SecretAccessKey"];
         _publicBucket = configuration["CloudflareR2:PublicBucket"] ?? "dil-art-public";
         _privateBucket = configuration["CloudflareR2:PrivateBucket"] ?? "dil-art-private-vault";
-        _publicDomain = configuration["CloudflareR2:PublicDomain"] ?? "https://pub-xxxx.r2.dev";
+        _publicDomain = (configuration["CloudflareR2:PublicDomain"] ?? "https://pub-xxxx.r2.dev").TrimEnd('/');
 
         var config = new AmazonS3Config
         {
@@ -44,7 +44,7 @@ public class CloudflareR2StorageService : IStorageService
             DisablePayloadSigning = true
         };
         await _s3Client.PutObjectAsync(request, ct);
-        return $"{_publicDomain}/{key}";
+        return $"{_publicDomain}/{key.TrimStart('/')}";
     }
 
     public async Task<string> UploadPrivateAsync(Stream stream, string key, string contentType, CancellationToken ct = default)

@@ -50,6 +50,7 @@ public interface IApplicationDbContext
     DbSet<CreatorFaq> CreatorFaqs { get; }
     DbSet<CreatorWorkItem> CreatorWorkItems { get; }
     DbSet<CreatorAsset> CreatorAssets { get; }
+    DbSet<ArtworkWatermarkReceipt> ArtworkWatermarkReceipts { get; }
 
     // Module Payment & Wallet
     DbSet<Wallet> Wallets { get; }
