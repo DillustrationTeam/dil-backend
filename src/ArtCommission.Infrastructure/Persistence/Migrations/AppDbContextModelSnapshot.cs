@@ -1597,6 +1597,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("ArtTradeId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid?>("AuctionId")
                         .HasColumnType("uniqueidentifier");
 
@@ -1635,6 +1638,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ArtTradeId")
+                        .HasDatabaseName("IX_ChatRooms_ArtTradeId");
 
                     b.HasIndex("AuctionId")
                         .HasDatabaseName("IX_ChatRooms_AuctionId");
@@ -2417,6 +2423,10 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("ArtTradeId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
@@ -3939,6 +3949,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsReceiverConfirmed")
                         .HasColumnType("bit");
 
+                    b.Property<DateTimeOffset?>("ReceiverAcceptedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<Guid?>("ReceiverArtworkId")
                         .HasColumnType("uniqueidentifier");
 
@@ -3957,6 +3970,10 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("ReceiverRequestNote")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("ReceiverResponseNote")
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
@@ -4601,6 +4618,11 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.Chat.ChatRoom", b =>
                 {
+                    b.HasOne("ArtCommission.Domain.Entities.Trade.ArtTrade", null)
+                        .WithMany()
+                        .HasForeignKey("ArtTradeId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("ArtCommission.Domain.Entities.Auction.Auction", null)
                         .WithMany()
                         .HasForeignKey("AuctionId")

@@ -23,6 +23,9 @@ public class ChatRoom : BaseEntity
     /// <summary>Phiên đấu giá gắn với phòng (khi <see cref="RoomType"/> = Auction).</summary>
     public Guid? AuctionId { get; set; }
 
+    /// <summary>Giao dịch Art Trade gắn với phòng (khi <see cref="RoomType"/> = ArtTrade).</summary>
+    public Guid? ArtTradeId { get; set; }
+
     /// <summary>Thời điểm có tin nhắn gần nhất — dùng sắp xếp danh sách phòng.</summary>
     public DateTimeOffset? LastMessageAt { get; set; }
 

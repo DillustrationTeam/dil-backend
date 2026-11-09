@@ -79,9 +79,30 @@ public class ChatRoomService : IChatRoomService
         // 2) Không có thì thử hiểu là Id của commission rồi lấy/tạo phòng tương ứng.
         room ??= await FindOrCreateCommissionRoomAsync(roomId, cancellationToken);
 
+        // 3) Không có thì thử hiểu là Id của ArtTrade rồi lấy/tạo phòng tương ứng.
+        room ??= await FindOrCreateArtTradeRoomAsync(roomId, cancellationToken);
+
         if (room is null)
         {
             return (null, "Không tìm thấy phòng chat.");
+        }
+
+        // Tự động đồng bộ trạng thái khóa cho ArtTrade nếu đơn đã hoàn tất / hủy / từ chối
+        if (room.ArtTradeId.HasValue && !room.IsLocked)
+        {
+            var isClosed = await _db.ArtTrades
+                .AsNoTracking()
+                .AnyAsync(t => t.Id == room.ArtTradeId.Value
+                               && (t.Status == TradeStatus.Completed
+                                   || t.Status == TradeStatus.Cancelled
+                                   || t.Status == TradeStatus.Rejected),
+                          cancellationToken);
+
+            if (isClosed)
+            {
+                room.IsLocked = true;
+                await _db.SaveChangesAsync(cancellationToken);
+            }
         }
 
         var isMember = await IsMemberAsync(room.Id, userId, cancellationToken);
@@ -111,13 +132,29 @@ public class ChatRoomService : IChatRoomService
             return true;
         }
 
-        // Fallback: thành viên theo quan hệ nghiệp vụ (client/creator của commission).
+        // Fallback: thành viên theo quan hệ nghiệp vụ (client/creator của commission, initiator/receiver của trade).
         // Cần thiết vì phòng có thể mới được tạo và chưa kịp ghi bảng thành viên.
         var room = await _db.ChatRooms
             .AsNoTracking()
             .FirstOrDefaultAsync(r => r.Id == roomId && !r.IsDeleted, cancellationToken);
 
-        if (room?.CommissionId is null)
+        if (room is null)
+        {
+            return false;
+        }
+
+        if (room.ArtTradeId.HasValue)
+        {
+            return await _db.ArtTrades
+                .AsNoTracking()
+                .AnyAsync(
+                    t => t.Id == room.ArtTradeId.Value
+                         && (t.InitiatorId == userId || t.ReceiverId == userId)
+                         && !t.IsDeleted,
+                    cancellationToken);
+        }
+
+        if (room.CommissionId is null)
         {
             return false;
         }
@@ -151,6 +188,23 @@ public class ChatRoomService : IChatRoomService
         if (!string.IsNullOrWhiteSpace(stored))
         {
             return stored;
+        }
+
+        if (room.ArtTradeId.HasValue)
+        {
+            var trade = await _db.ArtTrades
+                .AsNoTracking()
+                .Where(t => t.Id == room.ArtTradeId.Value)
+                .Select(t => new { t.InitiatorId, t.ReceiverId })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (trade is not null)
+            {
+                if (trade.InitiatorId == userId) return "Initiator";
+                if (trade.ReceiverId == userId) return "Receiver";
+            }
+
+            return "Member";
         }
 
         if (room.CommissionId is null)
@@ -257,6 +311,81 @@ public class ChatRoomService : IChatRoomService
             return await _db.ChatRooms
                 .FirstOrDefaultAsync(
                     r => r.CommissionId == commissionId && !r.IsDeleted,
+                    cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Tìm phòng của một giao dịch trao đổi tác phẩm (Art Trade), tạo mới nếu chưa có.
+    ///
+    /// Chống trùng: dùng lại phòng đã có bất kể trạng thái, và bọc trong try/catch
+    /// để hai request đồng thời không tạo 2 phòng (một request sẽ thua và đọc lại).
+    /// </summary>
+    private async Task<ChatRoom?> FindOrCreateArtTradeRoomAsync(
+        Guid artTradeId,
+        CancellationToken cancellationToken)
+    {
+        var existing = await _db.ChatRooms
+            .FirstOrDefaultAsync(
+                r => r.ArtTradeId == artTradeId && !r.IsDeleted,
+                cancellationToken);
+
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var trade = await _db.ArtTrades
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Id == artTradeId && !t.IsDeleted, cancellationToken);
+
+        if (trade is null)
+        {
+            return null;
+        }
+
+        var room = new ChatRoom
+        {
+            RoomType = ChatRoomType.ArtTrade,
+            Title = string.IsNullOrWhiteSpace(trade.Title) ? "Trao đổi tác phẩm" : trade.Title,
+            ArtTradeId = trade.Id,
+            IsLocked = trade.Status == TradeStatus.Completed
+                       || trade.Status == TradeStatus.Cancelled
+                       || trade.Status == TradeStatus.Rejected
+        };
+
+        _db.ChatRooms.Add(room);
+
+        // Thêm sẵn 2 thành viên Initiator và Receiver để tối ưu hóa truy vấn thành viên
+        var members = new List<ChatRoomMember>
+        {
+            new() { RoomId = room.Id, UserId = trade.InitiatorId, MemberRole = "Initiator" },
+            new() { RoomId = room.Id, UserId = trade.ReceiverId, MemberRole = "Receiver" }
+        };
+
+        _db.ChatRoomMembers.AddRange(members);
+
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            return room;
+        }
+        catch (DbUpdateException ex)
+        {
+            // Thua cuộc đua tạo phòng — đọc lại bản ghi đã có.
+            _logger.LogWarning(ex,
+                "Tạo phòng chat cho Art Trade {ArtTradeId} thất bại, có thể đã tồn tại.",
+                artTradeId);
+
+            _db.Entry(room).State = EntityState.Detached;
+            foreach (var member in members)
+            {
+                _db.Entry(member).State = EntityState.Detached;
+            }
+
+            return await _db.ChatRooms
+                .FirstOrDefaultAsync(
+                    r => r.ArtTradeId == artTradeId && !r.IsDeleted,
                     cancellationToken);
         }
     }

@@ -42,6 +42,11 @@ public class ChatRoomConfiguration : IEntityTypeConfiguration<ChatRoom>
             .HasForeignKey(r => r.AuctionId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        builder.HasOne<Domain.Entities.Trade.ArtTrade>()
+            .WithMany()
+            .HasForeignKey(r => r.ArtTradeId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // Danh sách phòng của tôi, sắp theo tin nhắn mới nhất.
         builder.HasIndex(r => r.LastMessageAt)
             .HasDatabaseName("IX_ChatRooms_LastMessageAt");
@@ -51,6 +56,9 @@ public class ChatRoomConfiguration : IEntityTypeConfiguration<ChatRoom>
 
         builder.HasIndex(r => r.AuctionId)
             .HasDatabaseName("IX_ChatRooms_AuctionId");
+
+        builder.HasIndex(r => r.ArtTradeId)
+            .HasDatabaseName("IX_ChatRooms_ArtTradeId");
     }
 }
 
