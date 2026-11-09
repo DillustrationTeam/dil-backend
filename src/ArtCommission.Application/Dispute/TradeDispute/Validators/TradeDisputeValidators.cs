@@ -10,6 +10,10 @@ public class CreateTradeDisputeCommandValidator : AbstractValidator<CreateTradeD
     {
         RuleFor(x => x.ArtTradeId).NotEmpty().WithMessage("Mã giao dịch không hợp lệ.");
         RuleFor(x => x.RaisedById).NotEmpty().WithMessage("Mã người khiếu nại không hợp lệ.");
+        RuleFor(x => x.Category)
+            .IsInEnum().When(x => x.Category.HasValue)
+            .WithMessage("Phân loại vi phạm không hợp lệ.");
+
         RuleFor(x => x.Reason)
             .NotEmpty().WithMessage("Vui lòng cung cấp lý do khiếu nại.")
             .MaximumLength(2000).WithMessage("Lý do khiếu nại không được vượt quá 2000 ký tự.");

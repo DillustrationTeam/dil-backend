@@ -14,7 +14,8 @@ public sealed record CancelTradeCommand(
     Guid UserId,
     string Reason,
     bool IsViolation = false,
-    Guid? ViolatorUserId = null
+    Guid? ViolatorUserId = null,
+    bool IsAdmin = false
 ) : IRequest<(bool Success, ArtTradeDto? Data, string[] Errors)>;
 
 public class CancelTradeCommandValidator : AbstractValidator<CancelTradeCommand>
@@ -75,7 +76,7 @@ public class CancelTradeCommandHandler : IRequestHandler<CancelTradeCommand, (bo
         }
 
         var isParticipant = trade.InitiatorId == request.UserId || trade.ReceiverId == request.UserId;
-        if (!isParticipant)
+        if (!isParticipant && !request.IsAdmin)
         {
             return (false, null, ["Bạn không có quyền huỷ giao dịch này."]);
         }

@@ -36,6 +36,7 @@ public class TradeDisputesController : ApiControllerBase
             ArtTradeId: request.ArtTradeId,
             RaisedById: CurrentUserId,
             Reason: request.Reason,
+            Category: TradeDisputeCategoryExtensions.ParseFlexible(request.Category),
             EvidenceUrls: request.EvidenceUrls
         );
 
@@ -92,6 +93,7 @@ public class TradeDisputesController : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> GetDisputes(
         [FromQuery] string? status = null,
+        [FromQuery] string? category = null,
         [FromQuery] Guid? artTradeId = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
@@ -99,6 +101,7 @@ public class TradeDisputesController : ApiControllerBase
     {
         var query = new GetTradeDisputesQuery(
             Status: status,
+            Category: TradeDisputeCategoryExtensions.ParseFlexible(category),
             ArtTradeId: artTradeId,
             Page: page,
             PageSize: pageSize

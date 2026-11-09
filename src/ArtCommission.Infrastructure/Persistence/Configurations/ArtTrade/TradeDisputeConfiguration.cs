@@ -14,6 +14,10 @@ public class TradeDisputeConfiguration : IEntityTypeConfiguration<TradeDispute>
 
         builder.HasIndex(d => d.ArtTradeId);
 
+        builder.Property(d => d.Category)
+            .HasConversion<string>()
+            .HasMaxLength(50);
+
         builder.Property(d => d.Reason)
             .IsRequired()
             .HasMaxLength(2000);

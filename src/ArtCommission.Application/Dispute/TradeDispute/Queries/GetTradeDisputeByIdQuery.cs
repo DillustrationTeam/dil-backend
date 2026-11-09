@@ -1,5 +1,6 @@
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.Dispute.TradeDispute.DTOs;
+using ArtCommission.Domain.Enums;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
@@ -68,6 +69,16 @@ public class GetTradeDisputeByIdQueryHandler
             }
         }
 
+        var category = dispute.Category;
+        if (!category.HasValue && !string.IsNullOrWhiteSpace(dispute.Reason) && dispute.Reason.StartsWith("["))
+        {
+            var closeBracketIdx = dispute.Reason.IndexOf(']');
+            if (closeBracketIdx > 1)
+            {
+                category = TradeDisputeCategoryExtensions.ParseFlexible(dispute.Reason.Substring(1, closeBracketIdx - 1));
+            }
+        }
+
         var dto = new TradeDisputeDto
         {
             Id = dispute.Id,
@@ -77,6 +88,7 @@ public class GetTradeDisputeByIdQueryHandler
             RaisedByName = raisedByUser?.FullName,
             PartnerId = partnerId,
             PartnerName = partnerName,
+            Category = category,
             Reason = dispute.Reason,
             EvidenceUrls = dispute.EvidenceUrls,
             EvidenceUrlList = evidenceList,

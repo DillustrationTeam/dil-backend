@@ -1,5 +1,6 @@
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.Dispute.TradeDispute.DTOs;
+using ArtCommission.Domain.Enums;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
@@ -8,6 +9,7 @@ namespace ArtCommission.Application.Dispute.TradeDispute.Queries;
 
 public sealed record GetTradeDisputesQuery(
     string? Status = null,
+    TradeDisputeCategory? Category = null,
     Guid? ArtTradeId = null,
     int Page = 1,
     int PageSize = 10
@@ -38,6 +40,11 @@ public class GetTradeDisputesQueryHandler
         if (!string.IsNullOrWhiteSpace(request.Status))
         {
             query = query.Where(d => d.Status == request.Status);
+        }
+
+        if (request.Category.HasValue)
+        {
+            query = query.Where(d => d.Category == request.Category.Value);
         }
 
         if (request.ArtTradeId.HasValue)
@@ -76,6 +83,16 @@ public class GetTradeDisputesQueryHandler
 
             users.TryGetValue(d.RaisedById, out var raisedByName);
 
+            var category = d.Category;
+            if (!category.HasValue && !string.IsNullOrWhiteSpace(d.Reason) && d.Reason.StartsWith("["))
+            {
+                var closeBracketIdx = d.Reason.IndexOf(']');
+                if (closeBracketIdx > 1)
+                {
+                    category = TradeDisputeCategoryExtensions.ParseFlexible(d.Reason.Substring(1, closeBracketIdx - 1));
+                }
+            }
+
             return new TradeDisputeDto
             {
                 Id = d.Id,
@@ -83,6 +100,7 @@ public class GetTradeDisputesQueryHandler
                 TradeTitle = d.ArtTrade?.Title,
                 RaisedById = d.RaisedById,
                 RaisedByName = raisedByName,
+                Category = category,
                 Reason = d.Reason,
                 EvidenceUrls = d.EvidenceUrls,
                 EvidenceUrlList = evidenceList,

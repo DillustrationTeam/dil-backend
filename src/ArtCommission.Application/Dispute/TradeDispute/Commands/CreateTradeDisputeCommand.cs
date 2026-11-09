@@ -13,6 +13,7 @@ public sealed record CreateTradeDisputeCommand(
     Guid ArtTradeId,
     Guid RaisedById,
     string Reason,
+    TradeDisputeCategory? Category = null,
     List<string>? EvidenceUrls = null
 ) : IRequest<(bool Success, string Message, Guid? DisputeId, string[] Errors)>;
 
@@ -78,10 +79,21 @@ public class CreateTradeDisputeCommandHandler
             ? JsonSerializer.Serialize(request.EvidenceUrls)
             : null;
 
+        var category = request.Category;
+        if (!category.HasValue && !string.IsNullOrWhiteSpace(request.Reason) && request.Reason.StartsWith("["))
+        {
+            var closeBracketIdx = request.Reason.IndexOf(']');
+            if (closeBracketIdx > 1)
+            {
+                category = TradeDisputeCategoryExtensions.ParseFlexible(request.Reason.Substring(1, closeBracketIdx - 1));
+            }
+        }
+
         var dispute = new Domain.Entities.Dispute.TradeDispute
         {
             ArtTradeId = request.ArtTradeId,
             RaisedById = request.RaisedById,
+            Category = category ?? TradeDisputeCategory.Other,
             Reason = request.Reason.Trim(),
             EvidenceUrls = evidenceJson,
             Status = "Pending"

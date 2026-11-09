@@ -1,3 +1,5 @@
+using ArtCommission.Domain.Enums;
+
 namespace ArtCommission.Application.Dispute.TradeDispute.DTOs;
 
 public class TradeDisputeDto
@@ -9,6 +11,7 @@ public class TradeDisputeDto
     public string? RaisedByName { get; set; }
     public Guid PartnerId { get; set; }
     public string? PartnerName { get; set; }
+    public TradeDisputeCategory? Category { get; set; }
     public string Reason { get; set; } = string.Empty;
     public string? EvidenceUrls { get; set; }
     public List<string> EvidenceUrlList { get; set; } = new();
@@ -22,6 +25,7 @@ public class TradeDisputeDto
 public sealed record CreateTradeDisputeRequest(
     Guid ArtTradeId,
     string Reason,
+    string? Category = null,
     List<string>? EvidenceUrls = null
 );
 

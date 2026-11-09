@@ -1,5 +1,6 @@
 using ArtCommission.Domain.Common;
 using ArtCommission.Domain.Entities.Trade;
+using ArtCommission.Domain.Enums;
 
 namespace ArtCommission.Domain.Entities.Dispute;
 
@@ -7,6 +8,7 @@ public class TradeDispute : BaseEntity
 {
     public Guid ArtTradeId { get; set; }
     public Guid RaisedById { get; set; }
+    public TradeDisputeCategory? Category { get; set; }
     public string Reason { get; set; } = string.Empty;
     public string? EvidenceUrls { get; set; }
     public string Status { get; set; } = "Pending";

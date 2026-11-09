@@ -9,7 +9,8 @@ namespace ArtCommission.Application.ArtTrade.Queries;
 
 public sealed record GetArtTradeByIdQuery(
     Guid TradeId,
-    Guid UserId
+    Guid UserId,
+    bool IsAdmin = false
 ) : IRequest<(bool Success, ArtTradeDto? Data, string[] Errors)>;
 
 public class GetArtTradeByIdQueryHandler : IRequestHandler<GetArtTradeByIdQuery, (bool Success, ArtTradeDto? Data, string[] Errors)>
@@ -39,7 +40,7 @@ public class GetArtTradeByIdQueryHandler : IRequestHandler<GetArtTradeByIdQuery,
         }
 
         var isParticipant = trade.InitiatorId == request.UserId || trade.ReceiverId == request.UserId;
-        if (!isParticipant)
+        if (!isParticipant && !request.IsAdmin)
         {
             return (false, null, ["Bạn không có quyền xem chi tiết giao dịch này."]);
         }

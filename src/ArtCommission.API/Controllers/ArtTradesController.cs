@@ -3,6 +3,7 @@ using ArtCommission.Application.ArtTrade.Common;
 using ArtCommission.Application.ArtTrade.DTOs;
 using ArtCommission.Application.ArtTrade.Queries;
 using ArtCommission.Application.Common.Interfaces;
+using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -295,7 +296,8 @@ public class ArtTradesController : ApiControllerBase
             return UnauthorizedEnvelope();
         }
 
-        var query = new GetArtTradeByIdQuery(TradeId: id, UserId: CurrentUserId);
+        var isAdmin = User.IsInRole(UserRoleNames.Administrator) || User.IsInRole(UserRoleNames.Moderator);
+        var query = new GetArtTradeByIdQuery(TradeId: id, UserId: CurrentUserId, IsAdmin: isAdmin);
         var (success, data, errors) = await Mediator.Send(query, cancellationToken);
 
         if (!success)
@@ -400,6 +402,76 @@ public class ArtTradesController : ApiControllerBase
         var query = new GetTradeDownloadUrlQuery(TradeId: id, UserId: CurrentUserId);
         var (success, data, errors) = await Mediator.Send(query, cancellationToken);
 
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(data);
+    }
+
+    /// <summary>
+    /// [Admin/Moderator] Lấy danh sách tất cả các cuộc trao đổi tranh trên nền tảng phục vụ quản lý và vận hành (Trade Operations).
+    /// </summary>
+    [HttpGet("admin")]
+    [HttpGet("/api/v1/admin/trades")]
+    [Authorize(Roles = $"{UserRoleNames.Administrator},{UserRoleNames.Moderator}")]
+    [ProducesResponseType(typeof(IEnumerable<ArtTradeDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetTradesForAdmin(
+        [FromQuery] TradeStatus? status = null,
+        [FromQuery] string? search = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        CancellationToken cancellationToken = default)
+    {
+        var query = new GetAdminArtTradesQuery(
+            Status: status,
+            Search: search,
+            Page: page,
+            PageSize: pageSize
+        );
+
+        var result = await Mediator.Send(query, cancellationToken);
+
+        return OkEnvelope(result.Items, new
+        {
+            page,
+            pageSize,
+            totalCount = result.TotalCount,
+            totalPages = (int)Math.Ceiling(result.TotalCount / (double)(pageSize <= 0 ? 10 : pageSize)),
+            activeCount = result.ActiveCount,
+            completedCount = result.CompletedCount,
+            disputedCount = result.DisputedCount,
+            cancelledCount = result.CancelledCount
+        });
+    }
+
+    /// <summary>
+    /// [Admin/Moderator] Can thiệp cưỡng chế hủy giao dịch trao đổi tranh.
+    /// </summary>
+    [HttpPost("admin/{id:guid}/force-cancel")]
+    [HttpPost("/api/v1/admin/trades/{id:guid}/force-cancel")]
+    [Authorize(Roles = $"{UserRoleNames.Administrator},{UserRoleNames.Moderator}")]
+    public async Task<IActionResult> AdminForceCancel(
+        Guid id,
+        [FromBody] CancelTradeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var command = new CancelTradeCommand(
+            TradeId: id,
+            UserId: CurrentUserId,
+            Reason: string.IsNullOrWhiteSpace(request.Reason) ? "Quản trị viên cưỡng chế dừng giao dịch." : request.Reason,
+            IsViolation: request.IsViolation,
+            ViolatorUserId: request.ViolatorUserId,
+            IsAdmin: true
+        );
+
+        var (success, data, errors) = await Mediator.Send(command, cancellationToken);
         if (!success)
         {
             return BadRequestEnvelope(errors);
