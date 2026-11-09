@@ -35,6 +35,9 @@ public class ArtworkOwnership : BaseEntity
     /// <summary>Đơn đặt vẽ dẫn tới lần chuyển quyền này (nếu có).</summary>
     public Guid? CommissionId { get; set; }
 
+    /// <summary>Giao dịch trao đổi tranh (Art Trade) dẫn tới lần chuyển quyền này (nếu có).</summary>
+    public Guid? ArtTradeId { get; set; }
+
     /// <summary>True nếu là chủ sở hữu hiện tại. Tối đa một dòng true cho mỗi tranh.</summary>
     public bool IsCurrent { get; set; }
 }

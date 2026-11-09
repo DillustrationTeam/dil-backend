@@ -47,7 +47,7 @@ public class GetChatRoomQueryHandler
             .Select(m => new { m.UserId, m.MemberRole, m.LastReadAt })
             .ToListAsync(cancellationToken);
 
-        // Phòng có thể chưa được ghi thành viên (tạo lazy) — bù bằng quan hệ commission.
+        // Phòng có thể chưa được ghi thành viên (tạo lazy) — bù bằng quan hệ commission hoặc art trade.
         if (memberRows.Count == 0 && room.CommissionId.HasValue)
         {
             var commission = await _db.Commissions
@@ -62,6 +62,23 @@ public class GetChatRoomQueryHandler
                 [
                     new { UserId = commission.ClientId, MemberRole = "Client", LastReadAt = (DateTimeOffset?)null },
                     new { UserId = commission.CreatorId, MemberRole = "Creator", LastReadAt = (DateTimeOffset?)null }
+                ];
+            }
+        }
+        else if (memberRows.Count == 0 && room.ArtTradeId.HasValue)
+        {
+            var trade = await _db.ArtTrades
+                .AsNoTracking()
+                .Where(t => t.Id == room.ArtTradeId.Value && !t.IsDeleted)
+                .Select(t => new { t.InitiatorId, t.ReceiverId })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (trade is not null)
+            {
+                memberRows =
+                [
+                    new { UserId = trade.InitiatorId, MemberRole = "Initiator", LastReadAt = (DateTimeOffset?)null },
+                    new { UserId = trade.ReceiverId, MemberRole = "Receiver", LastReadAt = (DateTimeOffset?)null }
                 ];
             }
         }
@@ -89,7 +106,8 @@ public class GetChatRoomQueryHandler
             CommissionId: room.CommissionId,
             LastMessageAt: room.LastMessageAt,
             IsLocked: room.IsLocked,
-            Members: members);
+            Members: members,
+            ArtTradeId: room.ArtTradeId);
 
         return (true, dto, []);
     }

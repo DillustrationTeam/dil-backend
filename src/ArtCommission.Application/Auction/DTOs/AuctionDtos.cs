@@ -324,7 +324,8 @@ public sealed record ChatRoomDto(
     Guid? CommissionId,
     DateTimeOffset? LastMessageAt,
     bool IsLocked,
-    IReadOnlyList<ChatRoomMemberDto> Members
+    IReadOnlyList<ChatRoomMemberDto> Members,
+    Guid? ArtTradeId = null
 );
 
 public sealed record ChatReadReceiptDto(

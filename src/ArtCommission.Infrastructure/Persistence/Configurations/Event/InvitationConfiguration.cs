@@ -17,6 +17,7 @@ public class InvitationConfiguration : IEntityTypeConfiguration<Invitation>
             .HasConversion<string>()
             .HasMaxLength(50)
             .HasDefaultValue(InvitationStatus.Pending)
+            .HasSentinel((InvitationStatus)0)
             .IsRequired();
 
         builder.Property(i => i.IsHeadJury)

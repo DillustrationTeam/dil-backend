@@ -1,5 +1,6 @@
 using ArtCommission.Application.ArtistStudio.ClientProfiles.Commands.UpdateClientProfile;
 using ArtCommission.Application.ArtistStudio.ClientProfiles.Queries.GetClientFollowing;
+using ArtCommission.Application.ArtistStudio.ClientProfiles.Queries.GetClientOwnedArtworks;
 using ArtCommission.Application.ArtistStudio.ClientProfiles.Queries.GetClientProfileById;
 using ArtCommission.Application.ArtistStudio.ClientProfiles.Queries.GetClientPublicCollections;
 using ArtCommission.Application.ArtistStudio.ClientProfiles.Queries.GetClientReviews;
@@ -97,6 +98,24 @@ public class ClientProfilesController : ApiControllerBase
 
         var available = await Mediator.Send(new GetUsernameAvailabilityQuery(CurrentUserId, username ?? string.Empty), cancellationToken);
         return OkEnvelope(new { available });
+    }
+
+    /// <summary>Danh sách tất cả tác phẩm đã sở hữu của Client (gồm Đấu giá thành công, Đơn đặt vẽ Commission hoàn tất, và Trao đổi tranh Art Trade).</summary>
+    [HttpGet("owned-artworks")]
+    [HttpGet("/api/v1/client/owned-artworks")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetOwnedArtworks(CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var (success, data, errors) = await Mediator.Send(
+            new GetClientOwnedArtworksQuery(CurrentUserId), cancellationToken);
+
+        return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
     }
 
     /// <summary>Cập nhật hồ sơ Client công khai của chính mình (Username, Tags, Quốc gia, Múi giờ, Ngôn ngữ).</summary>

@@ -1,4 +1,5 @@
 using ArtCommission.Infrastructure.ExternalServices.ArtworkAi;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using ArtCommission.Application.ArtistStudio.Ai;
 using ArtCommission.API.Services;
 using System.Threading.RateLimiting;
@@ -10,6 +11,7 @@ using ArtCommission.API.BackgroundWorkers;
 using ArtCommission.API.Common;
 using ArtCommission.API.Hubs;
 using ArtCommission.Application.Ai.Common;
+using ArtCommission.Application.ArtTrade.Common;
 using ArtCommission.Application.Auth.Commands.Register;
 using ArtCommission.Application.Auction.Common;
 using ArtCommission.Application.Chat.Common;
@@ -80,7 +82,10 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
     ?? "Server=(localdb)\\mssqllocaldb;Database=ArtCommissionDb;Trusted_Connection=True;MultipleActiveResultSets=true";
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(connectionString));
+{
+    options.UseSqlServer(connectionString);
+    options.ConfigureWarnings(w => w.Ignore(SqlServerEventId.SavepointsDisabledBecauseOfMARS));
+});
 
 // Hangfire lưu recurring job trong cùng SQL Server theo tài liệu kiến trúc.
 builder.Services.AddHangfire(configuration => configuration
@@ -463,7 +468,9 @@ if (string.IsNullOrWhiteSpace(builder.Configuration["CloudflareR2:AccountId"]))
 else
 {
     builder.Services.AddScoped<IStorageService, CloudflareR2StorageService>();
+
 }
+builder.Services.AddScoped<ITradeSlotService, TradeSlotService>();
 
 
 builder.Services.Configure<ArtworkAiOptions>(builder.Configuration.GetSection("ArtworkAi"));

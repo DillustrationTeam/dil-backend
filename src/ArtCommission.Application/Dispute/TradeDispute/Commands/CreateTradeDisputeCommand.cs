@@ -1,0 +1,131 @@
+using ArtCommission.Application.Common.Interfaces;
+using ArtCommission.Application.Dispute.TradeDispute.Validators;
+using INotificationPublisher = ArtCommission.Application.Notifications.Common.INotificationPublisher;
+using ArtCommission.Domain.Enums;
+using FluentValidation;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
+
+namespace ArtCommission.Application.Dispute.TradeDispute.Commands;
+
+public sealed record CreateTradeDisputeCommand(
+    Guid ArtTradeId,
+    Guid RaisedById,
+    string Reason,
+    TradeDisputeCategory? Category = null,
+    List<string>? EvidenceUrls = null
+) : IRequest<(bool Success, string Message, Guid? DisputeId, string[] Errors)>;
+
+public class CreateTradeDisputeCommandHandler
+    : IRequestHandler<CreateTradeDisputeCommand, (bool Success, string Message, Guid? DisputeId, string[] Errors)>
+{
+    private readonly IApplicationDbContext _db;
+    private readonly INotificationPublisher _notifPublisher;
+
+    public CreateTradeDisputeCommandHandler(IApplicationDbContext db, INotificationPublisher notifPublisher)
+    {
+        _db = db;
+        _notifPublisher = notifPublisher;
+    }
+
+    public async Task<(bool Success, string Message, Guid? DisputeId, string[] Errors)> Handle(
+        CreateTradeDisputeCommand request,
+        CancellationToken cancellationToken)
+    {
+        var validator = new CreateTradeDisputeCommandValidator();
+        var validationResult = await validator.ValidateAsync(request, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            return (false, "Dữ liệu không hợp lệ.", null, validationResult.Errors.Select(e => e.ErrorMessage).ToArray());
+        }
+
+        var trade = await _db.ArtTrades
+            .FirstOrDefaultAsync(t => t.Id == request.ArtTradeId && !t.IsDeleted, cancellationToken);
+
+        if (trade == null)
+        {
+            return (false, "Không tìm thấy giao dịch trao đổi tranh.", null, ["Giao dịch không tồn tại."]);
+        }
+
+        var isParticipant = trade.InitiatorId == request.RaisedById || trade.ReceiverId == request.RaisedById;
+        if (!isParticipant)
+        {
+            return (false, "Bạn không có quyền khiếu nại giao dịch này.", null, ["Chỉ hai bên tham gia trade mới có quyền gửi khiếu nại."]);
+        }
+
+        if (trade.Status == TradeStatus.Completed)
+        {
+            return (false, "Giao dịch đã hoàn tất và kết thúc.", null, ["Không thể khiếu nại giao dịch đã hoàn tất."]);
+        }
+
+        if (trade.Status == TradeStatus.Cancelled)
+        {
+            return (false, "Giao dịch đã bị huỷ trước đó.", null, ["Không thể khiếu nại giao dịch đã huỷ."]);
+        }
+
+        // Kiểm tra xem đã có khiếu nại đang chờ xử lý chưa
+        var hasPendingDispute = await _db.TradeDisputes.AnyAsync(d =>
+            d.ArtTradeId == request.ArtTradeId &&
+            !d.IsDeleted &&
+            (d.Status == "Pending" || d.Status == "UnderReview"), cancellationToken);
+
+        if (hasPendingDispute)
+        {
+            return (false, "Giao dịch này đang có khiếu nại chờ Admin giải quyết.", null, ["Đã có một đơn khiếu nại đang được xử lý."]);
+        }
+
+        var evidenceJson = request.EvidenceUrls != null && request.EvidenceUrls.Count > 0
+            ? JsonSerializer.Serialize(request.EvidenceUrls)
+            : null;
+
+        var category = request.Category;
+        if (!category.HasValue && !string.IsNullOrWhiteSpace(request.Reason) && request.Reason.StartsWith("["))
+        {
+            var closeBracketIdx = request.Reason.IndexOf(']');
+            if (closeBracketIdx > 1)
+            {
+                category = TradeDisputeCategoryExtensions.ParseFlexible(request.Reason.Substring(1, closeBracketIdx - 1));
+            }
+        }
+
+        var dispute = new Domain.Entities.Dispute.TradeDispute
+        {
+            ArtTradeId = request.ArtTradeId,
+            RaisedById = request.RaisedById,
+            Category = category ?? TradeDisputeCategory.Other,
+            Reason = request.Reason.Trim(),
+            EvidenceUrls = evidenceJson,
+            Status = "Pending"
+        };
+
+        // Đóng băng trạng thái trade sang Disputed để tạm dừng mọi thao tác confirm/download
+        trade.Status = TradeStatus.Disputed;
+        trade.UpdatedAt = DateTimeOffset.UtcNow;
+
+        _db.TradeDisputes.Add(dispute);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            var opponentId = trade.InitiatorId == request.RaisedById ? trade.ReceiverId : trade.InitiatorId;
+            await _notifPublisher.PublishAsync(
+                userId: opponentId,
+                notificationType: NotificationType.TradeDisputeCreated,
+                title: "Khiếu nại giao dịch trao đổi tranh",
+                body: $"Đối tác đã mở khiếu nại cho phiên trao đổi \"{trade.Title}\". Lý do: {dispute.Reason}",
+                refType: "ArtTrade",
+                refId: trade.Id,
+                dedupKey: $"TradeDisputeCreated:{dispute.Id}:{opponentId}",
+                cancellationToken: cancellationToken
+            );
+        }
+        catch
+        {
+            // Bỏ qua lỗi gửi thông báo để không gián đoạn việc tạo khiếu nại
+        }
+
+        return (true, "Đã gửi khiếu nại thành công. Quản trị viên sẽ xem xét và phản hồi.", dispute.Id, []);
+    }
+}
+

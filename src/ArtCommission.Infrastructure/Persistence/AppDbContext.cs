@@ -13,6 +13,7 @@ using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Domain.Entities.Notifications;
 using ArtCommission.Domain.Entities.Payment;
 using ArtCommission.Domain.Entities.Revenue;
+using ArtCommission.Domain.Entities.Trade;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -86,6 +87,9 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<ArtworkOwnership> ArtworkOwnerships => Set<ArtworkOwnership>();
     public DbSet<EscrowTransaction> EscrowTransactions => Set<EscrowTransaction>();
     public DbSet<Deliverable> Deliverables => Set<Deliverable>();
+    public DbSet<ArtTrade> ArtTrades => Set<ArtTrade>();
+    public DbSet<TradeSlotFreeze> TradeSlotFreezes => Set<TradeSlotFreeze>();
+    public DbSet<TradeDispute> TradeDisputes => Set<TradeDispute>();
 
     // ---------------------------------------------------------------------
     // Module Workroom Chat (UC43)

@@ -444,61 +444,6 @@ END
 GO
 
 -- ============================================================================
--- 8. ART TRADE MODULE (🚀 CẢI TIẾN)
--- ============================================================================
-
--- Bảng Bài đăng Trao đổi Tranh
-IF OBJECT_ID(N'dbo.TradePosts', N'U') IS NULL
-BEGIN
-    CREATE TABLE dbo.TradePosts (
-        Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_TradePosts PRIMARY KEY DEFAULT NEWID(),
-        PosterId UNIQUEIDENTIFIER NOT NULL,
-        OfferedArtworkId UNIQUEIDENTIFIER NOT NULL,
-        WantDescription NVARCHAR(1000) NOT NULL,
-        AcceptedOfferId UNIQUEIDENTIFIER NULL,        -- ⚡ [CẢI TIẾN] FK Lời đề nghị được chọn đồng ý
-        OfferCount INT NOT NULL DEFAULT 0,             -- ⚡ [CẢI TIẾN] Đếm tổng số offer nhận được
-        Status NVARCHAR(50) NOT NULL DEFAULT 'Open', -- Open, PendingApproval, Completed, Cancelled
-        CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
-        UpdatedAt DATETIMEOFFSET NULL,
-        IsDeleted BIT NOT NULL DEFAULT 0,
-        CONSTRAINT FK_TradePosts_Poster FOREIGN KEY (PosterId) REFERENCES dbo.AspNetUsers(Id),
-        CONSTRAINT FK_TradePosts_OfferedArtwork FOREIGN KEY (OfferedArtworkId) REFERENCES dbo.Artworks(Id)
-    );
-
-    CREATE INDEX IX_TradePosts_Status_CreatedAt ON dbo.TradePosts(Status, CreatedAt DESC);
-END
-GO
-
--- Bảng Lời đề nghị Trao đổi (Offer)
-IF OBJECT_ID(N'dbo.TradeOffers', N'U') IS NULL
-BEGIN
-    CREATE TABLE dbo.TradeOffers (
-        Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_TradeOffers PRIMARY KEY DEFAULT NEWID(),
-        TradePostId UNIQUEIDENTIFIER NOT NULL,
-        OffererId UNIQUEIDENTIFIER NOT NULL,
-        OfferedArtworkId UNIQUEIDENTIFIER NOT NULL,
-        Message NVARCHAR(500) NULL,
-        Status NVARCHAR(50) NOT NULL DEFAULT 'Pending', -- Pending, Accepted, Rejected
-        CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
-        UpdatedAt DATETIMEOFFSET NULL,
-        IsDeleted BIT NOT NULL DEFAULT 0,
-        CONSTRAINT FK_TradeOffers_TradePost FOREIGN KEY (TradePostId) REFERENCES dbo.TradePosts(Id) ON DELETE CASCADE,
-        CONSTRAINT FK_TradeOffers_Offerer FOREIGN KEY (OffererId) REFERENCES dbo.AspNetUsers(Id),
-        CONSTRAINT FK_TradeOffers_OfferedArtwork FOREIGN KEY (OfferedArtworkId) REFERENCES dbo.Artworks(Id)
-    );
-END
-GO
-
--- FK vòng cho AcceptedOfferId trong TradePosts
-IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_TradePosts_AcceptedOffer')
-BEGIN
-    ALTER TABLE dbo.TradePosts 
-    ADD CONSTRAINT FK_TradePosts_AcceptedOffer 
-    FOREIGN KEY (AcceptedOfferId) REFERENCES dbo.TradeOffers(Id);
-END
-GO
-
--- ============================================================================
 -- 9. ARTIST TEAM MODULE (🚀 CẢI TIẾN)
 -- ============================================================================
 
@@ -887,6 +832,428 @@ END
 GO
 
 -- ============================================================================
+-- 15. ART TRADE & TRADE DISPUTES MODULE (🚀 CẢI TIẾN)
+-- ============================================================================
+
+-- Bảng Trao đổi tranh (Art Trade) giữa 2 nghệ sĩ
+IF OBJECT_ID(N'dbo.ArtTrades', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.ArtTrades (
+        Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_ArtTrades PRIMARY KEY DEFAULT NEWID(),
+        InitiatorId UNIQUEIDENTIFIER NOT NULL,
+        ReceiverId UNIQUEIDENTIFIER NOT NULL,
+        Title NVARCHAR(200) NOT NULL,
+        Description NVARCHAR(2000) NULL,
+        InitiatorRequestNote NVARCHAR(2000) NULL,
+        ReceiverRequestNote NVARCHAR(2000) NULL,
+        ReceiverResponseNote NVARCHAR(2000) NULL,
+        ReceiverAcceptedAt DATETIMEOFFSET NULL,
+        InitiatorArtworkId UNIQUEIDENTIFIER NULL,
+        ReceiverArtworkId UNIQUEIDENTIFIER NULL,
+        InitiatorOriginalFileUrl NVARCHAR(500) NULL,
+        InitiatorPreviewUrl NVARCHAR(500) NULL,
+        InitiatorSubmittedAt DATETIMEOFFSET NULL,
+        ReceiverOriginalFileUrl NVARCHAR(500) NULL,
+        ReceiverPreviewUrl NVARCHAR(500) NULL,
+        ReceiverSubmittedAt DATETIMEOFFSET NULL,
+        IsInitiatorConfirmed BIT NOT NULL DEFAULT 0,
+        InitiatorConfirmedAt DATETIMEOFFSET NULL,
+        IsReceiverConfirmed BIT NOT NULL DEFAULT 0,
+        ReceiverConfirmedAt DATETIMEOFFSET NULL,
+        Status NVARCHAR(50) NOT NULL DEFAULT 'Proposed', -- Proposed, Accepted, BothSubmitted, Completed, Rejected, Cancelled, Disputed
+        SubmissionDeadlineAt DATETIMEOFFSET NULL,
+        ConfirmationDeadlineAt DATETIMEOFFSET NULL,
+        CompletedAt DATETIMEOFFSET NULL,
+        CancelledAt DATETIMEOFFSET NULL,
+        CancelledById UNIQUEIDENTIFIER NULL,
+        CancellationReason NVARCHAR(500) NULL,
+        RejectionReason NVARCHAR(500) NULL,
+        CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        UpdatedAt DATETIMEOFFSET NULL,
+        IsDeleted BIT NOT NULL DEFAULT 0,
+        CONSTRAINT FK_ArtTrades_InitiatorArtwork FOREIGN KEY (InitiatorArtworkId) REFERENCES dbo.Artworks(Id),
+        CONSTRAINT FK_ArtTrades_ReceiverArtwork FOREIGN KEY (ReceiverArtworkId) REFERENCES dbo.Artworks(Id)
+    );
+
+    CREATE INDEX IX_ArtTrades_InitiatorId_CreatedAt ON dbo.ArtTrades(InitiatorId, CreatedAt DESC);
+    CREATE INDEX IX_ArtTrades_ReceiverId_CreatedAt ON dbo.ArtTrades(ReceiverId, CreatedAt DESC);
+    CREATE INDEX IX_ArtTrades_Status_UpdatedAt ON dbo.ArtTrades(Status, UpdatedAt DESC);
+    CREATE INDEX IX_ArtTrades_InitiatorArtworkId ON dbo.ArtTrades(InitiatorArtworkId);
+    CREATE INDEX IX_ArtTrades_ReceiverArtworkId ON dbo.ArtTrades(ReceiverArtworkId);
+    CREATE INDEX IX_ArtTrades_CancelledById ON dbo.ArtTrades(CancelledById);
+END
+ELSE
+BEGIN
+    IF COL_LENGTH(N'dbo.ArtTrades', N'InitiatorRequestNote') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD InitiatorRequestNote NVARCHAR(2000) NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'ReceiverRequestNote') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD ReceiverRequestNote NVARCHAR(2000) NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'ReceiverResponseNote') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD ReceiverResponseNote NVARCHAR(2000) NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'ReceiverAcceptedAt') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD ReceiverAcceptedAt DATETIMEOFFSET NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'InitiatorArtworkId') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD InitiatorArtworkId UNIQUEIDENTIFIER NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'ReceiverArtworkId') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD ReceiverArtworkId UNIQUEIDENTIFIER NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'InitiatorOriginalFileUrl') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD InitiatorOriginalFileUrl NVARCHAR(500) NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'InitiatorPreviewUrl') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD InitiatorPreviewUrl NVARCHAR(500) NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'InitiatorSubmittedAt') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD InitiatorSubmittedAt DATETIMEOFFSET NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'ReceiverOriginalFileUrl') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD ReceiverOriginalFileUrl NVARCHAR(500) NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'ReceiverPreviewUrl') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD ReceiverPreviewUrl NVARCHAR(500) NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'ReceiverSubmittedAt') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD ReceiverSubmittedAt DATETIMEOFFSET NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'IsInitiatorConfirmed') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD IsInitiatorConfirmed BIT NOT NULL DEFAULT 0;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'InitiatorConfirmedAt') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD InitiatorConfirmedAt DATETIMEOFFSET NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'IsReceiverConfirmed') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD IsReceiverConfirmed BIT NOT NULL DEFAULT 0;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'ReceiverConfirmedAt') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD ReceiverConfirmedAt DATETIMEOFFSET NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'Status') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD Status NVARCHAR(50) NOT NULL DEFAULT ''Proposed'';');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'SubmissionDeadlineAt') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD SubmissionDeadlineAt DATETIMEOFFSET NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'ConfirmationDeadlineAt') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD ConfirmationDeadlineAt DATETIMEOFFSET NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'CompletedAt') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD CompletedAt DATETIMEOFFSET NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'CancelledAt') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD CancelledAt DATETIMEOFFSET NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'CancelledById') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD CancelledById UNIQUEIDENTIFIER NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'CancellationReason') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD CancellationReason NVARCHAR(500) NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'RejectionReason') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD RejectionReason NVARCHAR(500) NULL;');
+    IF COL_LENGTH(N'dbo.ArtTrades', N'IsDeleted') IS NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD IsDeleted BIT NOT NULL DEFAULT 0;');
+END
+GO
+
+-- Ràng buộc khoá ngoại an toàn cho ArtTrades
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_ArtTrades_Initiator')
+BEGIN
+    IF OBJECT_ID(N'dbo.Users', N'U') IS NOT NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD CONSTRAINT FK_ArtTrades_Initiator FOREIGN KEY (InitiatorId) REFERENCES dbo.Users(Id);');
+    ELSE IF OBJECT_ID(N'dbo.AspNetUsers', N'U') IS NOT NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD CONSTRAINT FK_ArtTrades_Initiator FOREIGN KEY (InitiatorId) REFERENCES dbo.AspNetUsers(Id);');
+END;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_ArtTrades_Receiver')
+BEGIN
+    IF OBJECT_ID(N'dbo.Users', N'U') IS NOT NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD CONSTRAINT FK_ArtTrades_Receiver FOREIGN KEY (ReceiverId) REFERENCES dbo.Users(Id);');
+    ELSE IF OBJECT_ID(N'dbo.AspNetUsers', N'U') IS NOT NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD CONSTRAINT FK_ArtTrades_Receiver FOREIGN KEY (ReceiverId) REFERENCES dbo.AspNetUsers(Id);');
+END;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_ArtTrades_CancelledBy')
+BEGIN
+    IF OBJECT_ID(N'dbo.Users', N'U') IS NOT NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD CONSTRAINT FK_ArtTrades_CancelledBy FOREIGN KEY (CancelledById) REFERENCES dbo.Users(Id);');
+    ELSE IF OBJECT_ID(N'dbo.AspNetUsers', N'U') IS NOT NULL
+        EXEC(N'ALTER TABLE dbo.ArtTrades ADD CONSTRAINT FK_ArtTrades_CancelledBy FOREIGN KEY (CancelledById) REFERENCES dbo.AspNetUsers(Id);');
+END;
+GO
+
+-- Bảng Đóng băng slot trao đổi tranh (Trade Slot Freeze)
+IF OBJECT_ID(N'dbo.TradeSlotFreezes', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.TradeSlotFreezes (
+        Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_TradeSlotFreezes PRIMARY KEY DEFAULT NEWID(),
+        UserId UNIQUEIDENTIFIER NOT NULL,
+        ArtTradeId UNIQUEIDENTIFIER NOT NULL,
+        FrozenFrom DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        FrozenUntil DATETIMEOFFSET NOT NULL,
+        Reason NVARCHAR(500) NULL,
+        IsRevoked BIT NOT NULL DEFAULT 0,
+        RevokedReason NVARCHAR(500) NULL,
+        RevokedAt DATETIMEOFFSET NULL,
+        RevokedByAdminId UNIQUEIDENTIFIER NULL,
+        CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        UpdatedAt DATETIMEOFFSET NULL,
+        IsDeleted BIT NOT NULL DEFAULT 0,
+        CONSTRAINT FK_TradeSlotFreezes_ArtTrade FOREIGN KEY (ArtTradeId) REFERENCES dbo.ArtTrades(Id)
+    );
+
+    CREATE INDEX IX_TradeSlotFreezes_User_Active ON dbo.TradeSlotFreezes(UserId, FrozenUntil, IsRevoked, IsDeleted);
+    CREATE INDEX IX_TradeSlotFreezes_ArtTradeId ON dbo.TradeSlotFreezes(ArtTradeId);
+    CREATE INDEX IX_TradeSlotFreezes_RevokedByAdminId ON dbo.TradeSlotFreezes(RevokedByAdminId);
+END
+ELSE
+BEGIN
+    IF COL_LENGTH(N'dbo.TradeSlotFreezes', N'Reason') IS NULL
+        EXEC(N'ALTER TABLE dbo.TradeSlotFreezes ADD Reason NVARCHAR(500) NULL;');
+    IF COL_LENGTH(N'dbo.TradeSlotFreezes', N'IsRevoked') IS NULL
+        EXEC(N'ALTER TABLE dbo.TradeSlotFreezes ADD IsRevoked BIT NOT NULL DEFAULT 0;');
+    IF COL_LENGTH(N'dbo.TradeSlotFreezes', N'RevokedReason') IS NULL
+        EXEC(N'ALTER TABLE dbo.TradeSlotFreezes ADD RevokedReason NVARCHAR(500) NULL;');
+    IF COL_LENGTH(N'dbo.TradeSlotFreezes', N'RevokedAt') IS NULL
+        EXEC(N'ALTER TABLE dbo.TradeSlotFreezes ADD RevokedAt DATETIMEOFFSET NULL;');
+    IF COL_LENGTH(N'dbo.TradeSlotFreezes', N'RevokedByAdminId') IS NULL
+        EXEC(N'ALTER TABLE dbo.TradeSlotFreezes ADD RevokedByAdminId UNIQUEIDENTIFIER NULL;');
+    IF COL_LENGTH(N'dbo.TradeSlotFreezes', N'IsDeleted') IS NULL
+        EXEC(N'ALTER TABLE dbo.TradeSlotFreezes ADD IsDeleted BIT NOT NULL DEFAULT 0;');
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_TradeSlotFreezes_User')
+BEGIN
+    IF OBJECT_ID(N'dbo.Users', N'U') IS NOT NULL
+        EXEC(N'ALTER TABLE dbo.TradeSlotFreezes ADD CONSTRAINT FK_TradeSlotFreezes_User FOREIGN KEY (UserId) REFERENCES dbo.Users(Id);');
+    ELSE IF OBJECT_ID(N'dbo.AspNetUsers', N'U') IS NOT NULL
+        EXEC(N'ALTER TABLE dbo.TradeSlotFreezes ADD CONSTRAINT FK_TradeSlotFreezes_User FOREIGN KEY (UserId) REFERENCES dbo.AspNetUsers(Id);');
+END;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_TradeSlotFreezes_RevokedByAdmin')
+BEGIN
+    IF OBJECT_ID(N'dbo.Users', N'U') IS NOT NULL
+        EXEC(N'ALTER TABLE dbo.TradeSlotFreezes ADD CONSTRAINT FK_TradeSlotFreezes_RevokedByAdmin FOREIGN KEY (RevokedByAdminId) REFERENCES dbo.Users(Id);');
+    ELSE IF OBJECT_ID(N'dbo.AspNetUsers', N'U') IS NOT NULL
+        EXEC(N'ALTER TABLE dbo.TradeSlotFreezes ADD CONSTRAINT FK_TradeSlotFreezes_RevokedByAdmin FOREIGN KEY (RevokedByAdminId) REFERENCES dbo.AspNetUsers(Id);');
+END;
+GO
+
+-- Bảng Khiếu nại tranh chấp trong trao đổi tranh (Trade Disputes)
+IF OBJECT_ID(N'dbo.TradeDisputes', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.TradeDisputes (
+        Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_TradeDisputes PRIMARY KEY DEFAULT NEWID(),
+        ArtTradeId UNIQUEIDENTIFIER NOT NULL,
+        RaisedById UNIQUEIDENTIFIER NOT NULL,
+        Reason NVARCHAR(2000) NOT NULL,
+        EvidenceUrls NVARCHAR(MAX) NULL,
+        Status NVARCHAR(50) NOT NULL DEFAULT 'Pending',
+        Resolution NVARCHAR(50) NULL,
+        AdminNote NVARCHAR(2000) NULL,
+        ResolvedAt DATETIMEOFFSET NULL,
+        CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        UpdatedAt DATETIMEOFFSET NULL,
+        IsDeleted BIT NOT NULL DEFAULT 0,
+        CONSTRAINT FK_TradeDisputes_ArtTrade FOREIGN KEY (ArtTradeId) REFERENCES dbo.ArtTrades(Id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IX_TradeDisputes_ArtTradeId ON dbo.TradeDisputes(ArtTradeId);
+    CREATE INDEX IX_TradeDisputes_RaisedById ON dbo.TradeDisputes(RaisedById);
+    CREATE INDEX IX_TradeDisputes_Status ON dbo.TradeDisputes(Status);
+END
+ELSE
+BEGIN
+    IF COL_LENGTH(N'dbo.TradeDisputes', N'EvidenceUrls') IS NULL
+        EXEC(N'ALTER TABLE dbo.TradeDisputes ADD EvidenceUrls NVARCHAR(MAX) NULL;');
+    IF COL_LENGTH(N'dbo.TradeDisputes', N'Resolution') IS NULL
+        EXEC(N'ALTER TABLE dbo.TradeDisputes ADD Resolution NVARCHAR(50) NULL;');
+    IF COL_LENGTH(N'dbo.TradeDisputes', N'AdminNote') IS NULL
+        EXEC(N'ALTER TABLE dbo.TradeDisputes ADD AdminNote NVARCHAR(2000) NULL;');
+    IF COL_LENGTH(N'dbo.TradeDisputes', N'ResolvedAt') IS NULL
+        EXEC(N'ALTER TABLE dbo.TradeDisputes ADD ResolvedAt DATETIMEOFFSET NULL;');
+    IF COL_LENGTH(N'dbo.TradeDisputes', N'IsDeleted') IS NULL
+        EXEC(N'ALTER TABLE dbo.TradeDisputes ADD IsDeleted BIT NOT NULL DEFAULT 0;');
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_TradeDisputes_RaisedBy')
+BEGIN
+    IF OBJECT_ID(N'dbo.Users', N'U') IS NOT NULL
+        EXEC(N'ALTER TABLE dbo.TradeDisputes ADD CONSTRAINT FK_TradeDisputes_RaisedBy FOREIGN KEY (RaisedById) REFERENCES dbo.Users(Id);');
+    ELSE IF OBJECT_ID(N'dbo.AspNetUsers', N'U') IS NOT NULL
+        EXEC(N'ALTER TABLE dbo.TradeDisputes ADD CONSTRAINT FK_TradeDisputes_RaisedBy FOREIGN KEY (RaisedById) REFERENCES dbo.AspNetUsers(Id);');
+END;
+GO
+
+-- Bảng Quyền sở hữu Tác phẩm (Artwork Ownerships)
+IF OBJECT_ID(N'dbo.ArtworkOwnerships', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.ArtworkOwnerships (
+        Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_ArtworkOwnerships PRIMARY KEY DEFAULT NEWID(),
+        ArtworkId UNIQUEIDENTIFIER NOT NULL,
+        OwnerId UNIQUEIDENTIFIER NOT NULL,
+        AcquiredAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        ReleasedAt DATETIMEOFFSET NULL,
+        TransferReason NVARCHAR(30) NOT NULL DEFAULT 'AuctionWin',
+        AuctionId UNIQUEIDENTIFIER NULL,
+        CommissionId UNIQUEIDENTIFIER NULL,
+        ArtTradeId UNIQUEIDENTIFIER NULL,
+        IsCurrent BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        UpdatedAt DATETIMEOFFSET NULL,
+        IsDeleted BIT NOT NULL DEFAULT 0,
+        CONSTRAINT FK_ArtworkOwnerships_Artworks FOREIGN KEY (ArtworkId) REFERENCES dbo.Artworks(Id),
+        CONSTRAINT FK_ArtworkOwnerships_ArtTrades FOREIGN KEY (ArtTradeId) REFERENCES dbo.ArtTrades(Id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IX_ArtworkOwnerships_ArtworkId ON dbo.ArtworkOwnerships(ArtworkId);
+    CREATE INDEX IX_ArtworkOwnerships_Owner_Current ON dbo.ArtworkOwnerships(OwnerId, IsCurrent);
+    CREATE INDEX IX_ArtworkOwnerships_ArtTradeId ON dbo.ArtworkOwnerships(ArtTradeId);
+    CREATE UNIQUE INDEX UX_ArtworkOwnerships_CurrentOwner ON dbo.ArtworkOwnerships(ArtworkId) WHERE [IsCurrent] = 1;
+END
+ELSE
+BEGIN
+    IF COL_LENGTH(N'dbo.ArtworkOwnerships', N'ArtTradeId') IS NULL
+    BEGIN
+        EXEC(N'ALTER TABLE dbo.ArtworkOwnerships ADD ArtTradeId UNIQUEIDENTIFIER NULL;');
+    END;
+    IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name IN ('FK_ArtworkOwnerships_ArtTrade', 'FK_ArtworkOwnerships_ArtTrades'))
+    BEGIN
+        EXEC(N'ALTER TABLE dbo.ArtworkOwnerships ADD CONSTRAINT FK_ArtworkOwnerships_ArtTrades FOREIGN KEY (ArtTradeId) REFERENCES dbo.ArtTrades(Id) ON DELETE SET NULL;');
+    END;
+    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ArtworkOwnerships_ArtTradeId')
+    BEGIN
+        EXEC(N'CREATE INDEX IX_ArtworkOwnerships_ArtTradeId ON dbo.ArtworkOwnerships(ArtTradeId);');
+    END;
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_ArtworkOwnerships_Users')
+BEGIN
+    IF OBJECT_ID(N'dbo.Users', N'U') IS NOT NULL
+        EXEC(N'ALTER TABLE dbo.ArtworkOwnerships ADD CONSTRAINT FK_ArtworkOwnerships_Users FOREIGN KEY (OwnerId) REFERENCES dbo.Users(Id);');
+    ELSE IF OBJECT_ID(N'dbo.AspNetUsers', N'U') IS NOT NULL
+        EXEC(N'ALTER TABLE dbo.ArtworkOwnerships ADD CONSTRAINT FK_ArtworkOwnerships_Users FOREIGN KEY (OwnerId) REFERENCES dbo.AspNetUsers(Id);');
+END;
+GO
+
+-- Đồng bộ bổ sung các cột còn thiếu cho CreatorProfiles nếu bảng đã có sẵn
+IF OBJECT_ID(N'dbo.CreatorProfiles', N'U') IS NOT NULL
+BEGIN
+    IF COL_LENGTH(N'dbo.CreatorProfiles', N'Headline') IS NULL
+        EXEC(N'ALTER TABLE dbo.CreatorProfiles ADD Headline NVARCHAR(200) NULL;');
+    IF COL_LENGTH(N'dbo.CreatorProfiles', N'Specialties') IS NULL
+        EXEC(N'ALTER TABLE dbo.CreatorProfiles ADD Specialties NVARCHAR(500) NULL;');
+    IF COL_LENGTH(N'dbo.CreatorProfiles', N'Location') IS NULL
+        EXEC(N'ALTER TABLE dbo.CreatorProfiles ADD Location NVARCHAR(200) NULL;');
+    IF COL_LENGTH(N'dbo.CreatorProfiles', N'WebsiteUrl') IS NULL
+        EXEC(N'ALTER TABLE dbo.CreatorProfiles ADD WebsiteUrl NVARCHAR(500) NULL;');
+    IF COL_LENGTH(N'dbo.CreatorProfiles', N'BannerUrl') IS NULL
+        EXEC(N'ALTER TABLE dbo.CreatorProfiles ADD BannerUrl NVARCHAR(500) NULL;');
+    IF COL_LENGTH(N'dbo.CreatorProfiles', N'IsAcceptingOrders') IS NULL
+        EXEC(N'ALTER TABLE dbo.CreatorProfiles ADD IsAcceptingOrders BIT NOT NULL DEFAULT 1;');
+    IF COL_LENGTH(N'dbo.CreatorProfiles', N'IsApproved') IS NULL
+        EXEC(N'ALTER TABLE dbo.CreatorProfiles ADD IsApproved BIT NOT NULL DEFAULT 0;');
+    IF COL_LENGTH(N'dbo.CreatorProfiles', N'RatingAverage') IS NULL
+        EXEC(N'ALTER TABLE dbo.CreatorProfiles ADD RatingAverage DECIMAL(18, 2) NOT NULL DEFAULT 0.00;');
+    IF COL_LENGTH(N'dbo.CreatorProfiles', N'RatingCount') IS NULL
+        EXEC(N'ALTER TABLE dbo.CreatorProfiles ADD RatingCount INT NOT NULL DEFAULT 0;');
+    IF COL_LENGTH(N'dbo.CreatorProfiles', N'FollowerCount') IS NULL
+        EXEC(N'ALTER TABLE dbo.CreatorProfiles ADD FollowerCount INT NOT NULL DEFAULT 0;');
+    IF COL_LENGTH(N'dbo.CreatorProfiles', N'AvailableSlots') IS NULL
+        EXEC(N'ALTER TABLE dbo.CreatorProfiles ADD AvailableSlots INT NOT NULL DEFAULT 0;');
+    IF COL_LENGTH(N'dbo.CreatorProfiles', N'RateCardJson') IS NULL
+        EXEC(N'ALTER TABLE dbo.CreatorProfiles ADD RateCardJson NVARCHAR(MAX) NULL;');
+END
+GO
+
+-- 16. CREATOR & COMMISSION ADDONS MODULE
+-- ============================================================================
+
+-- Bảng Gói dịch vụ bổ sung của Creator (Creator Addons)
+IF OBJECT_ID(N'dbo.CreatorAddons', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.CreatorAddons (
+        Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_CreatorAddons PRIMARY KEY DEFAULT NEWID(),
+        CreatorId UNIQUEIDENTIFIER NOT NULL,
+        PackageId UNIQUEIDENTIFIER NULL,
+        Title NVARCHAR(200) NOT NULL,
+        Description NVARCHAR(2000) NULL,
+        Price DECIMAL(18, 2) NOT NULL DEFAULT 0.00,
+        AllowedMilestone NVARCHAR(20) NOT NULL,
+        ExtendDays INT NOT NULL DEFAULT 0,
+        PresetKey NVARCHAR(60) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        UpdatedAt DATETIMEOFFSET NULL,
+        IsDeleted BIT NOT NULL DEFAULT 0,
+        CONSTRAINT FK_CreatorAddons_Creator FOREIGN KEY (CreatorId) REFERENCES dbo.CreatorProfiles(Id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IX_CreatorAddons_CreatorId ON dbo.CreatorAddons(CreatorId);
+END
+GO
+
+-- Bảng Dịch vụ bổ sung được áp dụng vào Commission (Commission Addons)
+IF OBJECT_ID(N'dbo.CommissionAddons', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.CommissionAddons (
+        Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_CommissionAddons PRIMARY KEY DEFAULT NEWID(),
+        CommissionId UNIQUEIDENTIFIER NOT NULL,
+        ProposedById UNIQUEIDENTIFIER NOT NULL,
+        Title NVARCHAR(200) NOT NULL,
+        Description NVARCHAR(2000) NULL,
+        Price DECIMAL(18, 2) NOT NULL DEFAULT 0.00,
+        AllowedMilestone NVARCHAR(20) NOT NULL,
+        MilestoneSequence INT NOT NULL DEFAULT 1,
+        Status NVARCHAR(20) NOT NULL DEFAULT 'Pending',
+        ExtendDays INT NOT NULL DEFAULT 0,
+        IsPreset BIT NOT NULL DEFAULT 0,
+        CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        UpdatedAt DATETIMEOFFSET NULL,
+        IsDeleted BIT NOT NULL DEFAULT 0,
+        CONSTRAINT FK_CommissionAddons_Commission FOREIGN KEY (CommissionId) REFERENCES dbo.Commissions(Id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IX_CommissionAddons_CommissionId ON dbo.CommissionAddons(CommissionId);
+END
+GO
+
+-- ============================================================================
+-- 17. USER FEEDBACK & BUG REPORTING MODULE
+-- ============================================================================
+
+-- Bảng Báo cáo lỗi người dùng (Bug Reports)
+IF OBJECT_ID(N'dbo.BugReports', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.BugReports (
+        Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_BugReports PRIMARY KEY DEFAULT NEWID(),
+        ReporterId UNIQUEIDENTIFIER NULL,
+        ReporterEmail NVARCHAR(256) NOT NULL,
+        Title NVARCHAR(200) NOT NULL,
+        Description NVARCHAR(MAX) NOT NULL,
+        PageUrl NVARCHAR(500) NULL,
+        Status INT NOT NULL DEFAULT 0, -- 0: Open, 1: InProgress, 2: Resolved, 3: Closed
+        AdminNote NVARCHAR(MAX) NULL,
+        CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+        UpdatedAt DATETIMEOFFSET NULL,
+        IsDeleted BIT NOT NULL DEFAULT 0,
+        CONSTRAINT FK_BugReports_Reporter FOREIGN KEY (ReporterId) REFERENCES dbo.AspNetUsers(Id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IX_BugReports_Status_CreatedAt ON dbo.BugReports(Status, CreatedAt DESC);
+    CREATE INDEX IX_BugReports_ReporterId ON dbo.BugReports(ReporterId);
+END
+GO
+
+-- Bổ sung cột PackageId cho Commissions (nếu chưa có)
+IF OBJECT_ID(N'dbo.Commissions', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.Commissions', N'PackageId') IS NULL
+BEGIN
+    EXEC(N'ALTER TABLE dbo.Commissions ADD PackageId UNIQUEIDENTIFIER NULL;');
+END
+GO
+
+-- Bổ sung các cột AI Scanning cho Artworks (nếu chưa có)
+IF OBJECT_ID(N'dbo.Artworks', N'U') IS NOT NULL
+BEGIN
+    IF COL_LENGTH(N'dbo.Artworks', N'AiScanStatus') IS NULL
+        EXEC(N'ALTER TABLE dbo.Artworks ADD AiScanStatus NVARCHAR(50) NULL;');
+    IF COL_LENGTH(N'dbo.Artworks', N'AiScanModel') IS NULL
+        EXEC(N'ALTER TABLE dbo.Artworks ADD AiScanModel NVARCHAR(100) NULL;');
+    IF COL_LENGTH(N'dbo.Artworks', N'AiScanProvider') IS NULL
+        EXEC(N'ALTER TABLE dbo.Artworks ADD AiScanProvider NVARCHAR(100) NULL;');
+    IF COL_LENGTH(N'dbo.Artworks', N'AiScanImageUrl') IS NULL
+        EXEC(N'ALTER TABLE dbo.Artworks ADD AiScanImageUrl NVARCHAR(500) NULL;');
+    IF COL_LENGTH(N'dbo.Artworks', N'AiScanError') IS NULL
+        EXEC(N'ALTER TABLE dbo.Artworks ADD AiScanError NVARCHAR(2000) NULL;');
+    IF COL_LENGTH(N'dbo.Artworks', N'AiScanAttempts') IS NULL
+        EXEC(N'ALTER TABLE dbo.Artworks ADD AiScanAttempts INT NOT NULL DEFAULT 0;');
+    IF COL_LENGTH(N'dbo.Artworks', N'AiScanUpdatedAt') IS NULL
+        EXEC(N'ALTER TABLE dbo.Artworks ADD AiScanUpdatedAt DATETIMEOFFSET NULL;');
+END
+GO
+
+-- ============================================================================
 -- INITIAL SEED DATA (Platform Settings Mặc Định)
 -- ============================================================================
 
@@ -1054,34 +1421,45 @@ BEGIN
     DECLARE @CreatorRoleId UNIQUEIDENTIFIER = NULL;
     IF OBJECT_ID(N'dbo.Roles', N'U') IS NOT NULL
         SELECT TOP 1 @CreatorRoleId = Id FROM dbo.Roles WHERE Name = N'Creator';
+    ELSE IF OBJECT_ID(N'dbo.AspNetRoles', N'U') IS NOT NULL
+        SELECT TOP 1 @CreatorRoleId = Id FROM dbo.AspNetRoles WHERE Name = N'Creator';
 
-    IF @CreatorRoleId IS NOT NULL AND OBJECT_ID(N'dbo.UserRoles', N'U') IS NOT NULL
+    IF @CreatorRoleId IS NOT NULL
     BEGIN
-        IF NOT EXISTS (SELECT 1 FROM dbo.UserRoles WHERE UserId = @ArtistUserId AND RoleId = @CreatorRoleId)
-            INSERT INTO dbo.UserRoles (UserId, RoleId) VALUES (@ArtistUserId, @CreatorRoleId);
+        IF OBJECT_ID(N'dbo.UserRoles', N'U') IS NOT NULL
+        BEGIN
+            EXEC sp_executesql N'
+                IF NOT EXISTS (SELECT 1 FROM dbo.UserRoles WHERE UserId = @uid AND RoleId = @rid)
+                    INSERT INTO dbo.UserRoles (UserId, RoleId) VALUES (@uid, @rid);',
+                N'@uid UNIQUEIDENTIFIER, @rid UNIQUEIDENTIFIER', @uid = @ArtistUserId, @rid = @CreatorRoleId;
+        END
+        ELSE IF OBJECT_ID(N'dbo.AspNetUserRoles', N'U') IS NOT NULL
+        BEGIN
+            EXEC sp_executesql N'
+                IF NOT EXISTS (SELECT 1 FROM dbo.AspNetUserRoles WHERE UserId = @uid AND RoleId = @rid)
+                    INSERT INTO dbo.AspNetUserRoles (UserId, RoleId) VALUES (@uid, @rid);',
+                N'@uid UNIQUEIDENTIFIER, @rid UNIQUEIDENTIFIER', @uid = @ArtistUserId, @rid = @CreatorRoleId;
+        END
     END
 
     -- Ensure CreatorProfile
     IF OBJECT_ID(N'dbo.CreatorProfiles', N'U') IS NOT NULL
     BEGIN
-        IF NOT EXISTS (SELECT 1 FROM dbo.CreatorProfiles WHERE UserId = @ArtistUserId)
-        BEGIN
-            INSERT INTO dbo.CreatorProfiles (
-                Id, UserId, DisplayName, Headline, Bio, Specialties, Location,
-                IsAcceptingOrders, IsApproved, RatingAverage, RatingCount, FollowerCount,
-                CreatedAt, IsDeleted, IsAiVerified, CommissionSlots, CompletedOrdersCount, AvailableSlots
-            ) VALUES (
-                NEWID(), @ArtistUserId, N'Minh Châu Art Studio', N'Anime & Fantasy Character Illustrator',
-                N'Hoạ sĩ chuyên vẽ nhân vật phong cách anime, fantasy và chibi. Nhận đơn thương mại cho game, light novel, VTuber.',
-                N'Anime, Fantasy, Chibi, Portrait, Watercolor', N'Hồ Chí Minh City, Vietnam',
-                1, 1, 0.00, 0, 0,
-                SYSDATETIMEOFFSET(), 0, 0, 5, 0, 5
-            );
-        END
+        EXEC sp_executesql N'
+            IF NOT EXISTS (SELECT 1 FROM dbo.CreatorProfiles WHERE UserId = @uid)
+            BEGIN
+                INSERT INTO dbo.CreatorProfiles (
+                    Id, UserId, DisplayName, Bio, CreatedAt, IsDeleted, IsAiVerified, CommissionSlots, CompletedOrdersCount
+                ) VALUES (
+                    NEWID(), @uid, N''Minh Châu Art Studio'',
+                    N''Hoạ sĩ chuyên vẽ nhân vật phong cách anime, fantasy và chibi. Nhận đơn thương mại cho game, light novel, VTuber.'',
+                    SYSDATETIMEOFFSET(), 0, 0, 5, 0
+                );
+            END',
+            N'@uid UNIQUEIDENTIFIER', @uid = @ArtistUserId;
     END
 END
 GO
 
 PRINT N'Database creation script with enhancements completed successfully!';
 GO
-
