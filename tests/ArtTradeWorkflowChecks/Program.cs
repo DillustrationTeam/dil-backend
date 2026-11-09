@@ -11,6 +11,7 @@ using ArtCommission.Domain.Entities.Auction;
 using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Domain.Entities.Trade;
 using ArtCommission.Domain.Enums;
+using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -29,6 +30,7 @@ await using var db = new AppDbContext(options);
 
 var storageService = new TestStorageService();
 var watermarkService = new TestWatermarkService();
+var notifPublisher = new TestNotificationPublisher();
 var slotService = new TradeSlotService(db);
 
 int passedChecks = 0;
@@ -119,7 +121,7 @@ AssertTrue(initialSlotStatus.CanTrade, "Artist A CanTrade is true");
 // TEST 2: PROPOSE TRADE VALIDATIONS
 // =============================================================
 Console.WriteLine("\n--- TEST 2: PROPOSE TRADE VALIDATIONS ---");
-var proposeHandler = new ProposeTradeCommandHandler(db, slotService);
+var proposeHandler = new ProposeTradeCommandHandler(db, slotService, notifPublisher);
 
 // Cannot self-trade
 var selfTradeCmd = new ProposeTradeCommand(artistA.Id, artistA.Id, "Self Trade", null, null);
@@ -173,7 +175,7 @@ AssertTrue(!dupSuccess, "Duplicate proposal blocked");
 // TEST 4: RESPOND TO PROPOSAL (REJECTION FREES SLOT)
 // =============================================================
 Console.WriteLine("\n--- TEST 4: RESPOND TO PROPOSAL (REJECTION FREES SLOT) ---");
-var respondHandler = new RespondTradeProposalCommandHandler(db, slotService);
+var respondHandler = new RespondTradeProposalCommandHandler(db, slotService, notifPublisher);
 
 var rejectCmd = new RespondTradeProposalCommand(
     TradeId: propData.Id,
@@ -205,9 +207,14 @@ var acceptCmd = new RespondTradeProposalCommand(
     RequestNote: "Draw my knight warrior"
 );
 var (accSuccess, accData, _) = await respondHandler.Handle(acceptCmd, default);
-AssertTrue(accSuccess, "Proposal accepted");
-AssertEqual(TradeStatus.Accepted, accData!.Status, "Trade status is Accepted");
-AssertTrue(accData.SubmissionDeadlineAt.HasValue, "Submission deadline is set");
+AssertTrue(accSuccess, "Proposal accepted by receiver");
+
+// Dual acceptance: Initiator confirms proposal to transition status to Accepted
+var confirmPropHandler = new ConfirmTradeProposalCommandHandler(db, slotService, notifPublisher);
+var (confSuccess, confData, _) = await confirmPropHandler.Handle(new ConfirmTradeProposalCommand(tradeId, artistA.Id), default);
+AssertTrue(confSuccess, "Proposal confirmed by initiator");
+AssertEqual(TradeStatus.Accepted, confData!.Status, "Trade status is Accepted");
+AssertTrue(confData.SubmissionDeadlineAt.HasValue, "Submission deadline is set");
 
 // Both users have 1 active trade
 var aSlotAccepted = await slotService.GetUserSlotStatusAsync(artistA.Id);
@@ -225,6 +232,7 @@ var trade2 = await proposeHandler.Handle(new ProposeTradeCommand(
 ), default);
 AssertTrue(trade2.Success, "Second trade proposed");
 await respondHandler.Handle(new RespondTradeProposalCommand(trade2.Data!.Id, artistC.Id, true), default);
+await confirmPropHandler.Handle(new ConfirmTradeProposalCommand(trade2.Data!.Id, artistA.Id), default);
 
 var aSlotFull = await slotService.GetUserSlotStatusAsync(artistA.Id);
 AssertEqual(0, aSlotFull.AvailableSlots, "Artist A available slots is 0 (2 active)");
@@ -238,14 +246,14 @@ AssertTrue(!trade3.Success, "3rd trade proposal blocked by quota");
 AssertTrue(trade3.Errors.Any(e => e.Contains("slot", StringComparison.OrdinalIgnoreCase)), "Error message mentions slot quota");
 
 // Clean up trade 2 so A has 1 slot available
-var cancelHandler = new CancelTradeCommandHandler(db, slotService);
+var cancelHandler = new CancelTradeCommandHandler(db, slotService, notifPublisher);
 await cancelHandler.Handle(new CancelTradeCommand(trade2.Data!.Id, artistA.Id, "Cancelled second"), default);
 
 // =============================================================
 // TEST 7: SUBMIT ARTWORK (BOTH SIDES)
 // =============================================================
 Console.WriteLine("\n--- TEST 7: SUBMIT ARTWORK (BOTH SIDES) ---");
-var submitHandler = new SubmitTradeArtworkCommandHandler(db, storageService, watermarkService);
+var submitHandler = new SubmitTradeArtworkCommandHandler(db, storageService, watermarkService, notifPublisher);
 
 // 1. Artist A submits artwork (PNG)
 using var aStream = new MemoryStream(Encoding.UTF8.GetBytes("Fake PNG data"));
@@ -299,7 +307,7 @@ await db.SaveChangesAsync();
 // TEST 8: DUAL CONFIRMATION & COMPLETION & OWNERSHIP TRANSFER
 // =============================================================
 Console.WriteLine("\n--- TEST 8: DUAL CONFIRMATION & COMPLETION ---");
-var confirmHandler = new ConfirmTradeCommandHandler(db);
+var confirmHandler = new ConfirmTradeCommandHandler(db, notifPublisher, storageService);
 var downloadHandler = new GetTradeDownloadUrlQueryHandler(db, storageService);
 
 // Artist A tries to download original file BEFORE completion -> blocked
@@ -394,8 +402,8 @@ AssertTrue(cSlotFrozen.FrozenDetails[0].DaysRemaining >= 29, "Days remaining is 
 // TEST 11: TRADE DISPUTE CREATION & ADMIN RESOLUTION
 // =============================================================
 Console.WriteLine("\n--- TEST 11: TRADE DISPUTE CREATION & ADMIN RESOLUTION ---");
-var disputeCreateHandler = new CreateTradeDisputeCommandHandler(db);
-var disputeResolveHandler = new ResolveTradeDisputeCommandHandler(db, slotService);
+var disputeCreateHandler = new CreateTradeDisputeCommandHandler(db, notifPublisher);
+var disputeResolveHandler = new ResolveTradeDisputeCommandHandler(db, slotService, notifPublisher);
 var disputeGetByIdHandler = new GetTradeDisputeByIdQueryHandler(db);
 var disputeListHandler = new GetTradeDisputesQueryHandler(db);
 
@@ -521,5 +529,22 @@ public class TestWatermarkService : IWatermarkService
     {
         var ms = new MemoryStream(new byte[] { 0x89, 0x50, 0x4E, 0x47 }); // PNG header bytes
         return Task.FromResult<Stream>(ms);
+    }
+}
+
+public class TestNotificationPublisher : INotificationPublisher
+{
+    public Task<NotificationDto?> PublishAsync(
+        Guid userId,
+        NotificationType notificationType,
+        string title,
+        string body,
+        string? refType = null,
+        Guid? refId = null,
+        NotificationChannel channel = NotificationChannel.InApp,
+        string? dedupKey = null,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<NotificationDto?>(null);
     }
 }
