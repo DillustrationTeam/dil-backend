@@ -36,7 +36,11 @@ public class WatermarkService : IWatermarkService
         }
         resized.Position = 0;
 
-        var payload = BitConverter.ToUInt64(RandomNumberGenerator.GetBytes(8));
+        ulong payload;
+        do
+        {
+            payload = BitConverter.ToUInt64(RandomNumberGenerator.GetBytes(8));
+        } while (payload == 0);
         var result = await _dwtWatermark.EmbedInvisibleWatermarkAsync(resized, payload, watermarkText, cancellationToken);
         return result.ProcessedStream;
     }

@@ -11,8 +11,11 @@ namespace ArtCommission.Domain.Entities.ArtistStudio;
 /// </summary>
 public class ArtworkWatermarkReceipt : BaseEntity
 {
-    [Required]
-    public Guid ArtworkId { get; set; }
+    public Guid? ArtworkId { get; set; }
+
+    public Guid? CommissionId { get; set; }
+
+    public Guid? MilestoneId { get; set; }
 
     [Required]
     [MaxLength(64)]
@@ -24,7 +27,18 @@ public class ArtworkWatermarkReceipt : BaseEntity
     public long? NumericPayload { get; set; }
 
     /// <summary>
-    /// ID người dùng mở xem tác phẩm (null nếu là khách vãng lai).
+    /// Mã băm thị giác 64-bit (dHash) để đối chiếu ngay cả khi ảnh bị chụp màn hình / crop dính viền UI.
+    /// </summary>
+    public long? VisualHash { get; set; }
+
+    [MaxLength(128)]
+    public string? FileSha256 { get; set; }
+
+    [MaxLength(256)]
+    public string? FileName { get; set; }
+
+    /// <summary>
+    /// ID người dùng mở xem hoặc nhận bàn giao tác phẩm (null nếu là khách vãng lai).
     /// </summary>
     public Guid? ViewerUserId { get; set; }
 

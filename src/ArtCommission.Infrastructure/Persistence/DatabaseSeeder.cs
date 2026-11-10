@@ -21,9 +21,13 @@ public static class DatabaseSeeder
             BEGIN
                 CREATE TABLE [dbo].[ArtworkWatermarkReceipts] (
                     [Id] uniqueidentifier NOT NULL PRIMARY KEY,
-                    [ArtworkId] uniqueidentifier NOT NULL,
+                    [ArtworkId] uniqueidentifier NULL,
+                    [CommissionId] uniqueidentifier NULL,
+                    [MilestoneId] uniqueidentifier NULL,
                     [ReceiptToken] nvarchar(64) NOT NULL,
                     [NumericPayload] bigint NULL,
+                    [FileSha256] nvarchar(128) NULL,
+                    [FileName] nvarchar(256) NULL,
                     [ViewerUserId] uniqueidentifier NULL,
                     [ViewerEmail] nvarchar(256) NULL,
                     [ViewerName] nvarchar(256) NULL,
@@ -37,12 +41,27 @@ public static class DatabaseSeeder
                     [UpdatedAt] datetimeoffset NULL,
                     [IsDeleted] bit NOT NULL DEFAULT 0,
                     CONSTRAINT [FK_ArtworkWatermarkReceipts_Artworks_ArtworkId]
-                        FOREIGN KEY ([ArtworkId]) REFERENCES [dbo].[Artworks] ([Id]) ON DELETE CASCADE
+                        FOREIGN KEY ([ArtworkId]) REFERENCES [dbo].[Artworks] ([Id]) ON DELETE SET NULL
                 );
                 CREATE UNIQUE INDEX [IX_ArtworkWatermarkReceipts_ReceiptToken] ON [dbo].[ArtworkWatermarkReceipts] ([ReceiptToken]);
                 CREATE INDEX [IX_ArtworkWatermarkReceipts_ArtworkId] ON [dbo].[ArtworkWatermarkReceipts] ([ArtworkId]);
+                CREATE INDEX [IX_ArtworkWatermarkReceipts_CommissionId] ON [dbo].[ArtworkWatermarkReceipts] ([CommissionId]);
+                CREATE INDEX [IX_ArtworkWatermarkReceipts_FileSha256] ON [dbo].[ArtworkWatermarkReceipts] ([FileSha256]);
                 CREATE INDEX [IX_ArtworkWatermarkReceipts_ViewerUserId] ON [dbo].[ArtworkWatermarkReceipts] ([ViewerUserId]);
                 CREATE INDEX [IX_ArtworkWatermarkReceipts_CreatedAt] ON [dbo].[ArtworkWatermarkReceipts] ([CreatedAt]);
+            END
+            ELSE
+            BEGIN
+                IF COL_LENGTH('dbo.ArtworkWatermarkReceipts', 'CommissionId') IS NULL
+                    ALTER TABLE [dbo].[ArtworkWatermarkReceipts] ADD [CommissionId] uniqueidentifier NULL;
+                IF COL_LENGTH('dbo.ArtworkWatermarkReceipts', 'MilestoneId') IS NULL
+                    ALTER TABLE [dbo].[ArtworkWatermarkReceipts] ADD [MilestoneId] uniqueidentifier NULL;
+                IF COL_LENGTH('dbo.ArtworkWatermarkReceipts', 'FileSha256') IS NULL
+                    ALTER TABLE [dbo].[ArtworkWatermarkReceipts] ADD [FileSha256] nvarchar(128) NULL;
+                IF COL_LENGTH('dbo.ArtworkWatermarkReceipts', 'FileName') IS NULL
+                    ALTER TABLE [dbo].[ArtworkWatermarkReceipts] ADD [FileName] nvarchar(256) NULL;
+                IF COL_LENGTH('dbo.ArtworkWatermarkReceipts', 'VisualHash') IS NULL
+                    ALTER TABLE [dbo].[ArtworkWatermarkReceipts] ADD [VisualHash] bigint NULL;
             END");
 
         var roles = new[]

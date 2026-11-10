@@ -1,4 +1,4 @@
-using ArtCommission.Application.Common.Interfaces;
+﻿using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Commission.DTOs;
 using ArtCommission.Application.Commission.Interfaces;
@@ -6,6 +6,7 @@ using ArtCommission.Application.Commission.Validators;
 using ArtCommission.Application.Dispute.CommissionDispute.DTOs;
 using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
+using ArtCommission.Domain.Entities.ArtistStudio;
 using ArtCommission.Domain.Entities.Commission;
 using ArtCommission.Domain.Entities.Dispute;
 using ArtCommission.Domain.Entities.Payment;
@@ -29,10 +30,12 @@ public class CommissionService : ICommissionService
     private readonly INotificationPublisher? _notifications;
     private readonly ILogger<CommissionService>? _logger;
     private readonly IEmailService? _emailService;
+    private readonly IArtworkWatermarkService? _artworkWatermarkService;
 
     public CommissionService(AppDbContext dbContext, IWalletService walletService, IWatermarkService watermarkService,
         IStorageService storageService, IVoucherCheckService voucherCheckService,
-        INotificationPublisher? notifications = null, ILogger<CommissionService>? logger = null, IEmailService? emailService = null)
+        INotificationPublisher? notifications = null, ILogger<CommissionService>? logger = null, IEmailService? emailService = null,
+        IArtworkWatermarkService? artworkWatermarkService = null)
     {
         _dbContext = dbContext;
         _walletService = walletService;
@@ -42,6 +45,17 @@ public class CommissionService : ICommissionService
         _notifications = notifications;
         _logger = logger;
         _emailService = emailService;
+        _artworkWatermarkService = artworkWatermarkService;
+    }
+
+    private static ulong GenerateNonZeroPayload()
+    {
+        ulong val;
+        do
+        {
+            val = BitConverter.ToUInt64(System.Security.Cryptography.RandomNumberGenerator.GetBytes(8));
+        } while (val == 0);
+        return val;
     }
 
     private static void RequireClient(Commission commission, Guid userId)
@@ -519,12 +533,42 @@ public class CommissionService : ICommissionService
         var originalKey = $"commissions/{commissionId}/milestone-{milestone.Sequence}-original-{Guid.NewGuid()}.jpg";
         var originalUrl = await _storageService.UploadPrivateAsync(fileStream, originalKey, contentType, cancellationToken);
 
-        // Reset stream for watermark
+        // Reset stream for watermark (DWT + lưu biên lai truy vết WIP)
         fileStream.Position = 0;
-        using var watermarkedStream = await _watermarkService.ApplyWatermarkAsync(fileStream, "PROTECTED DEMO · DO NOT COPY", cancellationToken);
-
         var watermarkedKey = $"commissions/{commissionId}/milestone-{milestone.Sequence}-watermarked-{Guid.NewGuid()}.png";
-        var watermarkedUrl = await _storageService.UploadPublicAsync(watermarkedStream, watermarkedKey, "image/png", cancellationToken);
+        string watermarkedUrl;
+        if (_artworkWatermarkService is not null)
+        {
+            var wipPayload = GenerateNonZeroPayload();
+            var wipToken = $"WIP-{commissionId.ToString("N")[..6].ToUpperInvariant()}-M{milestone.Sequence}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}";
+            var wipResult = await _artworkWatermarkService.CreateReducedMarketplacePreviewAsync(
+                fileStream, wipPayload, wipToken, 1920, cancellationToken);
+            await using var wipStream = wipResult.ProcessedStream;
+            wipStream.Position = 0;
+            var wipSha = Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(wipStream, cancellationToken)).ToLowerInvariant();
+            wipStream.Position = 0;
+            watermarkedUrl = await _storageService.UploadPublicAsync(wipStream, watermarkedKey, wipResult.ContentType, cancellationToken);
+
+            _dbContext.ArtworkWatermarkReceipts.Add(new ArtworkWatermarkReceipt
+            {
+                CommissionId = commissionId,
+                MilestoneId = milestone.Id,
+                ReceiptToken = wipToken,
+                NumericPayload = (long)wipPayload,
+                FileSha256 = wipSha,
+                FileName = Path.GetFileName(watermarkedKey),
+                ViewerUserId = commission.ClientId,
+                IpAddress = "commission-wip",
+                WatermarkType = "DwtCommissionWip",
+                Status = "Active",
+                Notes = $"Commission WIP Milestone #{milestone.Sequence}: {commission.Title}"
+            });
+        }
+        else
+        {
+            using var watermarkedStream = await _watermarkService.ApplyWatermarkAsync(fileStream, "PROTECTED DEMO · DO NOT COPY", cancellationToken);
+            watermarkedUrl = await _storageService.UploadPublicAsync(watermarkedStream, watermarkedKey, "image/png", cancellationToken);
+        }
 
 
         milestone.OriginalWipUrl = originalUrl;
@@ -757,13 +801,79 @@ public class CommissionService : ICommissionService
         var usedNames = new HashSet<string>(entries.Select(e => e.Name), StringComparer.OrdinalIgnoreCase);
         var now = DateTimeOffset.UtcNow;
 
+        var finalBatchToken = $"FIN-{id.ToString("N")[..6].ToUpperInvariant()}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}";
+        var finalPayload = GenerateNonZeroPayload();
+        var clientUser = await _dbContext.Users.AsNoTracking()
+            .Where(u => u.Id == commission.ClientId)
+            .Select(u => new { u.Email, u.FullName })
+            .FirstOrDefaultAsync(cancellationToken);
+        var receiptSeq = 0;
+
         foreach (var (item, safeName, sha256, length) in validated)
         {
-            var uniqueName = MakeUniqueEntryName(safeName, usedNames);
-            var key = $"commissions/{id}/final/{Guid.NewGuid()}-{uniqueName}";
-            item.FileStream.Position = 0;
-            var storedKey = await _storageService.UploadPrivateAsync(item.FileStream, key, item.ContentType, cancellationToken);
-            entries.Add(new StoredDeliverableEntry(Guid.NewGuid().ToString("N")[..12], uniqueName, storedKey, length, sha256, now));
+            if (_artworkWatermarkService is not null)
+            {
+                var summary = $"Commission={id} | Title={commission.Title} | Client={clientUser?.Email ?? commission.ClientId.ToString()}";
+                var processed = await _artworkWatermarkService.ProcessDeliverableWatermarkAsync(
+                    item.FileStream, safeName, item.ContentType, finalPayload, finalBatchToken, summary, cancellationToken);
+                await using var outStream = processed.OutputStream;
+                outStream.Position = 0;
+
+                var uniqueName = MakeUniqueEntryName(processed.OutputFileName, usedNames);
+                var key = $"commissions/{id}/final/{Guid.NewGuid()}-{uniqueName}";
+                var storedKey = await _storageService.UploadPrivateAsync(outStream, key, processed.OutputContentType, cancellationToken);
+                entries.Add(new StoredDeliverableEntry(Guid.NewGuid().ToString("N")[..12], uniqueName, storedKey, processed.LengthBytes, processed.OuterSha256, now));
+
+                if (string.Equals(Path.GetExtension(uniqueName), ".zip", StringComparison.OrdinalIgnoreCase))
+                {
+                    receiptSeq++;
+                    _dbContext.ArtworkWatermarkReceipts.Add(new ArtworkWatermarkReceipt
+                    {
+                        CommissionId = id,
+                        MilestoneId = lastMilestone.Id,
+                        ReceiptToken = $"{finalBatchToken}-{receiptSeq:D2}",
+                        NumericPayload = null,
+                        FileSha256 = processed.OuterSha256,
+                        FileName = uniqueName,
+                        ViewerUserId = commission.ClientId,
+                        ViewerEmail = clientUser?.Email,
+                        ViewerName = clientUser?.FullName,
+                        IpAddress = "commission-final",
+                        WatermarkType = "HashCommissionFinal",
+                        Status = "Active",
+                        Notes = $"Commission Final ZIP: {commission.Title}"
+                    });
+                }
+
+                foreach (var rec in processed.Records)
+                {
+                    receiptSeq++;
+                    _dbContext.ArtworkWatermarkReceipts.Add(new ArtworkWatermarkReceipt
+                    {
+                        CommissionId = id,
+                        MilestoneId = lastMilestone.Id,
+                        ReceiptToken = $"{finalBatchToken}-{receiptSeq:D2}",
+                        NumericPayload = rec.HasDwtWatermark ? (long)finalPayload : null,
+                        FileSha256 = rec.Sha256,
+                        FileName = rec.FileName,
+                        ViewerUserId = commission.ClientId,
+                        ViewerEmail = clientUser?.Email,
+                        ViewerName = clientUser?.FullName,
+                        IpAddress = "commission-final",
+                        WatermarkType = rec.HasDwtWatermark ? "DwtCommissionFinal" : "HashCommissionFinal",
+                        Status = "Active",
+                        Notes = $"Commission Final Deliverable ({(rec.HasDwtWatermark ? "DWT+SHA256" : "SHA256")}): {commission.Title}"
+                    });
+                }
+            }
+            else
+            {
+                var uniqueName = MakeUniqueEntryName(safeName, usedNames);
+                var key = $"commissions/{id}/final/{Guid.NewGuid()}-{uniqueName}";
+                item.FileStream.Position = 0;
+                var storedKey = await _storageService.UploadPrivateAsync(item.FileStream, key, item.ContentType, cancellationToken);
+                entries.Add(new StoredDeliverableEntry(Guid.NewGuid().ToString("N")[..12], uniqueName, storedKey, length, sha256, now));
+            }
         }
 
         await SaveManifestAsync(id, lastMilestone, entries, cancellationToken);
@@ -931,10 +1041,43 @@ public class CommissionService : ICommissionService
                             await using var dst = entry.Open();
                             await src.CopyToAsync(dst, cancellationToken);
                         }
+                        var receiptEntry = zip.CreateEntry(MakeUniqueEntryName("DIL-FORENSIC-RECEIPT.txt", usedNames), System.IO.Compression.CompressionLevel.Fastest);
+                        await using (var rDst = receiptEntry.Open())
+                        {
+                            var lines = new List<string>
+                            {
+                                "DILLUSTRATION COMMISSION BUNDLE FORENSIC RECEIPT",
+                                $"CommissionId : {id}",
+                                $"Title        : {commission.Title}",
+                                $"ClientId     : {commission.ClientId}",
+                                $"ManifestVer  : {manifest.Version}",
+                                "",
+                                "INCLUDED DELIVERABLE FILES (SHA-256):"
+                            };
+                            lines.AddRange(manifest.Files.Select(f => $"- {f.Name} | {f.Sha256}"));
+                            var receiptBytes = System.Text.Encoding.UTF8.GetBytes(string.Join(Environment.NewLine, lines));
+                            await rDst.WriteAsync(receiptBytes, cancellationToken);
+                        }
                     }
                     await zipFs.FlushAsync(cancellationToken);
                     zipFs.Position = 0;
+                    var bundleSha = Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(zipFs, cancellationToken)).ToLowerInvariant();
+                    zipFs.Position = 0;
                     targetStorageKey = await _storageService.UploadPrivateAsync(zipFs, bundleKey, "application/zip", cancellationToken);
+                    _dbContext.ArtworkWatermarkReceipts.Add(new ArtworkWatermarkReceipt
+                    {
+                        CommissionId = id,
+                        MilestoneId = lastMilestone?.Id,
+                        ReceiptToken = $"BND-{id.ToString("N")[..6].ToUpperInvariant()}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}",
+                        FileSha256 = bundleSha,
+                        FileName = Path.GetFileName(bundleKey),
+                        ViewerUserId = userId,
+                        IpAddress = "commission-bundle",
+                        WatermarkType = "HashCommissionFinal",
+                        Status = "Active",
+                        Notes = $"Commission Bundle ZIP: {commission.Title}"
+                    });
+                    await _dbContext.SaveChangesAsync(cancellationToken);
                 }
                 finally
                 {

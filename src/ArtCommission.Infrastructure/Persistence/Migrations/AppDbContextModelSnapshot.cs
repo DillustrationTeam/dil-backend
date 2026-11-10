@@ -470,11 +470,22 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid>("ArtworkId")
+                    b.Property<Guid?>("ArtworkId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CommissionId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("FileName")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("FileSha256")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
 
                     b.Property<string>("IpAddress")
                         .IsRequired()
@@ -483,6 +494,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
+
+                    b.Property<Guid?>("MilestoneId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(1000)
@@ -525,6 +539,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("ViewerUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<long?>("VisualHash")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("WatermarkType")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -536,12 +553,18 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ArtworkId");
 
+                    b.HasIndex("CommissionId");
+
                     b.HasIndex("CreatedAt");
+
+                    b.HasIndex("FileSha256");
 
                     b.HasIndex("ReceiptToken")
                         .IsUnique();
 
                     b.HasIndex("ViewerUserId");
+
+                    b.HasIndex("VisualHash");
 
                     b.ToTable("ArtworkWatermarkReceipts", (string)null);
                 });
@@ -4141,8 +4164,7 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.HasOne("ArtCommission.Domain.Entities.ArtistStudio.Artwork", "Artwork")
                         .WithMany()
                         .HasForeignKey("ArtworkId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Artwork");
                 });

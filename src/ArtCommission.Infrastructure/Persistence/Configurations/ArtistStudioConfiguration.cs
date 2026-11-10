@@ -225,9 +225,14 @@ public class ArtworkWatermarkReceiptConfiguration : IEntityTypeConfiguration<Art
         builder.HasIndex(x => x.ReceiptToken).IsUnique();
 
         builder.HasIndex(x => x.ArtworkId);
+        builder.HasIndex(x => x.CommissionId);
+        builder.HasIndex(x => x.FileSha256);
+        builder.HasIndex(x => x.VisualHash);
         builder.HasIndex(x => x.ViewerUserId);
         builder.HasIndex(x => x.CreatedAt);
 
+        builder.Property(x => x.FileSha256).HasMaxLength(128);
+        builder.Property(x => x.FileName).HasMaxLength(256);
         builder.Property(x => x.IpAddress).HasMaxLength(64).IsRequired();
         builder.Property(x => x.ViewerEmail).HasMaxLength(256);
         builder.Property(x => x.ViewerName).HasMaxLength(256);
@@ -240,6 +245,7 @@ public class ArtworkWatermarkReceiptConfiguration : IEntityTypeConfiguration<Art
         builder.HasOne(x => x.Artwork)
             .WithMany()
             .HasForeignKey(x => x.ArtworkId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }
