@@ -3,6 +3,8 @@ using ArtCommission.Application.Commission.DTOs;
 
 namespace ArtCommission.Application.Commission.Interfaces;
 
+public sealed record DeliverableUploadItem(Stream FileStream, string ContentType, string FileName, long Length);
+
 public interface ICommissionService
 {
     Task<CommissionDto> CreateCommissionAsync(CreateCommissionRequest request, Guid clientId, CancellationToken cancellationToken = default);
@@ -20,12 +22,18 @@ public interface ICommissionService
     Task<MilestoneDto> RequestMilestoneRevisionAsync(Guid commissionId, Guid milestoneId, RequestRevisionRequest request, Guid clientId, CancellationToken cancellationToken = default);
     
     Task<CommissionDto> DeliverFinalWorkAsync(Guid id, Stream fileStream, string contentType, string fileName, Guid creatorId, CancellationToken cancellationToken = default);
+    Task<CommissionDto> DeliverFinalWorkAsync(Guid id, IReadOnlyList<DeliverableUploadItem> files, Guid creatorId, CancellationToken cancellationToken = default);
+    Task<DeliverablesManifestDto> GetDeliverablesManifestAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
+    Task<DeliverablesManifestDto> DeleteDeliverableFileAsync(Guid id, string fileId, Guid creatorId, CancellationToken cancellationToken = default);
     Task<CommissionDto> CompleteCommissionAsync(Guid id, Guid clientId, CancellationToken cancellationToken = default);
+    Task<CommissionDto> CompleteCommissionAsync(Guid id, Guid clientId, string? expectedManifestVersion, CancellationToken cancellationToken = default);
     Task<FinalDownloadDto> GetFinalDownloadUrlAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
+    Task<FinalDownloadDto> GetFinalDownloadUrlAsync(Guid id, Guid userId, string? fileId, CancellationToken cancellationToken = default);
     
     Task<CommissionDto> CancelCommissionAsync(Guid id, CancelWithPolicyRequest request, Guid userId, CancellationToken cancellationToken = default);
     Task<CommissionDto> RespondCancellationRequestAsync(Guid id, bool approve, Guid userId, CancellationToken cancellationToken = default);
     Task ProcessCancellationDeadlinesAsync(CancellationToken cancellationToken = default);
+    Task ProcessMilestoneAutoAcceptDeadlinesAsync(CancellationToken cancellationToken = default);
     
     Task<ArtCommission.Application.Dispute.CommissionDispute.DTOs.CommissionDisputeDto> CreateDisputeAsync(Guid id, CreateDisputeRequest request, Guid raisedById, CancellationToken cancellationToken = default);
     Task<ArtCommission.Application.Dispute.CommissionDispute.DTOs.CommissionDisputeDto?> GetDisputeByCommissionIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);

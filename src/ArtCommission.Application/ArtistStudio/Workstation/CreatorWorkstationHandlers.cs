@@ -28,7 +28,7 @@ public class CreatorWorkstationQueryHandler : IRequestHandler<GetCreatorWorkstat
         var id = await ProfileId(q.UserId, ct); if (id is null) return null;
         var terms = await _db.CreatorTerms.AsNoTracking().FirstOrDefaultAsync(x => x.CreatorProfileId == id && !x.IsDeleted, ct);
         var autoReply = await _db.CreatorAutoReplySettings.AsNoTracking().FirstOrDefaultAsync(x => x.CreatorProfileId == id && !x.IsDeleted, ct);
-        return new CreatorWorkstationStateDto(terms is null ? new CreatorTermsDto(1.5m, null, null) : new CreatorTermsDto(terms.CommercialLicenseMultiplier, terms.RevisionPolicy, terms.CancellationPolicy), autoReply is null ? new AutoReplySettingDto(false, string.Empty) : new AutoReplySettingDto(autoReply.IsEnabled, autoReply.BriefTemplate), await Handle(new GetCreatorFaqsQuery(q.UserId), ct), await Handle(new GetCreatorWorkItemsQuery(q.UserId), ct), await Handle(new GetCreatorAssetsQuery(q.UserId, null), ct));
+        return new CreatorWorkstationStateDto(CreatorTermsHelper.ToDto(terms), autoReply is null ? new AutoReplySettingDto(false, string.Empty) : new AutoReplySettingDto(autoReply.IsEnabled, autoReply.BriefTemplate), await Handle(new GetCreatorFaqsQuery(q.UserId), ct), await Handle(new GetCreatorWorkItemsQuery(q.UserId), ct), await Handle(new GetCreatorAssetsQuery(q.UserId, null), ct));
     }
     public async Task<CreatorTermsDto?> Handle(GetCreatorTermsQuery q, CancellationToken ct)
     {
@@ -38,7 +38,7 @@ public class CreatorWorkstationQueryHandler : IRequestHandler<GetCreatorWorkstat
             .FirstOrDefaultAsync(ct);
         if (profileId is null) return null;
         var terms = await _db.CreatorTerms.AsNoTracking().FirstOrDefaultAsync(x => x.CreatorProfileId == profileId && !x.IsDeleted, ct);
-        return terms is null ? new CreatorTermsDto(1.5m, null, null) : new CreatorTermsDto(terms.CommercialLicenseMultiplier, terms.RevisionPolicy, terms.CancellationPolicy);
+        return CreatorTermsHelper.ToDto(terms);
     }
 }
 
@@ -56,7 +56,19 @@ public class CreatorWorkstationMutationHandler : IRequestHandler<CreatorWorkstat
             case "terms":
                 if (c.Payload is not UpdateCreatorTermsRequest terms || terms.CommercialLicenseMultiplier is < 1m or > 10m) return (false, null, new[] { "Commercial license multiplier must be between 1 and 10." });
                 var entity = await _db.CreatorTerms.FirstOrDefaultAsync(x => x.CreatorProfileId == profile.Id && !x.IsDeleted, ct) ?? new CreatorTerms { CreatorProfileId = profile.Id };
-                entity.CommercialLicenseMultiplier = terms.CommercialLicenseMultiplier; entity.RevisionPolicy = terms.RevisionPolicy?.Trim(); entity.CancellationPolicy = terms.CancellationPolicy?.Trim(); if (entity.Id == Guid.Empty) _db.CreatorTerms.Add(entity); await _db.SaveChangesAsync(ct); return (true, new CreatorTermsDto(entity.CommercialLicenseMultiplier, entity.RevisionPolicy, entity.CancellationPolicy), Array.Empty<string>());
+                var isNewTerms = entity.Id == Guid.Empty;
+                var prevExt = CreatorTermsHelper.ParseExtended(entity.ExtendedTermsJson);
+                var ext = terms.Extended ?? new CreatorExtendedTermsDto();
+                static string? TrimMax(string? s, int max) => string.IsNullOrWhiteSpace(s) ? null : s.Trim() is var t && t.Length <= max ? t : t[..max];
+                entity.CommercialLicenseMultiplier = Math.Round(terms.CommercialLicenseMultiplier, 2, MidpointRounding.AwayFromZero);
+                entity.RevisionPolicy = TrimMax(terms.RevisionPolicy, 2000);
+                entity.CancellationPolicy = TrimMax(terms.CancellationPolicy, 2000);
+                var customClauses = (ext.CustomClauses ?? Array.Empty<CreatorCustomClauseDto>()).Where(item => !string.IsNullOrWhiteSpace(item.Title) || !string.IsNullOrWhiteSpace(item.Content)).Take(10).Select(item => new CreatorCustomClauseDto(TrimMax(item.Title, 150) ?? "Điều khoản bổ sung", TrimMax(item.Content, 1500) ?? string.Empty)).ToArray();
+                entity.ExtendedTermsJson = CreatorTermsHelper.SerializeExtended(ext with { Version = isNewTerms && string.IsNullOrEmpty(entity.ExtendedTermsJson) ? 1 : prevExt.Version + 1, WillDraw = TrimMax(ext.WillDraw, 1500), WontDraw = TrimMax(ext.WontDraw, 1500), CommercialScope = TrimMax(ext.CommercialScope, 1500), UsageRestrictions = TrimMax(ext.UsageRestrictions, 1500), DeliveryProcess = null, CustomClauses = customClauses });
+                entity.UpdatedAt = DateTimeOffset.UtcNow;
+                if (isNewTerms) _db.CreatorTerms.Add(entity);
+                await _db.SaveChangesAsync(ct);
+                return (true, CreatorTermsHelper.ToDto(entity), Array.Empty<string>());
             case "auto-reply":
                 if (c.Payload is not UpdateAutoReplySettingRequest reply || reply.BriefTemplate.Length > 2000) return (false, null, new[] { "Auto-reply template is invalid." });
                 var setting = await _db.CreatorAutoReplySettings.FirstOrDefaultAsync(x => x.CreatorProfileId == profile.Id && !x.IsDeleted, ct) ?? new CreatorAutoReplySetting { CreatorProfileId = profile.Id };

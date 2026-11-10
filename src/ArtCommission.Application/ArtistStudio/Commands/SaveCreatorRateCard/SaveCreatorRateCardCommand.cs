@@ -39,17 +39,21 @@ public class SaveCreatorRateCardCommandHandler
                 m.Price <= 0 || decimal.Truncate(m.Price) != m.Price || m.Price > 1000000000000m || m.MaxRevisions is < 0 or > 20) ||
             !p.Milestones.Select(m => m.Sequence).SequenceEqual(Enumerable.Range(1, p.Milestones.Count)) ||
             p.Price != p.Milestones.Sum(m => m.Price) ||
+            (p.MaxSlots.HasValue && (p.MaxSlots.Value < 0 || p.MaxSlots.Value > 100)) ||
             p.SampleUrls?.Count > 10 ||
             p.SampleUrls?.Any(u => string.IsNullOrWhiteSpace(u) || u.Length > 2000) == true))
-            return (false, null, new[] { "Gói cần 1–10 mốc, giá VND nguyên dương, tổng giá đúng, 0–20 lần sửa và tối đa 10 ảnh mẫu hợp lệ." });
+            return (false, null, new[] { "Gói cần 1–10 mốc, giá VND nguyên dương, tổng giá đúng, 0–20 lần sửa, 0–100 slot (hoặc không giới hạn) và tối đa 10 ảnh mẫu hợp lệ." });
 
         try
         {
-            profile.RateCardJson = JsonSerializer.Serialize(request.Packages ?? new List<RateCardPackageDto>(), JsonOptions);
+            var normalized = (request.Packages ?? new List<RateCardPackageDto>())
+                .Select(p => p with { OrderCount = 0, ActiveOrderCount = 0, RemainingSlots = null })
+                .ToList();
+            profile.RateCardJson = JsonSerializer.Serialize(normalized, JsonOptions);
             profile.UpdatedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(cancellationToken);
 
-            return (true, request.Packages, Array.Empty<string>());
+            return (true, normalized, Array.Empty<string>());
         }
         catch (Exception ex)
         {

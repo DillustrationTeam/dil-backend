@@ -547,6 +547,10 @@ if (!isDocumentGeneration)
             "commission-cancellation-lifecycle",
             job => job.RunAsync(CancellationToken.None),
             Cron.Minutely);
+        recurringJobManager.AddOrUpdate<MilestoneAutoAcceptJob>(
+            "milestone-auto-accept",
+            job => job.RunAsync(CancellationToken.None),
+            Cron.Minutely);
     }
     catch (Exception ex)
     {
@@ -614,6 +618,7 @@ app.Use(async (context, next) =>
     if (!string.IsNullOrEmpty(fileName))
     {
         context.Response.Headers["Content-Disposition"] = $"attachment; filename=\"{Uri.EscapeDataString(fileName)}\"";
+        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     }
 
     await next();
