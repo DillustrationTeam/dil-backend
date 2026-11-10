@@ -79,28 +79,37 @@ public class ConfirmTradeCommandHandler : IRequestHandler<ConfirmTradeCommand, (
         var now = DateTimeOffset.UtcNow;
         var sideNorm = request.Side?.Trim().ToLowerInvariant();
 
-        if (sideNorm == "initiator")
+        // Một người dùng CHỈ CÓ THỂ xác nhận cho chính mình (hài lòng với tác phẩm của đối tác)
+        // và KHÔNG THỂ xác nhận thay cho đối tác
+        if (isInitiator)
         {
+            if (sideNorm == "receiver")
+            {
+                return (false, null, ["Bạn không thể xác nhận sự hài lòng thay cho đối tác."]);
+            }
+
+            if (string.IsNullOrEmpty(trade.ReceiverOriginalFileUrl) || !trade.ReceiverSubmittedAt.HasValue)
+            {
+                return (false, null, ["Đối tác chưa nộp tác phẩm, bạn chưa thể xác nhận hài lòng."]);
+            }
+
             trade.IsInitiatorConfirmed = true;
             trade.InitiatorConfirmedAt = now;
         }
-        else if (sideNorm == "receiver")
+        else if (isReceiver)
         {
+            if (sideNorm == "initiator")
+            {
+                return (false, null, ["Bạn không thể xác nhận sự hài lòng thay cho đối tác."]);
+            }
+
+            if (string.IsNullOrEmpty(trade.InitiatorOriginalFileUrl) || !trade.InitiatorSubmittedAt.HasValue)
+            {
+                return (false, null, ["Đối tác chưa nộp tác phẩm, bạn chưa thể xác nhận hài lòng."]);
+            }
+
             trade.IsReceiverConfirmed = true;
             trade.ReceiverConfirmedAt = now;
-        }
-        else
-        {
-            if (isInitiator)
-            {
-                trade.IsInitiatorConfirmed = true;
-                trade.InitiatorConfirmedAt = now;
-            }
-            if (isReceiver)
-            {
-                trade.IsReceiverConfirmed = true;
-                trade.ReceiverConfirmedAt = now;
-            }
         }
 
         trade.UpdatedAt = now;
