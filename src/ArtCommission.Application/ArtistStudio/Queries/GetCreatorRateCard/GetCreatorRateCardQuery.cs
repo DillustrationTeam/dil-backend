@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard;
 
 public record RateCardMilestoneDto(int Sequence, string Title, decimal Price, int MaxRevisions = 3);
-public record RateCardPackageDto(Guid Id, string Name, string? Description, decimal Price, List<RateCardMilestoneDto> Milestones, int MaxRevisions = 3, decimal ExtraRevisionPrice = 0, List<string>? SampleUrls = null, int OrderCount = 0);
+public record RateCardPackageDto(Guid Id, string Name, string? Description, decimal Price, List<RateCardMilestoneDto> Milestones, int MaxRevisions = 3, decimal ExtraRevisionPrice = 0, List<string>? SampleUrls = null, int OrderCount = 0, int? MaxSlots = null, int ActiveOrderCount = 0, int? RemainingSlots = null);
 
 // Older stored packages used slugs. Map them consistently to IDs for display and ordering.
 public sealed class RateCardIdConverter : JsonConverter<Guid>
@@ -66,12 +66,31 @@ public class GetCreatorRateCardQueryHandler : IRequestHandler<GetCreatorRateCard
                 var packageIds = packages.Select(p => (Guid?)p.Id).ToList();
                 var counts = await _db.Set<Domain.Entities.Commission.Commission>()
                     .AsNoTracking()
-                    .Where(c => c.CreatorId == profile.Id && c.PackageId != null && packageIds.Contains(c.PackageId))
+                    .Where(c => !c.IsDeleted && c.CreatorId == profile.Id && c.PackageId != null && packageIds.Contains(c.PackageId))
                     .GroupBy(c => c.PackageId!.Value)
-                    .Select(g => new { PackageId = g.Key, Count = g.Count() })
-                    .ToDictionaryAsync(x => x.PackageId, x => x.Count, cancellationToken);
+                    .Select(g => new
+                    {
+                        PackageId = g.Key,
+                        TotalCount = g.Count(),
+                        ActiveCount = g.Count(c =>
+                            c.Status == Domain.Enums.CommissionStatus.InProgress
+                            || c.Status == Domain.Enums.CommissionStatus.Delivered
+                            || c.Status == Domain.Enums.CommissionStatus.Disputed)
+                    })
+                    .ToDictionaryAsync(x => x.PackageId, x => x, cancellationToken);
 
-                packages = packages.Select(p => p with { OrderCount = counts.GetValueOrDefault(p.Id, 0) }).ToList();
+                packages = packages.Select(p =>
+                {
+                    var stat = counts.GetValueOrDefault(p.Id);
+                    var activeCount = stat?.ActiveCount ?? 0;
+                    int? remaining = p.MaxSlots.HasValue ? Math.Max(0, p.MaxSlots.Value - activeCount) : null;
+                    return p with
+                    {
+                        OrderCount = stat?.TotalCount ?? 0,
+                        ActiveOrderCount = activeCount,
+                        RemainingSlots = remaining
+                    };
+                }).ToList();
             }
             return (true, packages, Array.Empty<string>());
         }

@@ -464,6 +464,111 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.ToTable("ArtworkTags", (string)null);
                 });
 
+            modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.ArtworkWatermarkReceipt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ArtworkId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CommissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("FileName")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("FileSha256")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("IpAddress")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("MilestoneId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<long?>("NumericPayload")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ReceiptToken")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("SessionId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasDefaultValue("Active");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ViewerEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("ViewerName")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<Guid?>("ViewerUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("VisualHash")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("WatermarkType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasDefaultValue("DwtForensic");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ArtworkId");
+
+                    b.HasIndex("CommissionId");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("FileSha256");
+
+                    b.HasIndex("ReceiptToken")
+                        .IsUnique();
+
+                    b.HasIndex("ViewerUserId");
+
+                    b.HasIndex("VisualHash");
+
+                    b.ToTable("ArtworkWatermarkReceipts", (string)null);
+                });
+
             modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.ClientProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -874,6 +979,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("CreatorProfileId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ExtendedTermsJson")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
@@ -1883,6 +1991,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTimeOffset?>("CreatorTermsAcceptedAt")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatorTermsSnapshotJson")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("CreatorTermsVersion")
                         .HasMaxLength(20)
@@ -4306,6 +4417,16 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Navigation("Artwork");
 
                     b.Navigation("Tag");
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.ArtworkWatermarkReceipt", b =>
+                {
+                    b.HasOne("ArtCommission.Domain.Entities.ArtistStudio.Artwork", "Artwork")
+                        .WithMany()
+                        .HasForeignKey("ArtworkId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Artwork");
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.ClientProfile", b =>

@@ -1,4 +1,4 @@
-using ArtCommission.Application.ArtistStudio.DTOs;
+﻿using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Common.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -27,7 +27,7 @@ public class GetArtworkRecommendationsHandler(IApplicationDbContext db) : IReque
             var matches = tags.Where(weights.ContainsKey).ToArray();
             var follows = followed.Contains(a.CreatorProfileId);
             var score = matches.Sum(t => Math.Min(weights[t], 5) * 3d) + (follows ? 4 : 0) + Math.Min(a.LikeCount, 100) / 100d + 1 / (1 + Math.Max(0, (DateTimeOffset.UtcNow - a.CreatedAt).TotalDays));
-            var dto = new ArtworkDto(a.Id, a.CreatorProfileId, a.Title, a.Description, a.ImageUrl, a.ThumbnailUrl, a.IsAiGenerated, a.AiDetectionScore, a.ModerationStatus, a.ViewCount, a.CreatedAt, tags) { CreatorName = a.CreatorProfile!.DisplayName, Style = a.Style };
+            var dto = new ArtworkDto(a.Id, a.CreatorProfileId, a.Title, a.Description, a.WatermarkedUrl ?? a.ImageUrl, a.WatermarkedUrl ?? a.ThumbnailUrl ?? a.ImageUrl, a.IsAiGenerated, a.AiDetectionScore, a.ModerationStatus, a.ViewCount, a.CreatedAt, tags) { CreatorName = a.CreatorProfile!.DisplayName, Style = a.Style };
             var reason = matches.Length > 0 ? $"Phù hợp với tag bạn quan tâm: {string.Join(", ", matches.Take(2))}" : follows ? "Từ Creator bạn đang theo dõi" : "Khám phá tác phẩm đã được duyệt";
             return new { Value = new ArtworkRecommendation(dto, reason), Score = score };
         }).OrderByDescending(x => x.Score).ThenBy(x => x.Value.Artwork.Id).Take(Math.Clamp(q.Take, 1, 30)).Select(x => x.Value).ToArray();

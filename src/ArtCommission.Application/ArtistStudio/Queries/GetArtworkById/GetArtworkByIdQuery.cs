@@ -1,4 +1,4 @@
-using ArtCommission.Application.ArtistStudio.DTOs;
+﻿using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Common.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -35,8 +35,8 @@ public class GetArtworkByIdQueryHandler : IRequestHandler<GetArtworkByIdQuery, (
             artwork.CreatorProfileId,
             artwork.Title,
             artwork.Description,
-            artwork.ImageUrl,
-            artwork.ThumbnailUrl,
+            artwork.WatermarkedUrl ?? artwork.ImageUrl,
+            artwork.WatermarkedUrl ?? artwork.ThumbnailUrl ?? artwork.ImageUrl,
             artwork.IsAiGenerated,
             artwork.AiDetectionScore,
             artwork.ModerationStatus,

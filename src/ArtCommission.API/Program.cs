@@ -461,7 +461,10 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddScoped<ICommissionService, CommissionService>();
 builder.Services.AddScoped<IAddonService, AddonService>();
 builder.Services.AddScoped<IWatermarkService, WatermarkService>();
-if (string.IsNullOrWhiteSpace(builder.Configuration["CloudflareR2:AccountId"]))
+builder.Services.AddScoped<IArtworkWatermarkService, ArtworkWatermarkService>();
+var r2AccountId = builder.Configuration["CloudflareR2:AccountId"];
+var r2Domain = builder.Configuration["CloudflareR2:PublicDomain"];
+if (string.IsNullOrWhiteSpace(r2AccountId) || r2Domain?.Contains("pub-xxxx") == true || r2AccountId.StartsWith("REPLACE", StringComparison.OrdinalIgnoreCase))
 {
     builder.Services.AddScoped<IStorageService, LocalFileStorageService>();
 }
@@ -551,6 +554,10 @@ if (!isDocumentGeneration)
             "commission-cancellation-lifecycle",
             job => job.RunAsync(CancellationToken.None),
             Cron.Minutely);
+        recurringJobManager.AddOrUpdate<MilestoneAutoAcceptJob>(
+            "milestone-auto-accept",
+            job => job.RunAsync(CancellationToken.None),
+            Cron.Minutely);
     }
     catch (Exception ex)
     {
@@ -597,17 +604,28 @@ app.Use(async (context, next) =>
         return;
     }
 
-    var privateKey = Uri.UnescapeDataString(remaining.Value?.TrimStart('/') ?? string.Empty);
+    var rawKey = remaining.Value?.TrimStart('/') ?? string.Empty;
+    var unescapedKey = Uri.UnescapeDataString(rawKey);
     var signingKey = ArtCommission.Infrastructure.ExternalServices.R2.LocalPresignedUrlSigner
         .GetSigningKey(context.RequestServices.GetRequiredService<IConfiguration>());
-    if (!ArtCommission.Infrastructure.ExternalServices.R2.LocalPresignedUrlSigner.IsValid(
-            privateKey,
-            context.Request.Query["expires"],
-            context.Request.Query["signature"],
-            signingKey))
+    var expires = context.Request.Query["expires"];
+    var signature = context.Request.Query["signature"];
+    var isValid = ArtCommission.Infrastructure.ExternalServices.R2.LocalPresignedUrlSigner.IsValid(
+            rawKey, expires, signature, signingKey)
+        || ArtCommission.Infrastructure.ExternalServices.R2.LocalPresignedUrlSigner.IsValid(
+            unescapedKey, expires, signature, signingKey);
+
+    if (!isValid)
     {
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
         return;
+    }
+
+    var fileName = Path.GetFileName(unescapedKey);
+    if (!string.IsNullOrEmpty(fileName))
+    {
+        context.Response.Headers["Content-Disposition"] = $"attachment; filename=\"{Uri.EscapeDataString(fileName)}\"";
+        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     }
 
     await next();

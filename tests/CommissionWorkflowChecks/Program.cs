@@ -18,6 +18,7 @@ using ArtCommission.Infrastructure.ExternalServices.R2;
 if (args.Contains("--artwork-ai")) { await ArtworkAiChecks.RunAsync(); return; }
 
 if (args.Contains("--sql-addons")) { await SqlAddonChecks.RunAsync(); return; }
+if (args.Contains("--tiered-auto-accept")) { await TieredEscrowAndAutoAcceptChecks.RunAsync(); return; }
 
 var clientId = Guid.NewGuid();
 var creatorId = Guid.NewGuid();
@@ -133,7 +134,8 @@ for (var i = 0; i < normal.Milestones.Length; i++)
 var approved = await service.GetCommissionByIdAsync(normal.Id, clientId);
 Equal(0m, approved!.EscrowHeldAmount, "escrow exhausted");
 Equal(EscrowStatus.Released.ToString(), approved.EscrowStatus, "escrow released");
-await service.DeliverFinalWorkAsync(normal.Id, new MemoryStream(new byte[] { 1, 2, 3 }), "image/png", "final.png", creatorId);
+MemoryStream ValidPngStream() { using var img = new SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32>(1, 1); var ms = new MemoryStream(); SixLabors.ImageSharp.ImageExtensions.SaveAsPng(img, ms); ms.Position = 0; return ms; }
+await service.DeliverFinalWorkAsync(normal.Id, ValidPngStream(), "image/png", "final.png", creatorId);
 var deliveryDownload = await service.GetFinalDownloadUrlAsync(normal.Id, clientId);
 Equal(true, deliveryDownload.DownloadUrl.StartsWith("https://example.test/"), "client can inspect final delivery before completion");
 try
@@ -746,10 +748,19 @@ sealed class TestWatermark : IWatermarkService
 {
     public Task<Stream> ApplyWatermarkAsync(Stream stream, string text, CancellationToken ct = default) => Task.FromResult<Stream>(new MemoryStream(new byte[] { 4, 5, 6 }));
 }
-sealed class TestStorage : IStorageService
+sealed class TestStorage : IStorageService
 {
+    public Dictionary<string, byte[]> UploadedPrivate { get; } = [];
     public Task<string> UploadPublicAsync(Stream stream, string key, string contentType, CancellationToken ct = default) => Task.FromResult(key);
-    public Task<string> UploadPrivateAsync(Stream stream, string key, string contentType, CancellationToken ct = default) => Task.FromResult(key);
+    public Task<string> UploadPrivateAsync(Stream stream, string key, string contentType, CancellationToken ct = default)
+    {
+        using var copy = new MemoryStream();
+        stream.CopyTo(copy);
+        UploadedPrivate[key] = copy.ToArray();
+        return Task.FromResult(key);
+    }
+    public Task<Stream?> OpenPrivateReadAsync(string key, CancellationToken ct = default)
+        => Task.FromResult<Stream?>(UploadedPrivate.TryGetValue(key, out var bytes) ? new MemoryStream(bytes) : null);
     public string GeneratePresignedDownloadUrl(string key, TimeSpan expiry) => "https://example.test/" + key;
 }
 

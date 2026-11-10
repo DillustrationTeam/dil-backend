@@ -55,6 +55,33 @@ try
     }, Guid.NewGuid());
     throw new Exception("Invalid package was accepted.");
 }
+
+
 catch (ArgumentException) { }
+
+// Verify extended ToS save, versioning, and immutable commission snapshot
+var creatorUserId = await db.CreatorProfiles.Where(p => p.Id == creatorId).Select(p => p.UserId).FirstAsync();
+var mutation = new ArtCommission.Application.ArtistStudio.Workstation.CreatorWorkstationMutationHandler(db);
+var save1 = await mutation.Handle(new ArtCommission.Application.ArtistStudio.Workstation.CreatorWorkstationMutationCommand(
+    "terms", creatorUserId, Guid.Empty,
+    new ArtCommission.Application.ArtistStudio.DTOs.UpdateCreatorTermsRequest(
+        1.8m, "02 free sketch revisions", "No refund after sketch approval",
+        new ArtCommission.Application.ArtistStudio.DTOs.CreatorExtendedTermsDto(WillDraw: "OC", WontDraw: "NSFW", ProhibitAiTraining: true))), CancellationToken.None);
+if (!save1.Success) throw new Exception("Failed to save extended terms.");
+var afterSave1 = await Create("Commercial");
+if (afterSave1.CreatorTermsSnapshot?.Extended?.WillDraw != "OC" || afterSave1.CreatorTermsSnapshot.CommercialLicenseMultiplier != 1.8m)
+    throw new Exception("Commission snapshot did not capture creator extended terms.");
+
+var save2 = await mutation.Handle(new ArtCommission.Application.ArtistStudio.Workstation.CreatorWorkstationMutationCommand(
+    "terms", creatorUserId, Guid.Empty,
+    new ArtCommission.Application.ArtistStudio.DTOs.UpdateCreatorTermsRequest(
+        2.5m, "Changed policy", "Changed cancel",
+        new ArtCommission.Application.ArtistStudio.DTOs.CreatorExtendedTermsDto(WillDraw: "Changed", ProhibitAiTraining: false))), CancellationToken.None);
+if (!save2.Success) throw new Exception("Failed to update extended terms.");
+var reloadedOldOrder = await service.GetCommissionByIdAsync(afterSave1.Id, afterSave1.ClientId);
+if (reloadedOldOrder?.CreatorTermsSnapshot?.Extended?.WillDraw != "OC"
+    || reloadedOldOrder.CreatorTermsSnapshot.CommercialLicenseMultiplier != 1.8m
+    || reloadedOldOrder.CreatorTermsSnapshot.Extended?.Version >= ((ArtCommission.Application.ArtistStudio.DTOs.CreatorTermsDto)save2.Data!).Extended?.Version)
+    throw new Exception("Existing commission snapshot mutated or version did not increment.");
 
 Console.WriteLine("License pricing checks passed.");

@@ -1,4 +1,4 @@
-using ArtCommission.Application.ArtistStudio.DTOs;
+﻿using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.ArtistStudio.Queries;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Entities.ArtistStudio;
@@ -24,7 +24,7 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
 {
     private readonly IApplicationDbContext _db;
     public MarketplaceQueryHandler(IApplicationDbContext db) => _db = db;
-    private static ArtworkDto Map(Artwork x) => new(x.Id, x.CreatorProfileId, x.Title, x.Description, x.ImageUrl, x.ThumbnailUrl, x.IsAiGenerated, x.AiDetectionScore, x.ModerationStatus, x.ViewCount, x.CreatedAt, x.ArtworkTags.Select(t => t.Tag!.Name).ToList())
+    private static ArtworkDto Map(Artwork x) => new(x.Id, x.CreatorProfileId, x.Title, x.Description, x.WatermarkedUrl ?? x.ImageUrl, x.WatermarkedUrl ?? x.ThumbnailUrl ?? x.ImageUrl, x.IsAiGenerated, x.AiDetectionScore, x.ModerationStatus, x.ViewCount, x.CreatedAt, x.ArtworkTags.Select(t => t.Tag!.Name).ToList())
     {
         CreatorName = x.CreatorProfile?.DisplayName,
         CreatorHeadline = x.CreatorProfile?.Headline,
@@ -34,7 +34,7 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
         LicenseType = x.LicenseType,
         StartingPrice = x.StartingPrice
     };
-    private static BannerDto MapBanner(Artwork x) => new($"banner-{x.Id}", x.Title, x.Description ?? "Featured artwork", x.ImageUrl, "Khám phá", $"/artworks/{x.Id}");
+    private static BannerDto MapBanner(Artwork x) => new($"banner-{x.Id}", x.Title, x.Description ?? "Featured artwork", x.WatermarkedUrl ?? x.ImageUrl, "Khám phá", $"/artworks/{x.Id}");
 
     public async Task<IReadOnlyList<ArtworkDto>> Handle(SearchMarketplaceQuery query, CancellationToken ct)
     {
@@ -65,11 +65,98 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
     public async Task<IReadOnlyList<CommissionServiceDto>> Handle(GetCreatorServicesQuery q, CancellationToken ct) => await _db.CommissionServices.AsNoTracking().Where(x => x.CreatorProfileId == q.CreatorId && x.IsActive && !x.IsDeleted).OrderBy(x => x.StartingPrice).Select(x => new CommissionServiceDto(x.Id, x.Title, x.Description, x.StartingPrice, x.DeliveryDays, x.MaxRevisions, x.IsActive)).ToListAsync(ct);
     public async Task<IReadOnlyList<CreatorReviewDto>> Handle(GetCreatorReviewsQuery q, CancellationToken ct)
     {
+        var users = await _db.Users.AsNoTracking().ToDictionaryAsync(u => u.Id, u => u.FullName ?? u.UserName ?? "Khách hàng", ct);
+
+        var creator = await _db.CreatorProfiles.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == q.CreatorId && !p.IsDeleted, ct);
+
+        var packageMap = new Dictionary<Guid, string>();
+        string? defaultPackageName = null;
+
+        if (!string.IsNullOrWhiteSpace(creator?.RateCardJson))
+        {
+            try
+            {
+                var options = new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    Converters = { new ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardIdConverter() }
+                };
+                var packages = System.Text.Json.JsonSerializer.Deserialize<List<ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardPackageDto>>(creator.RateCardJson, options);
+                if (packages != null)
+                {
+                    foreach (var pkg in packages)
+                    {
+                        if (pkg != null && !string.IsNullOrWhiteSpace(pkg.Name))
+                        {
+                            packageMap[pkg.Id] = pkg.Name;
+                            defaultPackageName ??= pkg.Name;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // ignore parsing error
+            }
+        }
+
         var direct = await _db.CreatorReviews.AsNoTracking().Where(x => x.CreatorProfileId == q.CreatorId && !x.IsDeleted)
-            .Select(x => new CreatorReviewDto(x.Id, x.ReviewerUserId, x.Rating, x.Comment, x.CreatedAt, null, null)).ToListAsync(ct);
-        var commissions = await _db.Reviews.AsNoTracking().Where(x => !x.IsDeleted && x.IsVisible && !x.Commission.IsDeleted && x.Commission.CreatorId == q.CreatorId)
-            .Select(x => new CreatorReviewDto(x.Id, x.ReviewerId, x.Rating, x.Comment, x.CreatedAt, x.ReviewerReply, x.CommissionId)).ToListAsync(ct);
-        return direct.Concat(commissions).OrderByDescending(x => x.CreatedAt).ToList();
+            .Select(x => new { x.Id, x.ReviewerUserId, x.Rating, x.Comment, x.CreatedAt })
+            .ToListAsync(ct);
+
+        var directDtos = direct.Select(x => new CreatorReviewDto(
+            x.Id,
+            x.ReviewerUserId,
+            x.Rating,
+            x.Comment,
+            x.CreatedAt,
+            null,
+            null,
+            defaultPackageName ?? "Gói Commission",
+            users.GetValueOrDefault(x.ReviewerUserId, "Khách hàng")
+        ));
+
+        var commissions = await _db.Reviews.AsNoTracking()
+            .Where(x => !x.IsDeleted && x.IsVisible && !x.Commission.IsDeleted && x.Commission.CreatorId == q.CreatorId)
+            .Select(x => new {
+                x.Id,
+                x.ReviewerId,
+                x.Rating,
+                x.Comment,
+                x.CreatedAt,
+                x.ReviewerReply,
+                x.CommissionId,
+                x.Commission.PackageId,
+                CommissionTitle = x.Commission.Title
+            })
+            .ToListAsync(ct);
+
+        var commissionDtos = commissions.Select(x => {
+            string? pkgName = null;
+            if (x.PackageId.HasValue && packageMap.TryGetValue(x.PackageId.Value, out var foundName))
+            {
+                pkgName = foundName;
+            }
+
+            var effectivePackageName = !string.IsNullOrWhiteSpace(pkgName)
+                ? pkgName
+                : (defaultPackageName ?? x.CommissionTitle);
+
+            return new CreatorReviewDto(
+                x.Id,
+                x.ReviewerId,
+                x.Rating,
+                x.Comment,
+                x.CreatedAt,
+                x.ReviewerReply,
+                x.CommissionId,
+                effectivePackageName,
+                users.GetValueOrDefault(x.ReviewerId, "Khách hàng")
+            );
+        });
+
+        return directDtos.Concat(commissionDtos).OrderByDescending(x => x.CreatedAt).ToList();
     }
     public async Task<IReadOnlyList<PersonalCollectionDto>> Handle(GetMyCollectionsQuery q, CancellationToken ct) => await _db.PersonalCollections.AsNoTracking().Where(x => x.OwnerUserId == q.UserId && !x.IsDeleted).OrderByDescending(x => x.CreatedAt).Select(x => new PersonalCollectionDto(x.Id, x.Name, x.IsPublic, x.CollectionArtworks.Count(a => !a.Artwork!.IsDeleted && a.Artwork.ModerationStatus == "Approved" && !a.Artwork.CreatorProfile!.IsDeleted), x.CreatedAt)).ToListAsync(ct);
     public async Task<IReadOnlyList<ArtworkDto>> Handle(GetMyFavoritesQuery q, CancellationToken ct) { var items = await _db.Artworks.AsNoTracking().Where(a => _db.ArtworkFavorites.Any(f => f.UserId == q.UserId && f.ArtworkId == a.Id)).Where(x => !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted).Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).Include(x => x.CreatorProfile).ToListAsync(ct); return items.Select(Map).ToList(); }
