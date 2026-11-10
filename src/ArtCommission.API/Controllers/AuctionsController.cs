@@ -13,6 +13,7 @@ using ArtCommission.Application.Auction.Queries.GetAuctionById;
 using ArtCommission.Application.Auction.Queries.GetAuctions;
 using ArtCommission.Application.Auction.Queries.GetAuctionSettlement;
 using ArtCommission.Application.Auction.Queries.GetDeliverableDownloadUrl;
+using ArtCommission.Application.Auction.Queries.GetPhysicalDeliveries;
 using ArtCommission.Application.Common.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -775,6 +776,27 @@ public class AuctionsController : ApiControllerBase
                 auctionId,
                 request.Reason,
                 request.EvidenceUrl),
+            cancellationToken);
+
+        return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
+    }
+
+    /// <summary>Lấy danh sách các đơn giao nhận tranh vật lý (UC35) cho User hoặc Admin.</summary>
+    [HttpGet("deliveries")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetDeliveries(
+        [FromQuery] string? role,
+        [FromQuery] string? status,
+        CancellationToken cancellationToken)
+    {
+        var isAdmin = User.IsInRole("Administrator") || User.IsInRole("Admin");
+        var (success, data, errors) = await Mediator.Send(
+            new GetPhysicalDeliveriesQuery(
+                CurrentUserId == Guid.Empty ? null : CurrentUserId,
+                isAdmin,
+                role,
+                status),
             cancellationToken);
 
         return success ? OkEnvelope(data) : BadRequestEnvelope(errors);

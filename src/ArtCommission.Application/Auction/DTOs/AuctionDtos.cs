@@ -131,6 +131,28 @@ public sealed record AuctionDeliveryDto(
     string? DisputeEvidenceUrl
 );
 
+/// <summary>Dữ liệu tóm tắt cho màn hình Quản lý giao nhận tranh vật lý (User & Admin).</summary>
+public sealed record PhysicalDeliveryListItemDto(
+    Guid AuctionId,
+    Guid ArtworkId,
+    string ArtworkTitle,
+    string? ArtworkImageUrl,
+    string? ArtworkStyle,
+    Guid SellerId,
+    string SellerName,
+    Guid? WinnerId,
+    string? WinnerName,
+    string AuctionStatus,
+    decimal CurrentPrice,
+    decimal? FinalPrice,
+    bool HasPhysicalCopy,
+    string? PhysicalDescription,
+    DateTimeOffset? PhysicalChoiceDeadline,
+    bool? RequiresPhysicalDelivery,
+    AuctionDeliveryDto? Delivery,
+    string EscrowStatus
+);
+
 /// <summary>Biên lai liên quan đến giao dịch đấu giá (Ký quỹ, Vận chuyển, Quyết toán, Giao hàng).</summary>
 public sealed record AuctionReceiptDto(
     string ReceiptType,
