@@ -1,4 +1,4 @@
-using ArtCommission.Application.ArtistStudio.DTOs;
+﻿using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Entities.ArtistStudio;
 using MediatR;
@@ -42,7 +42,7 @@ public sealed class ArtworkInteractionHandler :
             && !c.Artwork!.IsDeleted && c.Artwork.ModerationStatus == "Approved" && !c.Artwork.CreatorProfile!.IsDeleted)
             .OrderByDescending(c => c.CreatedAt)
             .Select(c => new ArtworkDto(c.Artwork!.Id, c.Artwork.CreatorProfileId, c.Artwork.Title, c.Artwork.Description,
-                c.Artwork.ImageUrl, c.Artwork.ThumbnailUrl, c.Artwork.IsAiGenerated, c.Artwork.AiDetectionScore,
+                c.Artwork.WatermarkedUrl ?? c.Artwork.ImageUrl, c.Artwork.WatermarkedUrl ?? c.Artwork.ThumbnailUrl ?? c.Artwork.ImageUrl, c.Artwork.IsAiGenerated, c.Artwork.AiDetectionScore,
                 c.Artwork.ModerationStatus, c.Artwork.ViewCount, c.Artwork.CreatedAt,
                 c.Artwork.ArtworkTags.Select(t => t.Tag!.Name).ToList())).ToListAsync(ct);
     }

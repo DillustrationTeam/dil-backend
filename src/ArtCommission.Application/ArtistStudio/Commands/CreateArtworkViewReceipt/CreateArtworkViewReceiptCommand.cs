@@ -50,14 +50,19 @@ public class CreateArtworkViewReceiptCommandHandler : IRequestHandler<CreateArtw
         var randomBytes = RandomNumberGenerator.GetBytes(12);
         var tokenHex = "WR-" + Convert.ToHexString(randomBytes);
 
-        // Sinh NumericPayload 64-bit cho dải tần DWT
-        var numericPayload = BitConverter.ToInt64(RandomNumberGenerator.GetBytes(8));
+        // Sinh NumericPayload 64-bit khác 0 cho dải tần DWT
+        long numericPayload;
+        do
+        {
+            numericPayload = BitConverter.ToInt64(RandomNumberGenerator.GetBytes(8));
+        } while (numericPayload == 0);
 
         var receipt = new ArtworkWatermarkReceipt
         {
             ArtworkId = artwork.Id,
             ReceiptToken = tokenHex,
             NumericPayload = numericPayload,
+            FileName = $"{artwork.Title}.png",
             ViewerUserId = request.ViewerUserId,
             ViewerEmail = request.ViewerEmail,
             ViewerName = request.ViewerName,
@@ -75,14 +80,7 @@ public class CreateArtworkViewReceiptCommandHandler : IRequestHandler<CreateArtw
         var creatorName = artwork.CreatorProfile?.DisplayName ?? "Creator";
         var overlayMask = $"{creatorName} • {tokenHex} • {receipt.CreatedAt:yyyy-MM-dd HH:mm}";
 
-        var isOriginalGif = !string.IsNullOrWhiteSpace(artwork.ImageUrl) &&
-                            artwork.ImageUrl.EndsWith(".gif", StringComparison.OrdinalIgnoreCase);
-        var isWatermarkedGif = !string.IsNullOrWhiteSpace(artwork.WatermarkedUrl) &&
-                               artwork.WatermarkedUrl.EndsWith(".gif", StringComparison.OrdinalIgnoreCase);
-
-        var protectedUrl = (isOriginalGif && !isWatermarkedGif)
-            ? artwork.ImageUrl
-            : (!string.IsNullOrWhiteSpace(artwork.WatermarkedUrl) ? artwork.WatermarkedUrl : artwork.ImageUrl);
+        var protectedUrl = $"/api/v1/artworks/{artwork.Id}/protected-image?token={Uri.EscapeDataString(receipt.ReceiptToken)}";
 
         return new ArtworkViewReceiptDto(
             receipt.Id,

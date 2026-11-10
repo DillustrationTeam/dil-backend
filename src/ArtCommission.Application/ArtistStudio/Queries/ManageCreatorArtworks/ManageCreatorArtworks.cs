@@ -151,14 +151,40 @@ public sealed class UpdateCreatorArtworkCommandHandler
         artwork.Description = request.Description?.Trim();
         if (request.ImageUrl is not null)
         {
+            var previewReceipt = await _db.ArtworkWatermarkReceipts
+                .FirstOrDefaultAsync(r =>
+                    r.ViewerUserId == request.UserId
+                    && r.WatermarkType == "DwtPublish"
+                    && r.Notes != null
+                    && r.Notes.StartsWith(request.ImageUrl + "\n"),
+                    cancellationToken);
+
+            string? watermarkedUrl = null;
+            if (previewReceipt?.Notes is { } notes)
+            {
+                var splitIdx = notes.IndexOf('\n');
+                if (splitIdx >= 0 && splitIdx + 1 < notes.Length)
+                {
+                    watermarkedUrl = notes[(splitIdx + 1)..];
+                }
+            }
+
             artwork.ImageUrl = request.ImageUrl;
+            artwork.WatermarkedUrl = watermarkedUrl;
+            if (previewReceipt is not null)
+            {
+                previewReceipt.ArtworkId = artwork.Id;
+            }
             artwork.AiDetectionScore = null;
             artwork.AiScanStatus = "Queued";
             artwork.AiScanImageUrl = null;
             artwork.AiScanAttempts = 0;
             artwork.AiScanUpdatedAt = DateTimeOffset.UtcNow;
             artwork.AiScanError = null;
-            artwork.ThumbnailUrl = request.ThumbnailUrl ?? request.ImageUrl;
+            artwork.ThumbnailUrl = !string.IsNullOrWhiteSpace(watermarkedUrl)
+                && (string.IsNullOrWhiteSpace(request.ThumbnailUrl) || string.Equals(request.ThumbnailUrl, request.ImageUrl, StringComparison.Ordinal))
+                ? watermarkedUrl
+                : (request.ThumbnailUrl ?? watermarkedUrl ?? request.ImageUrl);
             artwork.ModerationStatus = "Pending";
             artwork.ModeratorId = null;
             artwork.ModeratedAt = null;

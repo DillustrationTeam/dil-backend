@@ -1,3 +1,4 @@
+﻿using System.Security.Cryptography;
 using ArtCommission.Application.ArtistStudio.Commands.CreateCreatorProfile;
 using ArtCommission.Application.ArtistStudio.Commands.UploadArtwork;
 using ArtCommission.Application.ArtistStudio.DTOs;
@@ -7,7 +8,9 @@ using ArtCommission.Application.ArtistStudio.Queries.GetCreatorProfile;
 using ArtCommission.Application.ArtistStudio.Queries.GetCreatorProfileById;
 using ArtCommission.Application.ArtistStudio.Queries.ManageCreatorArtworks;
 using ArtCommission.Application.Commission.Interfaces;
+using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.ArtistStudio.Workstation;
+using ArtCommission.Domain.Entities.ArtistStudio;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -24,10 +27,17 @@ public class CreatorProfilesController : ApiControllerBase
     };
 
     private readonly IStorageService _storageService;
+    private readonly IArtworkWatermarkService _watermarkService;
+    private readonly IApplicationDbContext _db;
 
-    public CreatorProfilesController(IStorageService storageService)
+    public CreatorProfilesController(
+        IStorageService storageService,
+        IArtworkWatermarkService watermarkService,
+        IApplicationDbContext db)
     {
         _storageService = storageService;
+        _watermarkService = watermarkService;
+        _db = db;
     }
 
     /// <summary>Thống kê công khai của creator profile.</summary>
@@ -220,10 +230,62 @@ public class CreatorProfilesController : ApiControllerBase
         };
 
         await using var stream = file.OpenReadStream();
-        var key = $"artworks/{CurrentUserId}/{Guid.NewGuid():N}{extension}";
-        var imageUrl = await _storageService.UploadPublicAsync(stream, key, file.ContentType, cancellationToken);
+        using var buffered = new MemoryStream();
+        await stream.CopyToAsync(buffered, cancellationToken);
+        buffered.Position = 0;
 
-        return OkEnvelope(new { imageUrl });
+        var fileId = Guid.NewGuid().ToString("N");
+        var key = $"artworks/{CurrentUserId}/{fileId}{extension}";
+        var imageUrl = await _storageService.UploadPublicAsync(buffered, key, file.ContentType, cancellationToken);
+
+        string? watermarkedUrl = null;
+        string? receiptToken = null;
+        try
+        {
+            buffered.Position = 0;
+            ulong payload;
+            do
+            {
+                payload = BitConverter.ToUInt64(RandomNumberGenerator.GetBytes(8));
+            } while (payload == 0);
+
+            receiptToken = $"PUB-{fileId[..12].ToUpperInvariant()}";
+            var preview = await _watermarkService.CreateReducedMarketplacePreviewAsync(
+                buffered, payload, receiptToken, 1200, cancellationToken);
+            await using var previewStream = preview.ProcessedStream;
+            previewStream.Position = 0;
+            var previewSha = Convert.ToHexString(await SHA256.HashDataAsync(previewStream, cancellationToken)).ToLowerInvariant();
+            previewStream.Position = 0;
+            var visualHash = await _watermarkService.ComputeVisualHashAsync(previewStream, trimBorders: false, cancellationToken);
+            previewStream.Position = 0;
+
+            var previewExt = preview.ContentType == "image/gif" ? ".gif" : ".png";
+            var previewKey = $"artworks/{CurrentUserId}/{fileId}-preview{previewExt}";
+            watermarkedUrl = await _storageService.UploadPublicAsync(previewStream, previewKey, preview.ContentType, cancellationToken);
+
+            _db.ArtworkWatermarkReceipts.Add(new ArtworkWatermarkReceipt
+            {
+                ArtworkId = null,
+                ReceiptToken = receiptToken,
+                NumericPayload = (long)payload,
+                VisualHash = visualHash,
+                FileSha256 = previewSha,
+                FileName = Path.GetFileName(previewKey),
+                ViewerUserId = CurrentUserId,
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "publish",
+                UserAgent = Request.Headers.UserAgent.ToString(),
+                WatermarkType = "DwtPublish",
+                Status = "Active",
+                Notes = $"{imageUrl}\n{watermarkedUrl}"
+            });
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            // Giữ upload gốc thành công nếu ảnh không đọc được pixel
+        }
+
+        return OkEnvelope(new { imageUrl, watermarkedUrl, receiptToken });
     }
 
     [HttpGet("creator/me/artworks")]

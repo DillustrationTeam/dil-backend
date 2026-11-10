@@ -1,4 +1,4 @@
-using ArtCommission.Application.ArtistStudio.DTOs;
+﻿using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.ArtistStudio.Queries;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Entities.ArtistStudio;
@@ -24,7 +24,7 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
 {
     private readonly IApplicationDbContext _db;
     public MarketplaceQueryHandler(IApplicationDbContext db) => _db = db;
-    private static ArtworkDto Map(Artwork x) => new(x.Id, x.CreatorProfileId, x.Title, x.Description, x.ImageUrl, x.ThumbnailUrl, x.IsAiGenerated, x.AiDetectionScore, x.ModerationStatus, x.ViewCount, x.CreatedAt, x.ArtworkTags.Select(t => t.Tag!.Name).ToList())
+    private static ArtworkDto Map(Artwork x) => new(x.Id, x.CreatorProfileId, x.Title, x.Description, x.WatermarkedUrl ?? x.ImageUrl, x.WatermarkedUrl ?? x.ThumbnailUrl ?? x.ImageUrl, x.IsAiGenerated, x.AiDetectionScore, x.ModerationStatus, x.ViewCount, x.CreatedAt, x.ArtworkTags.Select(t => t.Tag!.Name).ToList())
     {
         CreatorName = x.CreatorProfile?.DisplayName,
         CreatorHeadline = x.CreatorProfile?.Headline,
@@ -34,7 +34,7 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
         LicenseType = x.LicenseType,
         StartingPrice = x.StartingPrice
     };
-    private static BannerDto MapBanner(Artwork x) => new($"banner-{x.Id}", x.Title, x.Description ?? "Featured artwork", x.ImageUrl, "Khám phá", $"/artworks/{x.Id}");
+    private static BannerDto MapBanner(Artwork x) => new($"banner-{x.Id}", x.Title, x.Description ?? "Featured artwork", x.WatermarkedUrl ?? x.ImageUrl, "Khám phá", $"/artworks/{x.Id}");
 
     public async Task<IReadOnlyList<ArtworkDto>> Handle(SearchMarketplaceQuery query, CancellationToken ct)
     {
