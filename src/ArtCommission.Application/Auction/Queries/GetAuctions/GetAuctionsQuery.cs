@@ -119,7 +119,9 @@ public class GetAuctionsQueryHandler
                 a.Artwork!.ImageUrl,
                 a.Artwork!.WatermarkedUrl,
                 a.Artwork!.Style,
-                a.Watches.Count(w => !w.IsDeleted)))
+                a.Watches.Count(w => !w.IsDeleted),
+                a.HasPhysicalCopy,
+                a.PhysicalDescription))
             .ToListAsync(cancellationToken);
 
         var hasMore = rows.Count > limit;
@@ -138,7 +140,9 @@ public class GetAuctionsQueryHandler
             StartAt: r.StartAt,
             EndAt: r.EndAt,
             AuctionStatus: r.Status.ToString(),
-            WatchCount: r.WatchCount)).ToList();
+            WatchCount: r.WatchCount,
+            HasPhysicalCopy: r.HasPhysicalCopy,
+            PhysicalDescription: r.PhysicalDescription)).ToList();
 
         var last = page.LastOrDefault();
         var nextCursor = hasMore && last is not null
@@ -216,7 +220,9 @@ public class GetAuctionsQueryHandler
         string? ImageUrl,
         string? WatermarkedUrl,
         string? Style,
-        int WatchCount);
+        int WatchCount,
+        bool HasPhysicalCopy = false,
+        string? PhysicalDescription = null);
 }
 
 /// <summary>
