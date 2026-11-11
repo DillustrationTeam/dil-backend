@@ -1,3 +1,4 @@
+using ArtCommission.Application.ArtistStudio.Marketplace;
 using ArtCommission.Application.Dispute.SubmissionDispute.Commands;
 using ArtCommission.Application.Dispute.SubmissionDispute.Queries;
 using ArtCommission.Application.Event.Commands;
@@ -879,6 +880,159 @@ Assert(secondAcceptRes.Success,
 var (restoredJuries, _) = await getJuriesHandler.Handle(new GetJuriesQuery(EventId: inviteEvent.Id), CancellationToken.None);
 Assert(restoredJuries.Count == 1 && restoredJuries[0].CreatorEmail == "real.creator@dillustration.vn" && restoredJuries[0].IsHeadJury,
     "Removed Jury member must be restored as active Jury with real email after accepting 2nd invitation.");
+
+
+// =========================================================================
+// SECTION 10: Creator Regression Checks (Event Artwork Visibility & Dispute History)
+// =========================================================================
+Console.WriteLine("\n--- Section 10: Creator Event Artwork Visibility & Dispute History Tests ---");
+
+var creatorUser10Id = Guid.NewGuid();
+var clientUser10Id = Guid.NewGuid();
+var creatorProfile10Id = Guid.NewGuid();
+var creatorEvent = new PlatformEvent
+{
+    Id = Guid.NewGuid(),
+    Title = "Creator Regression Event",
+    Description = "Open submission window",
+    Status = EventStatus.Open,
+    CreatedByAdminId = adminId,
+    SubmissionStartAt = now.AddDays(-2),
+    SubmissionEndAt = now.AddDays(5),
+    JudgingStartAt = now.AddDays(6),
+    JudgingEndAt = now.AddDays(10),
+    VotingStartAt = now.AddDays(11),
+    VotingEndAt = now.AddDays(15),
+    ResultAnnouncementAt = now.AddDays(16),
+    CreatedAt = now,
+    IsDeleted = false
+};
+
+db.Users.AddRange(
+    new ApplicationUser
+    {
+        Id = creatorUser10Id,
+        UserName = "creator10",
+        NormalizedUserName = "CREATOR10",
+        Email = "creator10@dillustration.vn",
+        NormalizedEmail = "CREATOR10@DILLUSTRATION.VN",
+        FullName = "Creator Ten"
+    },
+    new ApplicationUser
+    {
+        Id = clientUser10Id,
+        UserName = "client10",
+        NormalizedUserName = "CLIENT10",
+        Email = "client10@dillustration.vn",
+        NormalizedEmail = "CLIENT10@DILLUSTRATION.VN",
+        FullName = "Client Ten"
+    });
+db.CreatorProfiles.Add(new CreatorProfile
+{
+    Id = creatorProfile10Id,
+    UserId = creatorUser10Id,
+    DisplayName = "Creator Ten Studio",
+    IsDeleted = false
+});
+db.PlatformEvents.Add(creatorEvent);
+
+// Artwork uploaded straight from creator computer during submission stays Pending moderation
+var pendingArtOld = new Artwork
+{
+    Id = Guid.NewGuid(),
+    CreatorProfileId = creatorProfile10Id,
+    Title = "Uploaded Submission V1",
+    Description = "Uploaded from computer",
+    ImageUrl = "https://example.com/submission-v1.png",
+    ThumbnailUrl = "https://example.com/submission-v1-thumb.png",
+    ModerationStatus = "Pending",
+    CreatedAt = now,
+    IsDeleted = false
+};
+var pendingArtNew = new Artwork
+{
+    Id = Guid.NewGuid(),
+    CreatorProfileId = creatorProfile10Id,
+    Title = "Uploaded Submission V2",
+    Description = "Swapped artwork",
+    ImageUrl = "https://example.com/submission-v2.png",
+    ThumbnailUrl = "https://example.com/submission-v2-thumb.png",
+    ModerationStatus = "Approved",
+    CreatedAt = now,
+    IsDeleted = false
+};
+db.Artworks.AddRange(pendingArtOld, pendingArtNew);
+
+var creatorSubmission = new EventSubmission
+{
+    Id = Guid.NewGuid(),
+    EventId = creatorEvent.Id,
+    SubmitterId = creatorUser10Id,
+    ArtworkId = pendingArtOld.Id,
+    Title = "Submission V1 Title",
+    Description = "Initial submission",
+    VoteCount = 0,
+    IsDisqualified = false,
+    SubmittedAt = now
+};
+db.EventSubmissions.Add(creatorSubmission);
+await db.SaveChangesAsync();
+
+// 10.1 (Bug I.2) Client & Creator can view detail and interact (like) with Pending event submission artwork without 'artwork not found'
+var marketplaceQueryHandler = new MarketplaceQueryHandler(db);
+var interactionHandler = new ArtworkInteractionHandler(db);
+
+var clientDetail = await marketplaceQueryHandler.Handle(new GetArtworkDetailQuery(pendingArtOld.Id, clientUser10Id), CancellationToken.None);
+Assert(clientDetail is not null && clientDetail.Artwork.Id == pendingArtOld.Id,
+    "Client must see GetArtworkDetailQuery result for Pending event submission artwork (no 'artwork not found').");
+
+var creatorDetail = await marketplaceQueryHandler.Handle(new GetArtworkDetailQuery(pendingArtOld.Id, creatorUser10Id), CancellationToken.None);
+Assert(creatorDetail is not null && creatorDetail.Artwork.Id == pendingArtOld.Id,
+    "Creator must see GetArtworkDetailQuery result for their own Pending event submission artwork.");
+
+var initialInteractions = await interactionHandler.Handle(new GetArtworkInteractionsQuery(pendingArtOld.Id, clientUser10Id), CancellationToken.None);
+Assert(initialInteractions is not null && !initialInteractions.IsLiked && initialInteractions.LikeCount == 0,
+    "GetArtworkInteractionsQuery must succeed for Pending event submission artwork.");
+
+var likedState = await interactionHandler.Handle(new SetArtworkLikeCommand(pendingArtOld.Id, clientUser10Id, true), CancellationToken.None);
+Assert(likedState is not null && likedState.IsLiked && likedState.LikeCount == 1,
+    "Client must be able to favorite/like a Pending event submission artwork.");
+
+// 10.2 (Bug I.3) Updating submission preserves old SubmissionDispute history with snapshots of old artwork title/image
+var dispute10Res = await createDisputeHandler.Handle(
+    new CreateSubmissionDisputeCommand(
+        SubmissionId: creatorSubmission.Id,
+        RaisedById: clientUser10Id,
+        Reason: "Reported on V1 before artwork swap.",
+        Category: "Copyright"),
+    CancellationToken.None);
+Assert(dispute10Res.Success && dispute10Res.DisputeId.HasValue,
+    $"Client should be able to raise dispute before submission artwork update (errors={string.Join("; ", dispute10Res.Errors)}).");
+
+var updateSubmissionHandler = new UpdateSubmissionCommandHandler(db, null!);
+var (updatedSubOk, updatedSubDto, updateSubErrors) = await updateSubmissionHandler.Handle(
+    new UpdateSubmissionCommand(
+        SubmissionId: creatorSubmission.Id,
+        UserId: creatorUser10Id,
+        Title: "Submission V2 Title",
+        Description: "Updated submission with new artwork",
+        ArtworkId: pendingArtNew.Id),
+    CancellationToken.None);
+Assert(updatedSubOk && updatedSubDto is not null && updatedSubDto.ArtworkId == pendingArtNew.Id,
+    $"UpdateSubmissionCommand must swap to new ArtworkId cleanly (errors={string.Join("; ", updateSubErrors)}).");
+
+var reloadedOldArt = await db.Artworks.IgnoreQueryFilters().FirstAsync(a => a.Id == pendingArtOld.Id);
+Assert(!reloadedOldArt.IsDeleted,
+    "Old V1 artwork that already received client likes must remain preserved (not soft-deleted) after submission swap.");
+
+var (disputesAfterUpdate, totalDisputesAfterUpdate) = await getDisputesHandler.Handle(
+    new GetSubmissionDisputesQuery(SubmissionId: creatorSubmission.Id),
+    CancellationToken.None);
+Assert(totalDisputesAfterUpdate == 1 && disputesAfterUpdate.Count == 1,
+    "Admin moderation queue must still retain old SubmissionDispute after creator updates/swaps submission artwork.");
+Assert(disputesAfterUpdate[0].SubmissionTitle == "Submission V1 Title"
+    && disputesAfterUpdate[0].ArtworkImageUrl == "https://example.com/submission-v1.png",
+    $"Retained dispute must snapshot old submission title & artwork image (got '{disputesAfterUpdate[0].SubmissionTitle}', '{disputesAfterUpdate[0].ArtworkImageUrl}').");
 
 
 Console.WriteLine("\n=================================================");
