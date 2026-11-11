@@ -2467,6 +2467,10 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("ArtworkImageUrlSnapshot")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -2507,8 +2511,12 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<Guid>("SubmissionId")
+                    b.Property<Guid?>("SubmissionId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SubmissionTitleSnapshot")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
@@ -4889,8 +4897,7 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.HasOne("ArtCommission.Domain.Entities.Event.EventSubmission", "Submission")
                         .WithMany("Disputes")
                         .HasForeignKey("SubmissionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Event");
 

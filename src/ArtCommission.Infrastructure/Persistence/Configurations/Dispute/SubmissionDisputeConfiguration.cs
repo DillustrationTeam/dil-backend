@@ -30,6 +30,12 @@ public class SubmissionDisputeConfiguration : IEntityTypeConfiguration<Submissio
 
         builder.Property(d => d.Note);
 
+        builder.Property(d => d.SubmissionTitleSnapshot)
+            .HasMaxLength(200);
+
+        builder.Property(d => d.ArtworkImageUrlSnapshot)
+            .HasMaxLength(1000);
+
         builder.HasOne(d => d.Event)
             .WithMany()
             .HasForeignKey(d => d.EventId)
@@ -38,6 +44,7 @@ public class SubmissionDisputeConfiguration : IEntityTypeConfiguration<Submissio
         builder.HasOne(d => d.Submission)
             .WithMany(s => s.Disputes)
             .HasForeignKey(d => d.SubmissionId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

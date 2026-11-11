@@ -39,6 +39,7 @@ public class CreateSubmissionDisputeCommandHandler
 
         var submission = await _db.EventSubmissions
             .Include(s => s.Event)
+            .Include(s => s.Artwork)
             .FirstOrDefaultAsync(s => s.Id == request.SubmissionId, cancellationToken);
 
         if (submission == null)
@@ -83,6 +84,8 @@ public class CreateSubmissionDisputeCommandHandler
         {
             EventId = submission.EventId,
             SubmissionId = submission.Id,
+            SubmissionTitleSnapshot = submission.Title,
+            ArtworkImageUrlSnapshot = submission.Artwork?.ImageUrl ?? submission.Artwork?.ThumbnailUrl,
             RaisedById = request.RaisedById,
             Priority = string.IsNullOrWhiteSpace(request.Priority) ? "Medium" : request.Priority.Trim(),
             Reason = fullReason,

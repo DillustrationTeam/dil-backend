@@ -168,15 +168,17 @@ public class GetHeadJuryWorkspaceQueryHandler : IRequestHandler<GetHeadJuryWorks
         var arbitrationCases = new List<ArbitrationCaseDto>();
         foreach (var d in disputes.Where(d => d.Status != "Resolved" && d.Status != "Rejected"))
         {
-            var relatedSub = submissions.FirstOrDefault(s => s.Id == d.SubmissionId);
+            var relatedSub = d.SubmissionId.HasValue
+                ? submissions.FirstOrDefault(s => s.Id == d.SubmissionId.Value)
+                : null;
             arbitrationCases.Add(new ArbitrationCaseDto
             {
                 Id = d.Id,
-                SubmissionId = d.SubmissionId,
-                Title = relatedSub?.Title ?? "Tác phẩm khiếu nại",
+                SubmissionId = d.SubmissionId ?? Guid.Empty,
+                Title = d.SubmissionTitleSnapshot ?? relatedSub?.Title ?? "Tác phẩm khiếu nại",
                 Code = relatedSub != null ? $"#SUB-{relatedSub.Id.ToString()[..4].ToUpper()}" : "#DISP",
                 Category = "Illustration",
-                ArtworkImageUrl = relatedSub?.Artwork?.ImageUrl ?? "/seedimg/miyu.png",
+                ArtworkImageUrl = d.ArtworkImageUrlSnapshot ?? relatedSub?.Artwork?.ImageUrl ?? "/seedimg/miyu.png",
                 DeviationPercent = 0,
                 Notes = d.Reason,
                 Status = d.Status,

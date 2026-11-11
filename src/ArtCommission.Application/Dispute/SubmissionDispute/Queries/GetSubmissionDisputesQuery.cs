@@ -34,7 +34,7 @@ public class GetSubmissionDisputesQueryHandler
             .AsNoTracking()
             .Include(d => d.Event)
             .Include(d => d.Submission)
-                .ThenInclude(s => s.Artwork)
+                .ThenInclude(s => s!.Artwork)
             .AsQueryable();
 
         if (request.EventId.HasValue)
@@ -91,8 +91,8 @@ public class GetSubmissionDisputesQueryHandler
                 EventId = d.EventId,
                 EventTitle = d.Event?.Title,
                 SubmissionId = d.SubmissionId,
-                SubmissionTitle = d.Submission?.Title,
-                ArtworkImageUrl = d.Submission?.Artwork?.ImageUrl ?? d.Submission?.Artwork?.ThumbnailUrl,
+                SubmissionTitle = d.SubmissionTitleSnapshot ?? d.Submission?.Title,
+                ArtworkImageUrl = d.ArtworkImageUrlSnapshot ?? d.Submission?.Artwork?.ImageUrl ?? d.Submission?.Artwork?.ThumbnailUrl,
                 RaisedById = d.RaisedById,
                 RaisedByName = user?.FullName ?? user?.UserName ?? "Unknown",
                 Priority = d.Priority,

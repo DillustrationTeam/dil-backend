@@ -27,7 +27,7 @@ public class GetSubmissionDisputeByIdQueryHandler
             .AsNoTracking()
             .Include(d => d.Event)
             .Include(d => d.Submission)
-                .ThenInclude(s => s.Artwork)
+                .ThenInclude(s => s!.Artwork)
             .FirstOrDefaultAsync(d => d.Id == request.Id, cancellationToken);
 
         if (dispute == null)
@@ -47,8 +47,8 @@ public class GetSubmissionDisputeByIdQueryHandler
             EventId = dispute.EventId,
             EventTitle = dispute.Event?.Title,
             SubmissionId = dispute.SubmissionId,
-            SubmissionTitle = dispute.Submission?.Title,
-            ArtworkImageUrl = dispute.Submission?.Artwork?.ImageUrl ?? dispute.Submission?.Artwork?.ThumbnailUrl,
+            SubmissionTitle = dispute.SubmissionTitleSnapshot ?? dispute.Submission?.Title,
+            ArtworkImageUrl = dispute.ArtworkImageUrlSnapshot ?? dispute.Submission?.Artwork?.ImageUrl ?? dispute.Submission?.Artwork?.ThumbnailUrl,
             RaisedById = dispute.RaisedById,
             RaisedByName = user?.FullName ?? user?.UserName ?? "Unknown",
             Priority = dispute.Priority,

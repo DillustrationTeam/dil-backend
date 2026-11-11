@@ -1,4 +1,4 @@
-﻿using ArtCommission.Application.ArtistStudio.DTOs;
+using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.ArtistStudio.Queries;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Entities.ArtistStudio;
@@ -54,7 +54,24 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
     }
     public async Task<ArtworkDetailDto?> Handle(GetArtworkDetailQuery q, CancellationToken ct)
     {
-        var artwork = await _db.Artworks.Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).Include(x => x.CreatorProfile).FirstOrDefaultAsync(x => x.Id == q.ArtworkId && !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted, ct);
+        var artwork = await _db.Artworks
+            .Include(x => x.ArtworkTags).ThenInclude(x => x.Tag)
+            .Include(x => x.CreatorProfile)
+            .FirstOrDefaultAsync(x =>
+                x.Id == q.ArtworkId
+                && !x.IsDeleted
+                && !x.CreatorProfile!.IsDeleted
+                && (x.ModerationStatus == "Approved"
+                    || (x.ModerationStatus != "Rejected"
+                        && x.ModerationStatus != "Hidden"
+                        && _db.EventSubmissions.Any(s =>
+                            s.ArtworkId == x.Id
+                            && !s.IsDisqualified
+                            && s.Event != null
+                            && !s.Event.IsDeleted
+                            && s.Event.Status != ArtCommission.Domain.Enums.EventStatus.Draft))
+                    || (q.ViewerUserId != Guid.Empty && x.CreatorProfile.UserId == q.ViewerUserId)),
+                ct);
         if (artwork is null) return null;
         artwork.ViewCount++; await _db.SaveChangesAsync(ct);
         var favorites = await _db.ArtworkFavorites.CountAsync(x => x.ArtworkId == q.ArtworkId, ct);
@@ -202,7 +219,7 @@ public class MarketplaceMutationHandler : IRequestHandler<MarketplaceMutationCom
                 return likeState is null ? (false, null, new[] { "Artwork not found." }) : (true, new { favorited = likeState.IsLiked, likeState.LikeCount }, Array.Empty<string>());
             case "comment":
                 if (string.IsNullOrWhiteSpace(c.Text) || c.Text.Length > 1000) return (false, null, new[] { "Comment must contain 1 to 1000 characters." });
-                if (!await _db.Artworks.AnyAsync(a => a.Id == c.TargetId && !a.IsDeleted && a.ModerationStatus == "Approved" && !a.CreatorProfile!.IsDeleted, ct))
+                if (!await ArtworkInteractionHandler.IsVisibleAsync(_db, c.TargetId, ct))
                     return (false, null, new[] { "Artwork not found." });
                 var comment = new ArtworkComment { ArtworkId = c.TargetId, UserId = c.UserId, Body = c.Text.Trim() }; _db.ArtworkComments.Add(comment); await _db.SaveChangesAsync(ct); return (true, new ArtworkCommentDto(comment.Id, c.UserId, "You", comment.Body, comment.CreatedAt), Array.Empty<string>());
             case "follow":

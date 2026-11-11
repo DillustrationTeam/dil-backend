@@ -5,7 +5,7 @@ public class SubmissionDisputeDto
     public Guid Id { get; set; }
     public Guid EventId { get; set; }
     public string? EventTitle { get; set; }
-    public Guid SubmissionId { get; set; }
+    public Guid? SubmissionId { get; set; }
     public string? SubmissionTitle { get; set; }
     public string? ArtworkImageUrl { get; set; }
     public Guid RaisedById { get; set; }

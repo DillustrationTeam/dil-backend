@@ -1,4 +1,4 @@
-﻿using ArtCommission.Application.ArtistStudio.DTOs;
+using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Entities.ArtistStudio;
 using MediatR;
@@ -21,8 +21,19 @@ public sealed class ArtworkInteractionHandler :
     private readonly IApplicationDbContext _db;
     public ArtworkInteractionHandler(IApplicationDbContext db) => _db = db;
 
-    private Task<bool> IsVisible(Guid id, CancellationToken ct) => _db.Artworks.AnyAsync(a =>
-        a.Id == id && !a.IsDeleted && a.ModerationStatus == "Approved" && !a.CreatorProfile!.IsDeleted, ct);
+    internal static Task<bool> IsVisibleAsync(IApplicationDbContext db, Guid id, CancellationToken ct) => db.Artworks.AnyAsync(a =>
+        a.Id == id && !a.IsDeleted && !a.CreatorProfile!.IsDeleted &&
+        (a.ModerationStatus == "Approved" ||
+         (a.ModerationStatus != "Rejected" && a.ModerationStatus != "Hidden" &&
+          db.EventSubmissions.Any(s =>
+              s.ArtworkId == a.Id &&
+              !s.IsDisqualified &&
+              s.Event != null &&
+              !s.Event.IsDeleted &&
+              s.Event.Status != ArtCommission.Domain.Enums.EventStatus.Draft))),
+        ct);
+
+    private Task<bool> IsVisible(Guid id, CancellationToken ct) => IsVisibleAsync(_db, id, ct);
 
     public async Task<ArtworkInteractionsDto?> Handle(GetArtworkInteractionsQuery q, CancellationToken ct)
     {
