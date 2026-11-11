@@ -1,4 +1,4 @@
-using ArtCommission.Application.ArtistStudio.DTOs;
+﻿using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.ArtistStudio.Moderation;
 using ArtCommission.Application.Common.Interfaces;
 using FluentValidation;
@@ -83,13 +83,37 @@ public class UploadArtworkCommandHandler : IRequestHandler<UploadArtworkCommand,
             await _db.SaveChangesAsync(cancellationToken);
         }
 
+        var previewReceipt = await _db.ArtworkWatermarkReceipts
+            .FirstOrDefaultAsync(r =>
+                r.ViewerUserId == request.UserId
+                && r.WatermarkType == "DwtPublish"
+                && r.Notes != null
+                && r.Notes.StartsWith(request.ImageUrl + "\n"),
+                cancellationToken);
+
+        string? watermarkedUrl = null;
+        if (previewReceipt?.Notes is { } notes)
+        {
+            var splitIdx = notes.IndexOf('\n');
+            if (splitIdx >= 0 && splitIdx + 1 < notes.Length)
+            {
+                watermarkedUrl = notes[(splitIdx + 1)..];
+            }
+        }
+
+        var thumbnailUrl = !string.IsNullOrWhiteSpace(watermarkedUrl)
+            && (string.IsNullOrWhiteSpace(request.ThumbnailUrl) || string.Equals(request.ThumbnailUrl, request.ImageUrl, StringComparison.Ordinal))
+            ? watermarkedUrl
+            : request.ThumbnailUrl;
+
         var artwork = new ArtCommission.Domain.Entities.ArtistStudio.Artwork
         {
             CreatorProfileId = profile.Id,
             Title = request.Title.Trim(),
             Description = request.Description,
             ImageUrl = request.ImageUrl,
-            ThumbnailUrl = request.ThumbnailUrl,
+            ThumbnailUrl = thumbnailUrl,
+            WatermarkedUrl = watermarkedUrl,
             IsAiGenerated = request.IsAiGenerated,
             AiDetectionScore = null,
             ModerationStatus = "Pending",
@@ -97,6 +121,10 @@ public class UploadArtworkCommandHandler : IRequestHandler<UploadArtworkCommand,
         };
 
         _db.Set<ArtCommission.Domain.Entities.ArtistStudio.Artwork>().Add(artwork);
+        if (previewReceipt is not null)
+        {
+            previewReceipt.ArtworkId = artwork.Id;
+        }
         await _db.SaveChangesAsync(cancellationToken);
 
         if (request.Tags is { Count: > 0 })

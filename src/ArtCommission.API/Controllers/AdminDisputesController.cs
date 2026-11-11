@@ -1,3 +1,4 @@
+using ArtCommission.Application.Ai.Queries.GetDisputeAiSummary;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.Dispute.CommissionDispute.Commands;
 using ArtCommission.Application.Dispute.CommissionDispute.DTOs;
@@ -106,6 +107,27 @@ public class AdminDisputesController : ApiControllerBase
     /// <summary>
     /// Thực thi phán quyết trọng tài và phân bổ tiền ký quỹ Escrow nguyên tử (SCR-22 / UC30).
     /// </summary>
+    /// <summary>
+    /// Tóm tắt hồ sơ tranh chấp và trích dẫn bằng chứng bằng AI hỗ trợ trọng tài (AI-UC56).
+    /// </summary>
+    [HttpGet("{id:guid}/ai-summary")]
+    [HttpGet("commissions/{id:guid}/ai-summary")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetDisputeAiSummary(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var (success, data, errors) = await Mediator.Send(
+            new GetDisputeAiSummaryQuery(id),
+            cancellationToken);
+
+        return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
+    }
+
     [HttpPost("{id:guid}/arbitrate")]
     [HttpPost("commissions/{id:guid}/arbitrate")]
     [HttpPost("commissions/{id:guid}/resolve")]

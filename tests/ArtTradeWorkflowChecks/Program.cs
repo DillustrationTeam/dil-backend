@@ -271,6 +271,30 @@ AssertEqual(TradeStatus.Accepted, subAData!.Status, "Status still Accepted after
 AssertTrue(subAData.InitiatorSubmittedAt.HasValue, "InitiatorSubmittedAt is set");
 AssertTrue(!string.IsNullOrEmpty(subAData.InitiatorPreviewUrl), "Watermarked preview URL is generated");
 
+// 1b. Test: Artist A cannot confirm satisfaction before partner submits artwork
+var earlyConfirmHandler = new ConfirmTradeCommandHandler(db, notifPublisher, storageService);
+var earlyConfirm = await earlyConfirmHandler.Handle(new ConfirmTradeCommand(tradeId, artistA.Id), default);
+AssertTrue(!earlyConfirm.Success, "Artist A cannot confirm satisfaction before partner submitted artwork");
+AssertTrue(earlyConfirm.Errors.Any(e => e.Contains("Đối tác chưa nộp tác phẩm")), "Error explains partner has not submitted");
+
+// 1c. Test: Artist A cannot confirm Receiver's side
+var crossConfirm = await earlyConfirmHandler.Handle(new ConfirmTradeCommand(tradeId, artistA.Id, Side: "receiver"), default);
+AssertTrue(!crossConfirm.Success, "User cannot confirm on behalf of the partner");
+AssertTrue(crossConfirm.Errors.Any(e => e.Contains("thay cho đối tác")), "Error mentions cannot confirm for partner");
+
+// 1d. Test: Artist A can remove artwork to replace it
+var removeHandler = new RemoveTradeArtworkCommandHandler(db, storageService, notifPublisher);
+var (remSuccess, remData, _) = await removeHandler.Handle(new RemoveTradeArtworkCommand(tradeId, artistA.Id), default);
+AssertTrue(remSuccess, "Artist A successfully removed artwork");
+AssertTrue(!remData!.InitiatorSubmittedAt.HasValue, "InitiatorSubmittedAt cleared after removal");
+AssertTrue(string.IsNullOrEmpty(remData.InitiatorPreviewUrl), "InitiatorPreviewUrl cleared after removal");
+
+// 1e. Re-submit Artist A artwork
+using var aStream2 = new MemoryStream(Encoding.UTF8.GetBytes("Fake PNG data v2"));
+var submitA2Cmd = new SubmitTradeArtworkCommand(tradeId, artistA.Id, aStream2, "image/png", "alpha_v2.png", "Elf Mage V2");
+var (subA2Success, _, _) = await submitHandler.Handle(submitA2Cmd, default);
+AssertTrue(subA2Success, "Artist A artwork re-submission succeeded");
+
 // 2. Stranger tries to submit -> blocked
 using var cStream = new MemoryStream(Encoding.UTF8.GetBytes("Fake PNG data"));
 var submitCCmd = new SubmitTradeArtworkCommand(tradeId, artistC.Id, cStream, "image/png", "fake.png");
@@ -320,6 +344,18 @@ AssertTrue(confirmA.Success, "Artist A confirmed satisfaction");
 AssertEqual(TradeStatus.BothSubmitted, confirmA.Data!.Status, "Trade status remains BothSubmitted until B confirms");
 AssertTrue(confirmA.Data.IsInitiatorConfirmed, "IsInitiatorConfirmed is true");
 AssertTrue(!confirmA.Data.IsReceiverConfirmed, "IsReceiverConfirmed is still false");
+
+// 1b. Test: Artist B replaces their artwork -> Artist A's confirmation resets to false!
+using var bStream2 = new MemoryStream(Encoding.UTF8.GetBytes("Fake PSD data replacement"));
+var replaceBCmd = new SubmitTradeArtworkCommand(tradeId, artistB.Id, bStream2, "image/vnd.adobe.photoshop", "beta_v2.psd");
+var (repSuccess, repData, _) = await submitHandler.Handle(replaceBCmd, default);
+AssertTrue(repSuccess, "Artist B successfully replaced artwork");
+AssertTrue(!repData!.IsInitiatorConfirmed, "Artist A's confirmation was reset when Artist B replaced artwork");
+
+// 1c. Artist A re-confirms the newly replaced artwork
+var reconfirmA = await confirmHandler.Handle(new ConfirmTradeCommand(tradeId, artistA.Id), default);
+AssertTrue(reconfirmA.Success, "Artist A re-confirmed satisfaction on replaced artwork");
+AssertTrue(reconfirmA.Data!.IsInitiatorConfirmed, "IsInitiatorConfirmed is true again");
 
 // 2. Artist B confirms satisfaction -> completes trade!
 var confirmB = await confirmHandler.Handle(new ConfirmTradeCommand(tradeId, artistB.Id), default);

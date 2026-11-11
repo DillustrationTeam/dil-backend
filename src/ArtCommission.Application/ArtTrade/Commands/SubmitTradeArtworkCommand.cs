@@ -84,9 +84,9 @@ public class SubmitTradeArtworkCommandHandler : IRequestHandler<SubmitTradeArtwo
             return (false, null, ["Bạn không tham gia vào giao dịch này."]);
         }
 
-        if (trade.Status != TradeStatus.Accepted)
+        if (trade.Status != TradeStatus.Accepted && trade.Status != TradeStatus.BothSubmitted)
         {
-            return (false, null, ["Chỉ có thể nộp tranh khi giao dịch đang ở trạng thái Accepted (Đang vẽ)."]);
+            return (false, null, ["Chỉ có thể nộp hoặc thay đổi tranh khi giao dịch đang ở trạng thái Accepted (Đang vẽ) hoặc BothSubmitted."]);
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -112,29 +112,34 @@ public class SubmitTradeArtworkCommandHandler : IRequestHandler<SubmitTradeArtwo
             trade.InitiatorOriginalFileUrl = originalStorageKey;
             trade.InitiatorPreviewUrl = previewPublicUrl;
             trade.InitiatorSubmittedAt = now;
+
+            // Khi nộp hoặc thay đổi tranh, reset xác nhận của đối tác để đối tác xem lại tranh mới
+            trade.IsReceiverConfirmed = false;
+            trade.ReceiverConfirmedAt = null;
         }
         else
         {
             trade.ReceiverOriginalFileUrl = originalStorageKey;
             trade.ReceiverPreviewUrl = previewPublicUrl;
             trade.ReceiverSubmittedAt = now;
+
+            // Khi nộp hoặc thay đổi tranh, reset xác nhận của đối tác để đối tác xem lại tranh mới
+            trade.IsInitiatorConfirmed = false;
+            trade.InitiatorConfirmedAt = null;
         }
 
         trade.UpdatedAt = now;
 
-        // Nếu cả hai bên đều đã nộp bài -> Chuyển sang BothSubmitted (hoặc Completed nếu cả 2 bên đã xác nhận hài lòng trước)
-        if (trade.InitiatorSubmittedAt.HasValue && trade.ReceiverSubmittedAt.HasValue)
+        // Nếu cả hai bên đều đã nộp bài -> Chuyển sang BothSubmitted
+        if (!string.IsNullOrEmpty(trade.InitiatorOriginalFileUrl) && !string.IsNullOrEmpty(trade.ReceiverOriginalFileUrl))
         {
-            if (trade.IsInitiatorConfirmed && trade.IsReceiverConfirmed)
-            {
-                trade.Status = TradeStatus.Completed;
-                trade.CompletedAt = now;
-            }
-            else
-            {
-                trade.Status = TradeStatus.BothSubmitted;
-                trade.ConfirmationDeadlineAt = now.AddHours(72);
-            }
+            trade.Status = TradeStatus.BothSubmitted;
+            trade.ConfirmationDeadlineAt = now.AddHours(72);
+        }
+        else
+        {
+            trade.Status = TradeStatus.Accepted;
+            trade.ConfirmationDeadlineAt = null;
         }
 
         await _db.SaveChangesAsync(cancellationToken);

@@ -18,6 +18,8 @@ public class CommissionDto
     public decimal FinalPrice { get; set; }
     public decimal EscrowHeldAmount { get; set; }
     public decimal DisbursedAmount { get; set; }
+    public bool IsStagedEscrow { get; set; }
+    public decimal NextEscrowDepositAmount { get; set; }
     public string EscrowStatus { get; set; } = string.Empty;
     public int CurrentStage { get; set; }
     public string Status { get; set; } = string.Empty;
@@ -36,6 +38,7 @@ public class CommissionDto
     public DateTimeOffset? CreatorTermsAcceptedAt { get; set; }
     public string? CreatorTermsVersion { get; set; }
     public string CurrentWorkroomTermsVersion { get; set; } = "1.0";
+    public ArtCommission.Application.ArtistStudio.DTOs.CreatorTermsDto? CreatorTermsSnapshot { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 }
 
@@ -47,5 +50,7 @@ public class CommissionDetailDto : CommissionDto
 }
 
 public sealed record FinalDownloadDto(string DownloadUrl, DateTimeOffset ExpiresAt);
+public sealed record DeliverableFileDto(string Id, string Name, long SizeBytes, string Sha256, DateTimeOffset UploadedAt);
+public sealed record DeliverablesManifestDto(string Version, long TotalBytes, IReadOnlyList<DeliverableFileDto> Files);
 
 public sealed record RespondCancellationRequest(bool Approve);

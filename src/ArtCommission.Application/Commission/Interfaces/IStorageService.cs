@@ -9,5 +9,7 @@ public interface IStorageService
 {
     Task<string> UploadPublicAsync(Stream stream, string key, string contentType, CancellationToken ct = default);
     Task<string> UploadPrivateAsync(Stream stream, string key, string contentType, CancellationToken ct = default);
+    Task<Stream?> OpenPrivateReadAsync(string privateKey, CancellationToken ct = default)
+        => Task.FromResult<Stream?>(null);
     string GeneratePresignedDownloadUrl(string privateKey, TimeSpan expiry);
 }

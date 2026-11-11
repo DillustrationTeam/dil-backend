@@ -33,6 +33,12 @@ public sealed class LocalFileStorageService : IStorageService
         return key;
     }
 
+    public Task<Stream?> OpenPrivateReadAsync(string privateKey, CancellationToken ct = default)
+    {
+        var fullPath = ResolveSafePath("private", privateKey);
+        return Task.FromResult<Stream?>(File.Exists(fullPath) ? File.OpenRead(fullPath) : null);
+    }
+
     public string GeneratePresignedDownloadUrl(string privateKey, TimeSpan expiry)
     {
         var expiresAt = DateTimeOffset.UtcNow.Add(expiry).ToUnixTimeSeconds();
@@ -40,14 +46,19 @@ public sealed class LocalFileStorageService : IStorageService
         return $"{_baseUrl}/demo-uploads/private/{ToUrlPath(privateKey)}?expires={expiresAt}&signature={signature}";
     }
 
-    private async Task UploadAsync(Stream stream, string visibility, string key, CancellationToken ct)
+    private string ResolveSafePath(string visibility, string key)
     {
         var path = Path.Combine(_rootPath, visibility, key.Replace('/', Path.DirectorySeparatorChar));
         var fullPath = Path.GetFullPath(path);
         var root = Path.GetFullPath(Path.Combine(_rootPath, visibility)) + Path.DirectorySeparatorChar;
         if (!fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("Invalid storage key.", nameof(key));
+        return fullPath;
+    }
 
+    private async Task UploadAsync(Stream stream, string visibility, string key, CancellationToken ct)
+    {
+        var fullPath = ResolveSafePath(visibility, key);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         await using var output = File.Create(fullPath);
         await stream.CopyToAsync(output, ct);

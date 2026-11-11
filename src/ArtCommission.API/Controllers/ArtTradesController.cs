@@ -212,6 +212,30 @@ public class ArtTradesController : ApiControllerBase
     }
 
     /// <summary>
+    /// Gỡ bỏ tác phẩm đã nộp để thay thế bằng tác phẩm khác.
+    /// </summary>
+    [HttpDelete("{id:guid}/artwork")]
+    [ProducesResponseType(typeof(ArtTradeDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> RemoveTradeArtwork(Guid id, CancellationToken cancellationToken = default)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var command = new RemoveTradeArtworkCommand(id, CurrentUserId);
+        var (success, data, errors) = await Mediator.Send(command, cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(data);
+    }
+
+    /// <summary>
     /// Xác nhận hài lòng với tác phẩm của đối tác (Confirm Satisfaction).
     /// Khi cả hai bên đều xác nhận, giao dịch hoàn tất, cấp quyền sở hữu chéo và mở khóa URL tải file gốc.
     /// </summary>

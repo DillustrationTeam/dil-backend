@@ -35,6 +35,7 @@ public class Commission : BaseEntity
     public string? ClientTermsVersion { get; set; }
     public DateTimeOffset? CreatorTermsAcceptedAt { get; set; }
     public string? CreatorTermsVersion { get; set; }
+    public string? CreatorTermsSnapshotJson { get; set; }
 
     // Navigation properties
     public ICollection<Milestone> Milestones { get; set; } = new List<Milestone>();

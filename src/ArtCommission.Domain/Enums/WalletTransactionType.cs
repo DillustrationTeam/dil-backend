@@ -15,8 +15,8 @@ namespace ArtCommission.Domain.Enums;
 /// nó bị tính là giảm LockedBalance, trong khi ví người nhận không hề có tiền đang giữ.
 ///
 /// Nhờ tách riêng, công thức đối soát luôn đúng:
-///   Balance       = Deposit + CommissionEarning + Refund + RefundFromHold + EscrowReceive + Adjustment
-///                   − EscrowHold − Payout − PlatformFee
+///   Balance       = Deposit + CommissionEarning + Refund + RefundFromHold + EscrowReceive + TipReceived + Adjustment
+///                   − EscrowHold − Payout − PlatformFee − TipSent
 ///   LockedBalance = EscrowHold − EscrowRelease − RefundFromHold
 /// </summary>
 public enum WalletTransactionType
@@ -59,7 +59,13 @@ public enum WalletTransactionType
     /// Đặt ở CUỐI enum để không đổi giá trị số của các thành viên cũ — dữ liệu sổ cái
     /// đã ghi trước đó không bị diễn giải sai.
     /// </summary>
-    EscrowReceive
+    EscrowReceive,
+
+    /// <summary>Gửi tiền tip cho Creator (tiền RỜI số dư khả dụng của Client).</summary>
+    TipSent,
+
+    /// <summary>Tiền tip VÀO số dư khả dụng của Creator.</summary>
+    TipReceived
 }
 
 public static class WalletTransactionTypeNames
@@ -69,6 +75,8 @@ public static class WalletTransactionTypeNames
     public const string EscrowHold = nameof(WalletTransactionType.EscrowHold);
     public const string EscrowRelease = nameof(WalletTransactionType.EscrowRelease);
     public const string EscrowReceive = nameof(WalletTransactionType.EscrowReceive);
+    public const string TipSent = nameof(WalletTransactionType.TipSent);
+    public const string TipReceived = nameof(WalletTransactionType.TipReceived);
     public const string Refund = nameof(WalletTransactionType.Refund);
     public const string RefundFromHold = nameof(WalletTransactionType.RefundFromHold);
     public const string Payout = nameof(WalletTransactionType.Payout);
@@ -77,7 +85,7 @@ public static class WalletTransactionTypeNames
 
     public static readonly string[] All =
     [
-        Deposit, CommissionEarning, EscrowHold, EscrowRelease, EscrowReceive, Refund,
+        Deposit, CommissionEarning, EscrowHold, EscrowRelease, EscrowReceive, TipSent, TipReceived, Refund,
         RefundFromHold, Payout, PlatformFee, Adjustment
     ];
 }

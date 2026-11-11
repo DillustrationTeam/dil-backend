@@ -49,6 +49,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<CreatorFaq> CreatorFaqs => Set<CreatorFaq>();
     public DbSet<CreatorWorkItem> CreatorWorkItems => Set<CreatorWorkItem>();
     public DbSet<CreatorAsset> CreatorAssets => Set<CreatorAsset>();
+    public DbSet<ArtworkWatermarkReceipt> ArtworkWatermarkReceipts => Set<ArtworkWatermarkReceipt>();
 
     // Module Commission & Dispute
     public DbSet<Commission> Commissions => Set<Commission>();

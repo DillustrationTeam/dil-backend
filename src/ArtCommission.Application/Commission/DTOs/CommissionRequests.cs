@@ -76,3 +76,39 @@ public class CancelWithPolicyRequest
     [MaxLength(2000)]
     public string? Details { get; set; }
 }
+
+public class SendTipRequest
+{
+    [Range(1000, 100_000_000, ErrorMessage = "Số tiền tip phải từ 1.000 VND đến 100.000.000 VND.")]
+    public decimal Amount { get; set; }
+
+    [MaxLength(500)]
+    public string? Message { get; set; }
+}
+
+public record TipResultDto(
+    Guid CommissionId,
+    decimal Amount,
+    decimal ClientRemainingBalance,
+    string CreatorName,
+    DateTimeOffset CreatedAt,
+    string? Message
+);
+
+public class RenameCommissionRequest
+{
+    [Required(ErrorMessage = "Tên dự án không được để trống.")]
+    [MinLength(1, ErrorMessage = "Tên dự án tối thiểu 1 ký tự.")]
+    [MaxLength(200, ErrorMessage = "Tên dự án tối đa 200 ký tự.")]
+    public string Title { get; set; } = string.Empty;
+}
+
+public record RenameCommissionResultDto(
+    Guid CommissionId,
+    string NewTitle,
+    string UpdatedBy,
+    Guid? RoomId,
+    Guid? MessageId,
+    string? MessageBody,
+    DateTimeOffset? SentAt
+);

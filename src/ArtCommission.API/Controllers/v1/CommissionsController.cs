@@ -1,3 +1,7 @@
+using Microsoft.AspNetCore.SignalR;
+using ArtCommission.API.Hubs;
+using ArtCommission.Application.Auction.DTOs;
+using ArtCommission.Domain.Enums;
 using System.Security.Claims;
 using ArtCommission.API.Common;
 using ArtCommission.Application.Commission.DTOs;
@@ -21,18 +25,15 @@ namespace ArtCommission.API.Controllers.v1;
 public class CommissionsController : ControllerBase
 {
     private const long MaxWipFileSize = 25 * 1024 * 1024;
-    private const long MaxFinalFileSize = 100 * 1024 * 1024;
+    private const long MaxFinalFileSize = 1024L * 1024 * 1024; // 1 GB
     private static readonly string[] WipContentTypes = ["image/jpeg", "image/png", "image/webp"];
-    private static readonly string[] FinalContentTypes =
-    [
-        .. WipContentTypes, "application/pdf", "application/zip", "application/x-zip-compressed",
-        "image/vnd.adobe.photoshop", "application/octet-stream"
-    ];
     private readonly ICommissionService _commissionService;
+    private readonly IHubContext<ChatHub> _chatHub;
 
-    public CommissionsController(ICommissionService commissionService)
+    public CommissionsController(ICommissionService commissionService, IHubContext<ChatHub> chatHub)
     {
         _commissionService = commissionService;
+        _chatHub = chatHub;
     }
 
     private Guid GetCurrentUserId()
@@ -206,37 +207,85 @@ public class CommissionsController : ControllerBase
     [Authorize(Roles = "Creator")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(MaxFinalFileSize)]
-    public async Task<IActionResult> DeliverFinalWork(Guid id, IFormFile file, CancellationToken ct)
+    [RequestFormLimits(MultipartBodyLengthLimit = MaxFinalFileSize)]
+    public async Task<IActionResult> DeliverFinalWork(Guid id, CancellationToken ct)
     {
-        ValidateUpload(file, MaxFinalFileSize, FinalContentTypes, "final deliverable");
-        var creatorId = GetCurrentUserId();
-        var stream = file.OpenReadStream();
-        var result = await _commissionService.DeliverFinalWorkAsync(id, stream, file.ContentType, Path.GetFileName(file.FileName), creatorId, ct);
-        return Ok(new ApiResponse<CommissionDto>(result));
+        var formFiles = Request.Form.Files;
+        if (formFiles.Count == 0)
+            throw new ArgumentException("Final deliverable file is required.");
+
+        long totalBytes = 0;
+        var items = new List<DeliverableUploadItem>(formFiles.Count);
+        var openedStreams = new List<Stream>(formFiles.Count);
+        try
+        {
+            foreach (var formFile in formFiles)
+            {
+                if (formFile.Length <= 0)
+                    throw new ArgumentException($"File '{Path.GetFileName(formFile.FileName)}' is empty.");
+                totalBytes += formFile.Length;
+                if (totalBytes > MaxFinalFileSize)
+                    throw new ArgumentException("Total final deliverable size exceeds the 1 GB limit.");
+
+                var stream = formFile.OpenReadStream();
+                openedStreams.Add(stream);
+                items.Add(new DeliverableUploadItem(
+                    stream,
+                    formFile.ContentType ?? "application/octet-stream",
+                    Path.GetFileName(formFile.FileName),
+                    formFile.Length));
+            }
+
+            var creatorId = GetCurrentUserId();
+            var result = await _commissionService.DeliverFinalWorkAsync(id, items, creatorId, ct);
+            return Ok(new ApiResponse<CommissionDto>(result));
+        }
+        finally
+        {
+            foreach (var stream in openedStreams)
+                await stream.DisposeAsync();
+        }
     }
 
     /// <summary>
     /// PATCH /api/v1/commissions/{id}/complete
     /// Client nghiệm thu sản phẩm cuối cùng, hoàn tất đơn hàng
     /// </summary>
+    [HttpGet("{id:guid}/deliverables")]
+    public async Task<IActionResult> GetDeliverablesManifest(Guid id, CancellationToken ct)
+    {
+        var userId = GetCurrentUserId();
+        var manifest = await _commissionService.GetDeliverablesManifestAsync(id, userId, ct);
+        return Ok(new ApiResponse<DeliverablesManifestDto>(manifest));
+    }
+
+    [HttpDelete("{id:guid}/deliverables/{fileId}")]
+    [Authorize(Roles = "Creator")]
+    public async Task<IActionResult> DeleteDeliverableFile(Guid id, string fileId, CancellationToken ct)
+    {
+        var creatorId = GetCurrentUserId();
+        var manifest = await _commissionService.DeleteDeliverableFileAsync(id, fileId, creatorId, ct);
+        return Ok(new ApiResponse<DeliverablesManifestDto>(manifest));
+    }
+
     [HttpPatch("{id:guid}/complete")]
     [Authorize(Roles = "Client")]
-    public async Task<IActionResult> CompleteCommission(Guid id, CancellationToken ct)
+    public async Task<IActionResult> CompleteCommission(Guid id, [FromQuery] string? expectedManifestVersion, CancellationToken ct)
     {
         var clientId = GetCurrentUserId();
-        var commission = await _commissionService.CompleteCommissionAsync(id, clientId, ct);
+        var commission = await _commissionService.CompleteCommissionAsync(id, clientId, expectedManifestVersion, ct);
         return Ok(new ApiResponse<CommissionDto>(commission));
     }
 
     /// <summary>
     /// GET /api/v1/commissions/{id}/final/download
-    /// Client lấy link tải file gốc an toàn (Presigned URL)
+    /// Client lấy link tải file lẻ hoặc gói toàn bộ (Presigned URL)
     /// </summary>
     [HttpGet("{id:guid}/final/download")]
-    public async Task<IActionResult> GetFinalDownloadUrl(Guid id, CancellationToken ct)
+    public async Task<IActionResult> GetFinalDownloadUrl(Guid id, [FromQuery] string? fileId, CancellationToken ct)
     {
         var userId = GetCurrentUserId();
-        var download = await _commissionService.GetFinalDownloadUrlAsync(id, userId, ct);
+        var download = await _commissionService.GetFinalDownloadUrlAsync(id, userId, fileId, ct);
         return Ok(new ApiResponse<FinalDownloadDto>(download));
     }
 
@@ -303,6 +352,19 @@ public class CommissionsController : ControllerBase
     }
 
     /// <summary>
+    /// POST /api/v1/commissions/{id}/tip
+    /// </summary>
+    [HttpPost("{id:guid}/tip")]
+    [Authorize(Roles = "Client")]
+    public async Task<IActionResult> SendTip(Guid id, [FromBody] SendTipRequest request, CancellationToken ct)
+    {
+        var clientId = GetCurrentUserId();
+        var result = await _commissionService.SendTipAsync(id, request, clientId, ct);
+        return Ok(new ApiResponse<TipResultDto>(result));
+    }
+
+
+    /// <summary>
     /// POST /api/v1/commissions/{id}/reviews/reply
     /// Creator đăng phản hồi đối với đánh giá của Client
     /// </summary>
@@ -321,5 +383,52 @@ public class CommissionsController : ControllerBase
         if (file.Length > maxSize) throw new ArgumentException($"{label} file exceeds the size limit.");
         if (!allowedContentTypes.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase))
             throw new ArgumentException($"Unsupported {label} file type.");
+    }
+
+    /// <summary>
+    /// PATCH /api/v1/commissions/{id}/rename
+    /// Đổi tên dự án / phòng workroom (Client hoặc Creator)
+    /// </summary>
+    [HttpPatch("{id:guid}/rename")]
+    [ProducesResponseType(typeof(ApiResponse<RenameCommissionResultDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> RenameCommission(
+        Guid id,
+        [FromBody] RenameCommissionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        var result = await _commissionService.RenameCommissionAsync(id, request.Title, userId, cancellationToken);
+
+        // Broadcast realtime qua SignalR nếu có phòng chat
+        if (result.RoomId.HasValue && result.MessageId.HasValue)
+        {
+            try
+            {
+                var chatMsgDto = new ChatMessageDto(
+                    MessageId: result.MessageId.Value,
+                    RoomId: result.RoomId.Value,
+                    SenderId: userId,
+                    SenderFullName: result.UpdatedBy,
+                    Body: result.MessageBody ?? string.Empty,
+                    TranslatedBody: null,
+                    SourceLang: null,
+                    TargetLang: null,
+                    TranslationStatus: "Completed",
+                    MessageType: MessageTypes.SystemEvent,
+                    SentAt: result.SentAt ?? DateTimeOffset.UtcNow,
+                    IsRead: false,
+                    Attachments: []
+                );
+
+                await _chatHub.Clients.Group(ChatHub.RoomGroup(result.RoomId.Value))
+                    .SendAsync("ReceiveMessage", chatMsgDto, cancellationToken);
+            }
+            catch
+            {
+                // Realtime broadcast failure does not block rename success
+            }
+        }
+
+        return Ok(new ApiResponse<RenameCommissionResultDto>(result));
     }
 }
