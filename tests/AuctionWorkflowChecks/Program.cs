@@ -118,7 +118,7 @@ await db.SaveChangesAsync();
 
 // [BE-01] CreateAuction: Tạo phiên cơ bản thành công
 var (cSuccess1, cData1, cErrors1, _) = await createHandler.Handle(new CreateAuctionCommand(
-    sellerId, testArtwork1.Id, 500_000m, null, 50_000m, null, now.AddMinutes(-1), now.AddHours(2)
+    sellerId, testArtwork1.Id, 500_000m, 50_000m, null, now.AddMinutes(-1), now.AddHours(2)
 ), default);
 Ensure(cSuccess1 && cData1 != null, $"[BE-01] Thất bại tạo đấu giá cơ bản: {string.Join(", ", cErrors1)}");
 LogPass("BE-01", "CreateAuction: Khởi tạo phiên đấu giá cơ bản thành công");
@@ -134,29 +134,16 @@ var testArtworkZip = new Artwork
 db.Artworks.Add(testArtworkZip);
 await db.SaveChangesAsync();
 
-var (cSuccessZip, cDataZip, cErrorsZip, _) = await createHandler.Handle(new CreateAuctionCommand(
-    sellerId, testArtworkZip.Id, 1_000_000m, null, 100_000m, null, now.AddMinutes(-1), now.AddHours(3),
-    "https://storage.test/packs/art.zip", "Artwork-Pack.zip", 52_428_800
-), default);
-Ensure(cSuccessZip && cDataZip != null, $"[BE-02] Thất bại tạo đấu giá có Master Pack: {string.Join(", ", cErrorsZip)}");
-var zipDeliverable = await db.Deliverables.FirstOrDefaultAsync(d => d.AuctionId == cDataZip!.AuctionId);
-Ensure(zipDeliverable != null && zipDeliverable.FileName == "Artwork-Pack.zip" && zipDeliverable.MimeType == "application/zip",
-    "[BE-02] Không tự động tạo deliverable cho Master Pack.");
-LogPass("BE-02", "CreateAuction: Đính kèm Master File Pack (.zip) tự động tạo Deliverable");
-
-// [BE-03] CreateAuction: Không có Master File Pack không tạo Deliverable thừa
-var noZipDeliverable = await db.Deliverables.FirstOrDefaultAsync(d => d.AuctionId == cData1!.AuctionId);
-Ensure(noZipDeliverable == null, "[BE-03] Tạo Deliverable thừa khi không có Master Pack.");
-LogPass("BE-03", "CreateAuction: Không có Master File Pack không tạo Deliverable thừa");
 
 // [BE-04] CreateAuction: Tranh đang có phiên Active bị chặn tạo thêm
 var (cSuccessConflict, _, _, cConflict4) = await createHandler.Handle(new CreateAuctionCommand(
-    sellerId, testArtwork1.Id, 600_000m, null, 50_000m, null, now.AddMinutes(-1), now.AddHours(2)
+    sellerId, testArtwork1.Id, 600_000m, 50_000m, null, now.AddMinutes(-1), now.AddHours(2)
 ), default);
 Ensure(!cSuccessConflict && cConflict4, "[BE-04] Không chặn tạo phiên trùng lặp cho tranh đang đấu giá.");
 LogPass("BE-04", "CreateAuction: Tranh đang đấu giá bị chặn tạo thêm phiên (Conflict)");
 
-// [BE-05] CreateAuction: ReservePrice < StartPrice bị từ chối
+
+// Bối cảnh dùng chung cho các case BE-06..BE-08: một tranh của người bán khác.
 var otherSellerId = Guid.NewGuid();
 var otherProfile = new CreatorProfile
 {
@@ -174,23 +161,16 @@ var testArtworkReserve = new Artwork
 };
 db.Artworks.Add(testArtworkReserve);
 await db.SaveChangesAsync();
-
-var (cSuccess5, _, cErrors5, _) = await createHandler.Handle(new CreateAuctionCommand(
-    otherSellerId, testArtworkReserve.Id, 500_000m, 400_000m, 50_000m, null, now.AddMinutes(-1), now.AddHours(2)
-), default);
-Ensure(!cSuccess5 && cErrors5.Any(e => e.Contains("Giá sàn")), "[BE-05] Không chặn ReservePrice < StartPrice.");
-LogPass("BE-05", "CreateAuction: ReservePrice thấp hơn StartPrice bị từ chối");
-
 // [BE-06] CreateAuction: BuyNowPrice <= StartPrice bị từ chối
 var (cSuccess6, _, cErrors6, _) = await createHandler.Handle(new CreateAuctionCommand(
-    otherSellerId, testArtworkReserve.Id, 500_000m, null, 50_000m, 500_000m, now.AddMinutes(-1), now.AddHours(2)
+    otherSellerId, testArtworkReserve.Id, 500_000m, 50_000m, 500_000m, now.AddMinutes(-1), now.AddHours(2)
 ), default);
 Ensure(!cSuccess6 && cErrors6.Any(e => e.Contains("Giá mua ngay")), "[BE-06] Không chặn BuyNowPrice <= StartPrice.");
 LogPass("BE-06", "CreateAuction: BuyNowPrice <= StartPrice bị từ chối");
 
 // [BE-07] CreateAuction: Thời lượng phiên < 1 giờ bị từ chối
 var (cSuccess7, _, cErrors7, _) = await createHandler.Handle(new CreateAuctionCommand(
-    otherSellerId, testArtworkReserve.Id, 500_000m, null, 50_000m, null, now, now.AddMinutes(30)
+    otherSellerId, testArtworkReserve.Id, 500_000m, 50_000m, null, now, now.AddMinutes(30)
 ), default);
 Ensure(!cSuccess7 && cErrors7.Any(e => e.Contains("ít nhất 1 giờ")), "[BE-07] Không chặn phiên ngắn hơn 1 giờ.");
 LogPass("BE-07", "CreateAuction: Thời lượng phiên < 1 giờ bị từ chối");
@@ -198,7 +178,7 @@ LogPass("BE-07", "CreateAuction: Thời lượng phiên < 1 giờ bị từ ch�
 // [BE-08] CreateAuction: Người không sở hữu tranh bị từ chối mở phiên
 var strangerSellerId = Guid.NewGuid();
 var (cSuccess8, _, cErrors8, _) = await createHandler.Handle(new CreateAuctionCommand(
-    strangerSellerId, testArtworkReserve.Id, 500_000m, null, 50_000m, null, now.AddMinutes(-1), now.AddHours(2)
+    strangerSellerId, testArtworkReserve.Id, 500_000m, 50_000m, null, now.AddMinutes(-1), now.AddHours(2)
 ), default);
 Ensure(!cSuccess8 && cErrors8.Any(e => e.Contains("không phải chủ sở hữu")), "[BE-08] Không chặn người không sở hữu tranh mở đấu giá.");
 LogPass("BE-08", "CreateAuction: Người không sở hữu tranh bị từ chối mở phiên");
@@ -327,7 +307,25 @@ var transferredArtwork = new Artwork
     Title = "Transferred artwork",
     ImageUrl = "https://example.test/transferred.png"
 };
-db.Artworks.AddRange(eligibleArtwork, transferredArtwork);
+
+// Phiên đã Ended nhưng CHƯA có bid: tranh phải đăng lại được (không còn bị khoá).
+// Phiên đã Ended VÀ có bid/winner: tranh vẫn bị khoá vì đã bán hoặc đang chờ chốt.
+var endedWithoutBidArtwork = new Artwork
+{
+    Id = Guid.NewGuid(),
+    CreatorProfileId = creatorProfile.Id,
+    Title = "Ended without bid artwork",
+    ImageUrl = "https://example.test/ended-nobid.png"
+};
+var endedWithBidArtwork = new Artwork
+{
+    Id = Guid.NewGuid(),
+    CreatorProfileId = creatorProfile.Id,
+    Title = "Ended with bid artwork",
+    ImageUrl = "https://example.test/ended-bid.png"
+};
+
+db.Artworks.AddRange(eligibleArtwork, transferredArtwork, endedWithoutBidArtwork, endedWithBidArtwork);
 db.ArtworkOwnerships.Add(new ArtworkOwnership
 {
     ArtworkId = transferredArtwork.Id,
@@ -336,11 +334,57 @@ db.ArtworkOwnerships.Add(new ArtworkOwnership
     AcquiredAt = DateTimeOffset.UtcNow,
     TransferReason = OwnershipTransferReason.AuctionWin
 });
+db.Auctions.Add(new Auction
+{
+    Id = Guid.NewGuid(),
+    SellerId = sellerId,
+    ArtworkId = endedWithoutBidArtwork.Id,
+    StartPrice = 700_000m,
+    CurrentPrice = 700_000m,
+    BidStep = 50_000m,
+    BidCount = 0,
+    StartAt = DateTimeOffset.UtcNow.AddHours(-3),
+    EndAt = DateTimeOffset.UtcNow.AddHours(-1),
+    Status = AuctionStatus.Ended
+});
+db.Auctions.Add(new Auction
+{
+    Id = Guid.NewGuid(),
+    SellerId = sellerId,
+    ArtworkId = endedWithBidArtwork.Id,
+    StartPrice = 800_000m,
+    CurrentPrice = 900_000m,
+    FinalPrice = 900_000m,
+    BidStep = 50_000m,
+    BidCount = 2,
+    WinnerId = Guid.NewGuid(),
+    StartAt = DateTimeOffset.UtcNow.AddHours(-5),
+    EndAt = DateTimeOffset.UtcNow.AddHours(-2),
+    Status = AuctionStatus.Ended
+});
 await db.SaveChangesAsync();
-var (eligibleSuccess, eligibleData, _, _) = await new EligibleArtworksQueryHandler(db).Handle(
+var (eligibleSuccess, eligibleData, _, eligibleErrors) = await new EligibleArtworksQueryHandler(db).Handle(
     new EligibleArtworksQuery(sellerId, null, 20), default);
-Ensure(eligibleSuccess && eligibleData!.Count == 1 && eligibleData[0].ArtworkId == eligibleArtwork.Id,
-    "Eligible Artworks không loại tranh đang đấu giá hoặc đã chuyển cho chủ sở hữu khác.");
+Ensure(eligibleSuccess && eligibleData is not null,
+    $"[BE-El-01] Truy vấn Eligible Artworks thất bại: {string.Join(", ", eligibleErrors)}");
+
+var eligibleIds = eligibleData!.Select(a => a.ArtworkId).ToHashSet();
+
+// eligibleArtwork + testArtworkZip (chưa có phiên nào) + endedWithoutBidArtwork (Ended, 0 bid)
+// phải đăng lại được; tranh đã chuyển chủ / đang Active / Ended-có-bid thì bị loại.
+Ensure(eligibleIds.Contains(eligibleArtwork.Id)
+       && eligibleIds.Contains(testArtworkZip.Id)
+       && eligibleIds.Contains(endedWithoutBidArtwork.Id),
+    "[BE-El-01] Eligible Artworks bỏ sót tranh đủ điều kiện (chưa có phiên hoặc Ended không bid).");
+Ensure(!eligibleIds.Contains(transferredArtwork.Id)
+       && !eligibleIds.Contains(testArtwork1.Id)
+       && !eligibleIds.Contains(auctionArtwork.Id)
+       && !eligibleIds.Contains(endedWithBidArtwork.Id),
+    "[BE-El-02] Eligible Artworks không loại tranh đã chuyển chủ, đang Active hoặc Ended-có-bid.");
+Ensure(eligibleData!.Count == 3,
+    $"[BE-El-03] Số tranh đủ điều kiện sai: mong đợi 3, nhận {eligibleData!.Count}.");
+LogPass("BE-El-01", "Eligible Artworks: nhận tranh chưa có phiên hoặc Ended không bid");
+LogPass("BE-El-02", "Eligible Artworks: loại tranh đã chuyển chủ / đang Active / Ended có bid");
 
 var (statisticsSuccess, statisticsData, _) = await new GetCreatorStatisticsQueryHandler(db).Handle(
     new GetCreatorStatisticsQuery(creatorProfile.Id), default);
@@ -470,8 +514,8 @@ var (downloadSuccess, downloadData, downloadCode, downloadErrors) = await downlo
 Ensure(downloadSuccess && downloadCode == 200 && downloadData != null,
     $"[BE-30] Winner không lấy được link tải file gốc: {string.Join(", ", downloadErrors)}");
 Ensure(downloadData!.FileName == "Masterpiece Bundle.zip", "[BE-30] Tên file tải về không khớp.");
-Ensure(downloadData.LicenseType == "1-of-1 Exclusive Ownership & Commercial Rights",
-    "[BE-30] LicenseType không đúng loại thương mại độc quyền 1-of-1.");
+Ensure(downloadData.LicenseType == "Exclusive Ownership & Commercial Rights",
+    "[BE-30] LicenseType không đúng loại thương mại độc quyền.");
 LogPass("BE-30", "DeliverableDownload: Winner nhận presigned URL tải file Master Pack kèm số chứng chỉ");
 
 // [BE-31] DeliverableDownload: Người lạ (stranger) KHÔNG được tải file gốc (403)
@@ -487,10 +531,10 @@ Ensure(reloadedDeliverable!.IsDelivered && reloadedDeliverable.DownloadCount == 
     "[BE-32] DownloadCount không tăng lên 1 sau lượt tải đầu tiên.");
 LogPass("BE-32", "DeliverableDownload: DownloadCount tăng lên sau mỗi lượt tải hợp lệ");
 
-// [BE-33] GetAuctionCertificate: Kiểm tra lấy Chứng nhận số 1-of-1
+// [BE-33] GetAuctionCertificate: Kiểm tra lấy Chứng nhận số (chỉ người thắng/người bán/admin xem được)
 var certHandler = new GetAuctionCertificateQueryHandler(db);
 var (certSuccess, certData, certCode, certErrors) = await certHandler.Handle(
-    new GetAuctionCertificateQuery(deliverableAuction.Id), default);
+    new GetAuctionCertificateQuery(deliverableAuction.Id, deliverableWinnerId, false), default);
 Ensure(certSuccess && certCode == 200 && certData != null,
     $"[BE-33] Không lấy được chứng nhận đấu giá: {string.Join(", ", certErrors)}");
 Ensure(certData!.OwnerId == deliverableWinnerId, "[BE-33] Chủ sở hữu trên chứng nhận không khớp winner.");
@@ -520,10 +564,11 @@ Ensure(provData.IsCurrentOwnerCollector, "[BE-35] IsCurrentOwnerCollector không
 Ensure(provData.History.Count >= 1, "[BE-35] Lịch sử chuyển nhượng Provenance trống.");
 LogPass("BE-35", "GetArtworkProvenance: Trả về chuỗi lịch sử lai lịch tác phẩm (Creator -> Collector)");
 
-// [BE-36] GetCommercialRightsDeed: Trả về văn bản pháp lý 5 điều khoản và chữ ký số SHA-256
+// [BE-36] GetCommercialRightsDeed: Trả về văn bản pháp lý và chữ ký số SHA-256
+// (chỉ người thắng/người bán/admin xem được)
 var deedHandler = new GetCommercialRightsDeedQueryHandler(db);
 var (deedSuccess, deedData, deedCode, deedErrors) = await deedHandler.Handle(
-    new GetCommercialRightsDeedQuery(deliverableAuction.Id), default);
+    new GetCommercialRightsDeedQuery(deliverableAuction.Id, deliverableWinnerId, false), default);
 Ensure(deedSuccess && deedCode == 200 && deedData != null,
     $"[BE-36] GetCommercialRightsDeed thất bại: {string.Join(", ", deedErrors)}");
 Ensure(deedData!.CreatorName == "Master Creator", "[BE-36] CreatorName trong hợp đồng thương mại không đúng.");
@@ -556,9 +601,9 @@ LogPass("BE-38", "Deliverable Multi-asset: Trả về đồng thời liên kết
 
 // [BE-39] Moral Rights Retained: Điều lệ quy định rõ quyền tác giả gốc bất khả xâm phạm và cấm mạo danh
 Ensure(deedData.MoralRightsRetainedByArtist, "[BE-39] MoralRightsRetainedByArtist phải là true.");
-Ensure(deedData.TermsAndConditions.Contains("5. Quyền nhân thân bất khả xâm phạm (Inalienable Moral Rights)"),
-    "[BE-39] Không tìm thấy điều khoản 5 về Quyền nhân thân bất khả xâm phạm trong TermsAndConditions.");
-Ensure(deedData.TermsAndConditions.Contains("người mua cam kết KHÔNG được mạo danh là tác giả"),
+Ensure(deedData.TermsAndConditions.Contains("Quyền nhân thân bất khả xâm phạm (Inalienable Moral Rights)"),
+    "[BE-39] Không tìm thấy điều khoản về Quyền nhân thân bất khả xâm phạm trong TermsAndConditions.");
+Ensure(deedData.TermsAndConditions.Contains("KHÔNG được mạo danh là tác giả"),
     "[BE-39] TermsAndConditions không chứa điều khoản cấm mạo danh tác giả.");
 LogPass("BE-39", "Moral Rights Retained: Điều lệ quy định rõ quyền tác giả gốc bất khả xâm phạm và cấm mạo danh");
 

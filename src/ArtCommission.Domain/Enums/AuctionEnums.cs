@@ -32,7 +32,13 @@ public enum AuctionStatus
     InTransit,
 
     /// <summary>Giao dịch hoàn tất toàn bộ: người mua đã nhận tranh vật lý và sàn đã nhả tiền cho người bán.</summary>
-    Completed
+    Completed,
+
+    /// <summary>
+    /// Người mua mở khiếu nại bưu phẩm (hư hại / sai tranh / không nhận được).
+    /// Ký quỹ bị đóng băng cho tới khi Admin phân xử — không được giải ngân tiếp.
+    /// </summary>
+    Disputed
 }
 
 /// <summary>Trạng thái giao nhận tranh vật lý.</summary>
@@ -51,7 +57,13 @@ public enum DeliveryStatus
     Disputed = 4,
 
     /// <summary>Giao hàng bị huỷ do người bán quá hạn không gửi hoặc đơn vị vận chuyển làm thất lạc.</summary>
-    Cancelled = 5
+    Cancelled = 5,
+
+    /// <summary>
+    /// Khiếu nại đã được Admin đóng lại nhưng KHÔNG hoàn được tiền (ký quỹ đã giải ngân cho người
+    /// bán trước đó). Người mua giữ quyền đánh giá người bán, đơn không còn bị đóng băng.
+    /// </summary>
+    Resolved = 6
 }
 
 /// <summary>Loại phiên đấu giá.</summary>

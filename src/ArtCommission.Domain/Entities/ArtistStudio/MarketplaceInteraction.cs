@@ -53,5 +53,15 @@ public class CreatorReview : BaseEntity
     public Guid ReviewerUserId { get; set; }
     public int Rating { get; set; }
     public string? Comment { get; set; }
+
+    /// <summary>
+    /// Phiên đấu giá phát sinh đánh giá (nếu có). Đánh giá sau khiếu nại giao nhận được gắn với
+    /// phiên để chặn việc một người mua spam nhiều đánh giá cho cùng một giao dịch.
+    /// </summary>
+    public Guid? AuctionId { get; set; }
+
+    /// <summary>Nguồn đánh giá: <c>auction</c> | <c>commission</c> | <c>manual</c>.</summary>
+    public string? Source { get; set; }
+
     public CreatorProfile? CreatorProfile { get; set; }
 }

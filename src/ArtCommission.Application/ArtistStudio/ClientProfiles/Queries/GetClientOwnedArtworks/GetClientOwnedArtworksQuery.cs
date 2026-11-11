@@ -122,7 +122,7 @@ public class GetClientOwnedArtworksQueryHandler
                         CertificateNumber: certNumber,
                         HasMasterFile: hasMaster,
                         DownloadUrl: null,
-                        ExclusiveBadge: "Exclusive 1-of-1 Owner"
+                        ExclusiveBadge: "Exclusive Owner"
                     ));
                 }
             }

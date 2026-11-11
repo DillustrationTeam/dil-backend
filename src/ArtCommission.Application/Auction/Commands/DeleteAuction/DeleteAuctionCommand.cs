@@ -84,7 +84,8 @@ public class DeleteAuctionCommandHandler
             ? "Người bán huỷ phiên."
             : request.Reason!.Trim();
         auction.UpdatedAt = now;
-        auction.IsDeleted = true;
+        // KHÔNG soft-delete: phiên đã huỷ phải hiện ở tab 'Đã huỷ' của Admin và trong lịch sử của người bán.
+        // Soft-delete khiến bảng Cancelled luôn rỗng và mất dấu vết huỷ phiên.
 
         await _db.SaveChangesAsync(cancellationToken);
 

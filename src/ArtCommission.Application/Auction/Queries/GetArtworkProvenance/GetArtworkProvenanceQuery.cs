@@ -105,7 +105,7 @@ public sealed class GetArtworkProvenanceQueryHandler
             CurrentOwnerId: currentOwnerId,
             CurrentOwnerName: currentOwnerName,
             IsCurrentOwnerCollector: isCollector,
-            ExclusiveBadge: "Exclusive 1-of-1 Owner",
+            ExclusiveBadge: "Exclusive Owner",
             History: history
         );
 

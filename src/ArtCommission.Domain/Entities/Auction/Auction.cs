@@ -26,7 +26,6 @@ public class Auction : BaseEntity
     public decimal StartPrice { get; set; }
 
     /// <summary>Giá sàn bí mật. Dưới giá này thì không chốt bán (không lộ ra API).</summary>
-    public decimal? ReservePrice { get; set; }
 
     /// <summary>Bước giá tối thiểu giữa 2 lượt bid liên tiếp.</summary>
     public decimal BidStep { get; set; }
