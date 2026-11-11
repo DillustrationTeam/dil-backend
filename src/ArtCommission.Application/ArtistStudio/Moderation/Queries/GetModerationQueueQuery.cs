@@ -34,6 +34,7 @@ public class GetModerationQueueQueryHandler
 
         var query = _db.Artworks
             .AsNoTracking()
+            .Include(x => x.Category)
             .Include(x => x.CreatorProfile)
                 .ThenInclude(cp => cp!.User)
             .Where(x => !x.IsDeleted);
@@ -78,6 +79,8 @@ public class GetModerationQueueQueryHandler
                 ImageUrl = x.ImageUrl,
                 ThumbnailUrl = x.ThumbnailUrl,
                 Style = x.Style,
+                CategoryId = x.CategoryId,
+                CategoryName = x.Category != null ? x.Category.Name : x.Style,
                 SafeScore = x.SafeScore,
                 FlagReason = x.FlagReason,
                 ModerationStatus = x.ModerationStatus,

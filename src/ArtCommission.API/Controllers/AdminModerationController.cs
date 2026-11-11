@@ -111,6 +111,33 @@ public class AdminModerationController : ApiControllerBase
     }
 
     /// <summary>
+    /// Admin / Moderator chỉnh sửa lại Danh mục lớn và Tag con của tác phẩm trước hoặc sau khi duyệt.
+    /// </summary>
+    [HttpPut("{artworkId:guid}/metadata")]
+    [ProducesResponseType(typeof(ArtworkInspectionDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> UpdateArtworkMetadata(
+        Guid artworkId,
+        [FromBody] UpdateModerationArtworkMetadataRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var (success, data, errors) = await Mediator.Send(
+            new UpdateModerationArtworkMetadataCommand(artworkId, CurrentUserId, request.CategoryId, request.Tags),
+            cancellationToken);
+
+        return success && data is not null
+            ? OkEnvelope(data)
+            : BadRequestEnvelope(errors);
+    }
+
+    /// <summary>
     /// Yêu cầu quét lại AI cho tác phẩm (SCR-20 / UC28).
     /// Đưa tác phẩm vào hàng đợi quét nền của Hangfire để cập nhật các chỉ số NSFW và AI generation.
     /// </summary>

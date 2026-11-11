@@ -12,6 +12,8 @@ public record ArtworkInspectionDetailDto
     public string? ThumbnailUrl { get; init; }
     public string? WatermarkedUrl { get; init; }
     public string? Style { get; init; }
+    public Guid? CategoryId { get; init; }
+    public string? CategoryName { get; init; }
     public int LikeCount { get; init; }
     public string? Resolution { get; init; }
     public long? FileSizeBytes { get; init; }

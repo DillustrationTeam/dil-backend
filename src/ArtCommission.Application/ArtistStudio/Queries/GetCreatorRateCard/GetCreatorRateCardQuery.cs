@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard;
 
 public record RateCardMilestoneDto(int Sequence, string Title, decimal Price, int MaxRevisions = 3);
-public record RateCardPackageDto(Guid Id, string Name, string? Description, decimal Price, List<RateCardMilestoneDto> Milestones, int MaxRevisions = 3, decimal ExtraRevisionPrice = 0, List<string>? SampleUrls = null, int OrderCount = 0, int? MaxSlots = null, int ActiveOrderCount = 0, int? RemainingSlots = null);
+public record RateCardPackageDto(Guid Id, string Name, string? Description, decimal Price, List<RateCardMilestoneDto> Milestones, int MaxRevisions = 3, decimal ExtraRevisionPrice = 0, List<string>? SampleUrls = null, int OrderCount = 0, int? MaxSlots = null, int ActiveOrderCount = 0, int? RemainingSlots = null, Guid? CategoryId = null, string? CategoryName = null);
 
 // Older stored packages used slugs. Map them consistently to IDs for display and ordering.
 public sealed class RateCardIdConverter : JsonConverter<Guid>
@@ -54,12 +54,27 @@ public class GetCreatorRateCardQueryHandler : IRequestHandler<GetCreatorRateCard
         try
         {
             var packages = JsonSerializer.Deserialize<List<RateCardPackageDto>>(profile.RateCardJson, JsonOptions) ?? new List<RateCardPackageDto>();
+            var categoryIds = packages
+                .Where(p => p.CategoryId.HasValue && p.CategoryId.Value != Guid.Empty)
+                .Select(p => p.CategoryId!.Value)
+                .Distinct()
+                .ToList();
+            var categoryMap = categoryIds.Count > 0
+                ? await _db.ArtworkCategories
+                    .AsNoTracking()
+                    .Where(c => categoryIds.Contains(c.Id) && !c.IsDeleted)
+                    .ToDictionaryAsync(c => c.Id, c => c.Name, cancellationToken)
+                : new Dictionary<Guid, string>();
+
             packages = packages.Select(p => p with
             {
                 Milestones = p.Milestones is { Count: > 0 }
                     ? p.Milestones
                     : new List<RateCardMilestoneDto> { new(1, "Hoàn thiện (Final)", p.Price, p.MaxRevisions) },
-                SampleUrls = p.SampleUrls ?? new List<string>()
+                SampleUrls = p.SampleUrls ?? new List<string>(),
+                CategoryName = p.CategoryId.HasValue && categoryMap.TryGetValue(p.CategoryId.Value, out var catName)
+                    ? catName
+                    : p.CategoryName
             }).ToList();
             if (packages.Count > 0)
             {

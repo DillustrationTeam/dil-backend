@@ -46,8 +46,38 @@ public class SaveCreatorRateCardCommandHandler
 
         try
         {
+            var categoryIds = (request.Packages ?? new List<RateCardPackageDto>())
+                .Where(p => p.CategoryId.HasValue && p.CategoryId.Value != Guid.Empty)
+                .Select(p => p.CategoryId!.Value)
+                .Distinct()
+                .ToList();
+
+            var categoryMap = categoryIds.Count > 0
+                ? await _db.ArtworkCategories
+                    .AsNoTracking()
+                    .Where(c => categoryIds.Contains(c.Id) && !c.IsDeleted && c.IsActive)
+                    .ToDictionaryAsync(c => c.Id, c => c.Name, cancellationToken)
+                : new Dictionary<Guid, string>();
+
+            if (categoryIds.Any(id => !categoryMap.ContainsKey(id)))
+            {
+                return (false, null, new[] { "Một hoặc nhiều danh mục lớn được chọn cho gói dịch vụ không hợp lệ hoặc đã ngừng hoạt động." });
+            }
+
             var normalized = (request.Packages ?? new List<RateCardPackageDto>())
-                .Select(p => p with { OrderCount = 0, ActiveOrderCount = 0, RemainingSlots = null })
+                .Select(p =>
+                {
+                    Guid? catId = p.CategoryId.HasValue && p.CategoryId.Value != Guid.Empty ? p.CategoryId.Value : null;
+                    string? catName = catId.HasValue && categoryMap.TryGetValue(catId.Value, out var name) ? name : null;
+                    return p with
+                    {
+                        OrderCount = 0,
+                        ActiveOrderCount = 0,
+                        RemainingSlots = null,
+                        CategoryId = catId,
+                        CategoryName = catName
+                    };
+                })
                 .ToList();
             profile.RateCardJson = JsonSerializer.Serialize(normalized, JsonOptions);
             profile.UpdatedAt = DateTimeOffset.UtcNow;

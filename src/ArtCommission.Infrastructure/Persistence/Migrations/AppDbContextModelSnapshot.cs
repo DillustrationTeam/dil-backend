@@ -297,6 +297,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<Guid?>("CategoryId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -391,11 +394,65 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CategoryId");
+
                     b.HasIndex("CreatorProfileId");
 
                     b.HasIndex("ModerationStatus");
 
                     b.ToTable("Artworks", (string)null);
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.ArtworkCategory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("DisplayOrder")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DisplayOrder");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.ToTable("ArtworkCategories", (string)null);
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.ArtworkComment", b =>
@@ -4369,11 +4426,18 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.Artwork", b =>
                 {
+                    b.HasOne("ArtCommission.Domain.Entities.ArtistStudio.ArtworkCategory", "Category")
+                        .WithMany("Artworks")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("ArtCommission.Domain.Entities.ArtistStudio.CreatorProfile", "CreatorProfile")
                         .WithMany("Artworks")
                         .HasForeignKey("CreatorProfileId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Category");
 
                     b.Navigation("CreatorProfile");
                 });
@@ -5325,6 +5389,11 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.Artwork", b =>
                 {
                     b.Navigation("ArtworkTags");
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.ArtworkCategory", b =>
+                {
+                    b.Navigation("Artworks");
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.CreatorProfile", b =>

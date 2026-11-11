@@ -176,6 +176,11 @@ public class CreatorProfilesController : ApiControllerBase
     [HttpPost("artworks")]
     public async Task<IActionResult> UploadArtwork([FromBody] CreateArtworkRequest request, CancellationToken cancellationToken)
     {
+        if (!request.CategoryId.HasValue || request.CategoryId.Value == Guid.Empty)
+        {
+            return BadRequestEnvelope("Vui lòng chọn danh mục lớn cho tác phẩm.");
+        }
+
         var command = new UploadArtworkCommand(
             CurrentUserId,
             request.Title,
@@ -184,7 +189,8 @@ public class CreatorProfilesController : ApiControllerBase
             request.ThumbnailUrl,
             request.IsAiGenerated,
             request.AiDetectionScore,
-            request.Tags);
+            request.Tags,
+            request.CategoryId);
 
         var (success, data, errors) = await Mediator.Send(command, cancellationToken);
         if (!success || data == null)
@@ -299,7 +305,7 @@ public class CreatorProfilesController : ApiControllerBase
     public async Task<IActionResult> UpdateArtwork(Guid id, [FromBody] UpdateCreatorArtworkRequest request, CancellationToken cancellationToken)
     {
         var (data, errors) = await Mediator.Send(
-            new UpdateCreatorArtworkCommand(CurrentUserId, id, request.Title, request.Description, request.Tags, request.ImageUrl, request.ThumbnailUrl),
+            new UpdateCreatorArtworkCommand(CurrentUserId, id, request.Title, request.Description, request.Tags, request.ImageUrl, request.ThumbnailUrl, request.CategoryId),
             cancellationToken);
 
         return data is null ? BadRequestEnvelope(errors) : OkEnvelope(data);
