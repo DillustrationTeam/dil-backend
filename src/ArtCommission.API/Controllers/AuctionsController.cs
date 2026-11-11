@@ -14,6 +14,7 @@ using ArtCommission.Application.Auction.Queries.GetAuctions;
 using ArtCommission.Application.Auction.Queries.GetAuctionSettlement;
 using ArtCommission.Application.Auction.Queries.GetDeliverableDownloadUrl;
 using ArtCommission.Application.Auction.Queries.GetPhysicalDeliveries;
+using SixLabors.ImageSharp;
 using ArtCommission.Application.Common.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -24,14 +25,10 @@ namespace ArtCommission.API.Controllers;
 public sealed record CreateAuctionRequest(
     Guid ArtworkId,
     decimal StartPrice,
-    decimal? ReservePrice,
     decimal BidStep,
     decimal? BuyNowPrice,
     DateTimeOffset StartAt,
     DateTimeOffset EndAt,
-    string? MasterFileUrl = null,
-    string? MasterFileName = null,
-    long? MasterFileSizeBytes = null,
     bool HasPhysicalCopy = false,
     string? PhysicalDescription = null);
 
@@ -56,16 +53,20 @@ public sealed record ConfirmDeliveryRequest(string? DeliveryReceiptUrl = null);
 /// <summary>Thân request người mua khiếu nại giao nhận tranh.</summary>
 public sealed record DisputeDeliveryRequest(string Reason, string? EvidenceUrl = null);
 
+/// <summary>Thân request Admin phân xử khiếu nại giao nhận.</summary>
+public sealed record ResolveDeliveryDisputeRequest(string Decision, string? Note = null);
+
+/// <summary>Người mua đánh giá người bán sau khi giao dịch đấu giá đã khép lại (1–5 sao).</summary>
+public sealed record RateAuctionSellerRequest(int Rating, string? Comment = null);
+
 /// <summary>Thân request sửa phiên đấu giá.</summary>
 public sealed record UpdateAuctionRequest(
     decimal? StartPrice,
-    decimal? ReservePrice,
     decimal? BidStep,
     decimal? BuyNowPrice,
     DateTimeOffset? StartAt,
     DateTimeOffset? EndAt,
-    bool ClearBuyNowPrice = false,
-    bool ClearReservePrice = false);
+    bool ClearBuyNowPrice = false);
 
 /// <summary>Thân request đặt giá.</summary>
 public sealed record PlaceBidRequest(
@@ -131,65 +132,6 @@ public class AuctionsController : ApiControllerBase
     // UC32 — Tạo / danh sách / chi tiết / sửa / huỷ
     // =================================================================
 
-    /// <summary>Tải lên tệp Master File Pack (.zip, .rar, .7z, .psd) đính kèm phiên đấu giá (UC32).</summary>
-    [HttpPost("upload-master-pack")]
-    [Consumes("multipart/form-data")]
-    [RequestSizeLimit(150 * 1024 * 1024)] // 150MB
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> UploadMasterPack(
-        IFormFile file,
-        [FromServices] IFileStorageService fileStorage,
-        CancellationToken cancellationToken)
-    {
-        if (CurrentUserId == Guid.Empty)
-        {
-            return UnauthorizedEnvelope();
-        }
-
-        if (file is null || file.Length == 0)
-        {
-            return BadRequestEnvelope("Vui lòng chọn tệp Master File Pack.");
-        }
-
-        const long maxBytes = 150 * 1024 * 1024; // 150MB
-        if (file.Length > maxBytes)
-        {
-            return BadRequestEnvelope("Kích thước tệp không được vượt quá 150MB.");
-        }
-
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        var allowedExtensions = new[] { ".zip", ".rar", ".7z", ".tar", ".gz", ".psd", ".clip", ".png", ".tif", ".tiff" };
-        if (!allowedExtensions.Contains(ext))
-        {
-            return BadRequestEnvelope("Định dạng tệp không được hỗ trợ. Vui lòng tải lên tệp nén (.zip, .rar, .7z) hoặc tệp đồ họa gốc (.psd, .clip).");
-        }
-
-        var originalFileName = Path.GetFileName(file.FileName);
-        string fileUrl;
-        await using (var stream = file.OpenReadStream())
-        {
-            fileUrl = await fileStorage.SaveAsync(
-                stream,
-                originalFileName,
-                string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
-                $"auction-deliverables/{CurrentUserId}",
-                cancellationToken);
-        }
-
-        var absoluteUrl = Uri.TryCreate(fileUrl, UriKind.Absolute, out var absolute) && absolute.Scheme is "http" or "https"
-            ? fileUrl
-            : $"{Request.Scheme}://{Request.Host}{fileUrl}";
-
-        return OkEnvelope(new
-        {
-            fileUrl = absoluteUrl,
-            fileName = originalFileName,
-            fileSizeBytes = file.Length
-        });
-    }
-
     /// <summary>Tạo phiên đấu giá cho một tranh mình đang sở hữu (UC32).</summary>
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -210,14 +152,10 @@ public class AuctionsController : ApiControllerBase
                 CurrentUserId,
                 request.ArtworkId,
                 request.StartPrice,
-                request.ReservePrice,
                 request.BidStep,
                 request.BuyNowPrice,
                 request.StartAt,
                 request.EndAt,
-                request.MasterFileUrl,
-                request.MasterFileName,
-                request.MasterFileSizeBytes,
                 request.HasPhysicalCopy,
                 request.PhysicalDescription),
             cancellationToken);
@@ -313,13 +251,11 @@ public class AuctionsController : ApiControllerBase
                 CurrentUserId,
                 auctionId,
                 request.StartPrice,
-                request.ReservePrice,
                 request.BidStep,
                 request.BuyNowPrice,
                 request.StartAt,
                 request.EndAt,
-                request.ClearBuyNowPrice,
-                request.ClearReservePrice),
+                request.ClearBuyNowPrice),
             cancellationToken);
 
         return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
@@ -565,7 +501,7 @@ public class AuctionsController : ApiControllerBase
         };
     }
 
-    /// <summary>Danh sách tranh 1-of-1 người dùng đang sở hữu (My Collection / Exclusive 1-of-1 Vault).</summary>
+    /// <summary>Danh sách tranh người dùng đang sở hữu (My Collection / Exclusive Vault).</summary>
     [HttpGet("my-collection")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -610,27 +546,10 @@ public class AuctionsController : ApiControllerBase
     public async Task<IActionResult> GetCommercialRights(Guid auctionId, CancellationToken cancellationToken)
     {
         var (success, data, statusCode, errors) = await Mediator.Send(
-            new ArtCommission.Application.Auction.Queries.GetCommercialRightsDeed.GetCommercialRightsDeedQuery(auctionId),
-            cancellationToken);
-
-        if (success)
-        {
-            return OkEnvelope(data);
-        }
-
-        return statusCode == 404 ? NotFoundEnvelope(errors) : BadRequestEnvelope(errors);
-    }
-
-    /// <summary>Lấy chứng nhận sở hữu số 1-of-1 Certificate cho phiên đấu giá đã chốt (UC35).</summary>
-    [HttpGet("{auctionId:guid}/certificate")]
-    [AllowAnonymous]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetCertificate(Guid auctionId, CancellationToken cancellationToken)
-    {
-        var (success, data, statusCode, errors) = await Mediator.Send(
-            new ArtCommission.Application.Auction.Queries.GetAuctionCertificate.GetAuctionCertificateQuery(auctionId),
+            new ArtCommission.Application.Auction.Queries.GetCommercialRightsDeed.GetCommercialRightsDeedQuery(
+                auctionId,
+                CurrentUserId == Guid.Empty ? null : CurrentUserId,
+                User.IsInRole("Administrator") || User.IsInRole("Admin")),
             cancellationToken);
 
         if (success)
@@ -640,6 +559,59 @@ public class AuctionsController : ApiControllerBase
 
         return statusCode switch
         {
+            403 => StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                data = (object?)null,
+                meta = (object?)null,
+                error = new
+                {
+                    type = "https://httpstatuses.com/403",
+                    title = "Forbidden",
+                    status = 403,
+                    detail = errors.FirstOrDefault() ?? "Bạn không có quyền xem văn bản này.",
+                    traceId = HttpContext.TraceIdentifier
+                }
+            }),
+            404 => NotFoundEnvelope(errors),
+            _ => BadRequestEnvelope(errors)
+        };
+    }
+
+    /// <summary>Lấy chứng nhận sở hữu số Certificate cho phiên đấu giá đã chốt (UC35).</summary>
+    [HttpGet("{auctionId:guid}/certificate")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetCertificate(Guid auctionId, CancellationToken cancellationToken)
+    {
+        var (success, data, statusCode, errors) = await Mediator.Send(
+            new ArtCommission.Application.Auction.Queries.GetAuctionCertificate.GetAuctionCertificateQuery(
+                auctionId,
+                CurrentUserId == Guid.Empty ? null : CurrentUserId,
+                User.IsInRole("Administrator") || User.IsInRole("Admin")),
+            cancellationToken);
+
+        if (success)
+        {
+            return OkEnvelope(data);
+        }
+
+        return statusCode switch
+        {
+            403 => StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                data = (object?)null,
+                meta = (object?)null,
+                error = new
+                {
+                    type = "https://httpstatuses.com/403",
+                    title = "Forbidden",
+                    status = 403,
+                    detail = errors.FirstOrDefault() ?? "Báº¡n khÃ´ng cÃ³ quyá»n xem chá»©ng nháº­n nÃ y.",
+                    traceId = HttpContext.TraceIdentifier
+                }
+            }),
             404 => NotFoundEnvelope(errors),
             _ => BadRequestEnvelope(errors)
         };
@@ -736,6 +708,27 @@ public class AuctionsController : ApiControllerBase
         return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
     }
 
+    /// <summary>
+    /// Người thắng phiên có bản vật lý chọn NHẬN TRANH ĐIỆN TỬ NGAY, bỏ bước giao nhận bưu cục.
+    /// Ký quỹ được giải ngân ngay cho người bán và phiên đóng lại (UC35).
+    /// </summary>
+    [HttpPost("{auctionId:guid}/delivery/accept-digital")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> AcceptDigitalDelivery(
+        Guid auctionId,
+        CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty) return UnauthorizedEnvelope();
+
+        var (success, data, errors) = await Mediator.Send(
+            new AcceptDigitalDeliveryCommand(CurrentUserId, auctionId),
+            cancellationToken);
+
+        return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
+    }
+
     /// <summary>Người mua xác nhận đã nhận tranh vật lý và hài lòng -> Nhả tiền cho người bán (UC35).</summary>
     [HttpPost("{auctionId:guid}/delivery/confirm")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -753,6 +746,47 @@ public class AuctionsController : ApiControllerBase
                 CurrentUserId,
                 auctionId,
                 request?.DeliveryReceiptUrl),
+            cancellationToken);
+
+        return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
+    }
+
+    /// <summary>
+    /// Admin phân xử khiếu nại giao nhận: giải ngân cho người bán (release), hoàn tiền cho
+    /// người mua và thu hồi quyền sở hữu (refund), hoặc đóng hồ sơ khi ký quỹ đã giải ngân
+    /// nên không thể hoàn (close). Gọi `refund` trên phiên đã giải ngân sẽ tự hạ thành `close`.
+    /// </summary>
+    [HttpPost("{auctionId:guid}/delivery/resolve")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> ResolveDeliveryDispute(
+        Guid auctionId,
+        [FromBody] ResolveDeliveryDisputeRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty) return UnauthorizedEnvelope();
+
+        if (!User.IsInRole("Administrator") && !User.IsInRole("Admin"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                data = (object?)null,
+                meta = (object?)null,
+                error = new
+                {
+                    type = "https://httpstatuses.com/403",
+                    title = "Forbidden",
+                    status = 403,
+                    detail = "Chỉ Ban quản trị mới được phân xử khiếu nại giao nhận.",
+                    traceId = HttpContext.TraceIdentifier
+                }
+            });
+        }
+
+        var (success, data, errors) = await Mediator.Send(
+            new ResolveDeliveryDisputeCommand(CurrentUserId, auctionId, request.Decision, request.Note),
             cancellationToken);
 
         return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
@@ -781,7 +815,226 @@ public class AuctionsController : ApiControllerBase
         return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
     }
 
-    /// <summary>Lấy danh sách các đơn giao nhận tranh vật lý (UC35) cho User hoặc Admin.</summary>
+    /// <summary>
+    /// Người thắng phiên đánh giá người bán (1–5 sao) sau khi giao dịch đã khép lại — đặc biệt
+    /// cần khi ký quỹ đã giải ngân nên sàn không thể hoàn tiền, đánh giá là kênh phản ánh còn lại.
+    /// </summary>
+    [HttpPost("{auctionId:guid}/rate-seller")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> RateSeller(
+        Guid auctionId,
+        [FromBody] RateAuctionSellerRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty) return UnauthorizedEnvelope();
+
+        var (success, data, errors) = await Mediator.Send(
+            new RateAuctionSellerCommand(CurrentUserId, auctionId, request.Rating, request.Comment),
+            cancellationToken);
+
+        return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
+    }
+
+    /// <summary>
+    /// Người thắng tải ảnh bằng chứng khiếu nại trực tiếp từ máy (UC35).
+    /// Trả URL tuyệt đối để dùng làm `evidenceUrl` khi gửi khiếu nại.
+    /// </summary>
+    [HttpPost("{auctionId:guid}/delivery/dispute-evidence")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> UploadDisputeEvidence(
+        Guid auctionId,
+        IFormFile file,
+        [FromServices] IFileStorageService fileStorage,
+        CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty) return UnauthorizedEnvelope();
+
+        var auction = await Mediator.Send(
+            new GetAuctionByIdQuery(auctionId, CurrentUserId), cancellationToken);
+
+        if (!auction.Success || auction.Data is null)
+        {
+            return NotFoundEnvelope(auction.Errors);
+        }
+
+        var isAdmin = User.IsInRole("Administrator") || User.IsInRole("Admin");
+        if (!isAdmin && auction.Data.WinnerId != CurrentUserId)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                data = (object?)null,
+                meta = (object?)null,
+                error = new
+                {
+                    type = "https://httpstatuses.com/403",
+                    title = "Forbidden",
+                    status = 403,
+                    detail = "Chỉ người thắng phiên (hoặc Ban quản trị) mới được tải bằng chứng khiếu nại.",
+                    traceId = HttpContext.TraceIdentifier
+                }
+            });
+        }
+
+        if (file is null || file.Length == 0)
+        {
+            return BadRequestEnvelope(["Vui lòng chọn ảnh bằng chứng."]);
+        }
+
+        const long maxBytes = 8 * 1024 * 1024; // 8MB
+        if (file.Length > maxBytes)
+        {
+            return BadRequestEnvelope(["Ảnh bằng chứng tối đa 8MB."]);
+        }
+
+        try
+        {
+            await using var probe = file.OpenReadStream();
+            var format = await Image.DetectFormatAsync(probe, cancellationToken);
+            if (format is null || (format.Name is not ("JPEG" or "PNG" or "WEBP")))
+            {
+                return BadRequestEnvelope(["Chỉ nhận ảnh JPG, PNG hoặc WebP."]);
+            }
+        }
+        catch (Exception)
+        {
+            return BadRequestEnvelope(["Tệp tải lên không phải ảnh hợp lệ."]);
+        }
+
+        var originalFileName = Path.GetFileName(file.FileName);
+        var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType;
+
+        string fileUrl;
+        await using (var stream = file.OpenReadStream())
+        {
+            fileUrl = await fileStorage.SaveAsync(
+                stream,
+                originalFileName,
+                contentType,
+                $"auction-disputes/{auctionId}",
+                cancellationToken);
+        }
+
+        var absoluteUrl = Uri.TryCreate(fileUrl, UriKind.Absolute, out var absolute) && absolute.Scheme is "http" or "https"
+            ? fileUrl
+            : $"{Request.Scheme}://{Request.Host}{fileUrl}";
+
+        return OkEnvelope(new
+        {
+            fileUrl = absoluteUrl,
+            fileName = originalFileName,
+            fileSizeBytes = file.Length
+        });
+    }
+
+    /// <summary>
+    /// Người bán tải ảnh biên lai bưu cục / ảnh kiện hàng trực tiếp từ máy khi gửi tranh.
+    /// `kind = receipt | package`. Trả URL tuyệt đối để dùng cho `shippingReceiptUrl` /
+    /// `packageImageUrl` khi gọi endpoint ship.
+    /// </summary>
+    [HttpPost("{auctionId:guid}/delivery/ship-evidence")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> UploadShippingEvidence(
+        Guid auctionId,
+        IFormFile file,
+        [FromQuery] string? kind,
+        [FromServices] IFileStorageService fileStorage,
+        CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty) return UnauthorizedEnvelope();
+
+        var auction = await Mediator.Send(
+            new GetAuctionByIdQuery(auctionId, CurrentUserId), cancellationToken);
+
+        if (!auction.Success || auction.Data is null)
+        {
+            return NotFoundEnvelope(auction.Errors);
+        }
+
+        var isAdmin = User.IsInRole("Administrator") || User.IsInRole("Admin");
+        if (!isAdmin && auction.Data.Seller?.UserId != CurrentUserId)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                data = (object?)null,
+                meta = (object?)null,
+                error = new
+                {
+                    type = "https://httpstatuses.com/403",
+                    title = "Forbidden",
+                    status = 403,
+                    detail = "Chỉ người bán của phiên mới được tải ảnh biên lai / kiện hàng.",
+                    traceId = HttpContext.TraceIdentifier
+                }
+            });
+        }
+
+        var folder = string.Equals(kind, "package", StringComparison.OrdinalIgnoreCase)
+            ? "auction-shipping-packages"
+            : "auction-shipping-receipts";
+
+        if (file is null || file.Length == 0)
+        {
+            return BadRequestEnvelope(["Vui lòng chọn ảnh."]);
+        }
+
+        const long maxBytes = 8 * 1024 * 1024; // 8MB
+        if (file.Length > maxBytes)
+        {
+            return BadRequestEnvelope(["Ảnh tối đa 8MB."]);
+        }
+
+        try
+        {
+            await using var probe = file.OpenReadStream();
+            var format = await Image.DetectFormatAsync(probe, cancellationToken);
+            if (format is null || (format.Name is not ("JPEG" or "PNG" or "WEBP")))
+            {
+                return BadRequestEnvelope(["Chỉ nhận ảnh JPG, PNG hoặc WebP."]);
+            }
+        }
+        catch (Exception)
+        {
+            return BadRequestEnvelope(["Tệp tải lên không phải ảnh hợp lệ."]);
+        }
+
+        var originalFileName = Path.GetFileName(file.FileName);
+        var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType;
+
+        string fileUrl;
+        await using (var stream = file.OpenReadStream())
+        {
+            fileUrl = await fileStorage.SaveAsync(
+                stream,
+                originalFileName,
+                contentType,
+                $"{folder}/{auctionId}",
+                cancellationToken);
+        }
+
+        var absoluteUrl = Uri.TryCreate(fileUrl, UriKind.Absolute, out var absolute) && absolute.Scheme is "http" or "https"
+            ? fileUrl
+            : $"{Request.Scheme}://{Request.Host}{fileUrl}";
+
+        return OkEnvelope(new
+        {
+            fileUrl = absoluteUrl,
+            fileName = originalFileName,
+            fileSizeBytes = file.Length
+        });
+    }
+
     [HttpGet("deliveries")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -808,12 +1061,38 @@ public class AuctionsController : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetReceipts(Guid auctionId, CancellationToken cancellationToken)
     {
+        // BiÃªn lai chá»©a sá»‘ tiá»n vÃ  thÃ´ng tin hai bÃªn: chá»‰ ngÆ°á»i trong cuá»™c hoáº·c Admin.
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
         var (success, data, _, errors) = await Mediator.Send(
             new GetAuctionByIdQuery(auctionId, CurrentUserId), cancellationToken);
 
         if (!success || data is null)
         {
             return NotFoundEnvelope(errors);
+        }
+
+        // NgÆ°á»i ngoÃ i nháº­n 403 thay vÃ¬ 200 + máº£ng rá»—ng: biÃªn lai lÃ  dá»¯ liá»‡u tÃ i chÃ­nh.
+        var isAdmin = User.IsInRole("Administrator") || User.IsInRole("Admin");
+        var isParticipant = data.WinnerId == CurrentUserId || data.Seller?.UserId == CurrentUserId;
+        if (!isAdmin && !isParticipant)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                data = (object?)null,
+                meta = (object?)null,
+                error = new
+                {
+                    type = "https://httpstatuses.com/403",
+                    title = "Forbidden",
+                    status = 403,
+                    detail = "Chá»‰ ngÆ°á»i tháº¯ng, ngÆ°á»i bÃ¡n hoáº·c Ban quáº£n trá»‹ má»›i xem Ä‘Æ°á»£c biÃªn lai cá»§a phiÃªn nÃ y.",
+                    traceId = HttpContext.TraceIdentifier
+                }
+            });
         }
 
         return OkEnvelope(data.Receipts ?? []);

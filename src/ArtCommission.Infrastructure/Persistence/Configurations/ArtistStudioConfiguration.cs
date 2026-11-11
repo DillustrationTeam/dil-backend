@@ -199,6 +199,11 @@ public class CreatorReviewConfiguration : IEntityTypeConfiguration<CreatorReview
         builder.ToTable("CreatorReviews");
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Comment).HasMaxLength(1000);
+        builder.Property(x => x.Source).HasMaxLength(32);
+        // Một người mua chỉ được đánh giá người bán MỘT lần cho mỗi phiên đấu giá.
+        builder.HasIndex(x => new { x.AuctionId, x.ReviewerUserId })
+            .IsUnique()
+            .HasFilter("[AuctionId] IS NOT NULL AND [IsDeleted] = 0");
         builder.HasOne(x => x.CreatorProfile)
             .WithMany()
             .HasForeignKey(x => x.CreatorProfileId)

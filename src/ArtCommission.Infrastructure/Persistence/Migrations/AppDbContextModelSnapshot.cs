@@ -827,6 +827,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("AuctionId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Comment")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
@@ -846,12 +849,20 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ReviewerUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("Source")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
 
                     b.HasKey("Id");
 
                     b.HasIndex("CreatorProfileId");
+
+                    b.HasIndex("AuctionId", "ReviewerUserId")
+                        .IsUnique()
+                        .HasFilter("[AuctionId] IS NOT NULL AND [IsDeleted] = 0");
 
                     b.ToTable("CreatorReviews", (string)null);
                 });
@@ -1144,10 +1155,6 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<bool?>("RequiresPhysicalDelivery")
                         .HasColumnType("bit");
 
-                    b.Property<decimal?>("ReservePrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -1277,10 +1284,22 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<string>("DisputeResolution")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DisputeResolvedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DisputeResolvedNote")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
+
+                    b.Property<bool>("IsPostPayoutDispute")
+                        .HasColumnType("bit");
 
                     b.Property<string>("NoteToSeller")
                         .HasMaxLength(500)

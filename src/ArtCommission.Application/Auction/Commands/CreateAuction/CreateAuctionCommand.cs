@@ -19,14 +19,10 @@ public record CreateAuctionCommand(
     Guid UserId,
     Guid ArtworkId,
     decimal StartPrice,
-    decimal? ReservePrice,
     decimal BidStep,
     decimal? BuyNowPrice,
     DateTimeOffset StartAt,
     DateTimeOffset EndAt,
-    string? MasterFileUrl = null,
-    string? MasterFileName = null,
-    long? MasterFileSizeBytes = null,
     bool HasPhysicalCopy = false,
     string? PhysicalDescription = null
 ) : IRequest<(bool Success, AuctionDto? Data, string[] Errors, bool Conflict)>;
@@ -48,11 +44,6 @@ public class CreateAuctionCommandValidator : AbstractValidator<CreateAuctionComm
 
         RuleFor(x => x.BidStep)
             .GreaterThan(0).WithMessage("Bước giá phải lớn hơn 0.");
-
-        RuleFor(x => x.ReservePrice)
-            .GreaterThanOrEqualTo(x => x.StartPrice)
-            .When(x => x.ReservePrice.HasValue)
-            .WithMessage("Giá sàn không được thấp hơn giá khởi điểm.");
 
         RuleFor(x => x.BuyNowPrice)
             .GreaterThan(x => x.StartPrice)
@@ -155,12 +146,16 @@ public class CreateAuctionCommandHandler
 
                 // Tính cả phiên Ended đang chờ settlement; tranh chỉ được niêm yết lại
                 // sau khi settlement hoàn tất hoặc phiên bị hủy.
+                // PhiÃªn Ended chá»‰ cháº·n khi cÃ²n chá» settlement (cÃ³ bid / cÃ³ ngÆ°á»i tháº¯ng).
+                // PhiÃªn Ended mÃ  KHÃ”NG ai Ä‘áº·t giÃ¡ thÃ¬ tranh chÆ°a bÃ¡n Ä‘Æ°á»£c â€” pháº£i cho niÃªm yáº¿t láº¡i,
+                // náº¿u khÃ´ng tranh bá»‹ khoÃ¡ vÄ©nh viá»…n.
                 var hasLiveAuction = await _db.Auctions.AnyAsync(
                     a => a.ArtworkId == request.ArtworkId
                          && !a.IsDeleted
                          && (a.Status == AuctionStatus.Scheduled
                              || a.Status == AuctionStatus.Active
-                             || a.Status == AuctionStatus.Ended),
+                             || (a.Status == AuctionStatus.Ended
+                                 && (a.BidCount > 0 || a.WinnerId != null))),
                     cancellationToken);
 
                 if (hasLiveAuction)
@@ -175,7 +170,6 @@ public class CreateAuctionCommandHandler
                     SellerId = request.UserId,
                     AuctionType = request.BuyNowPrice.HasValue ? AuctionType.BuyNow : AuctionType.Standard,
                     StartPrice = request.StartPrice,
-                    ReservePrice = request.ReservePrice,
                     BidStep = request.BidStep,
                     BuyNowPrice = request.BuyNowPrice,
                     CurrentPrice = request.StartPrice,
@@ -188,21 +182,6 @@ public class CreateAuctionCommandHandler
                 };
 
                 _db.Auctions.Add(auction);
-
-                if (!string.IsNullOrWhiteSpace(request.MasterFileUrl))
-                {
-                    var isZip = request.MasterFileUrl.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
-                    _db.Deliverables.Add(new Deliverable
-                    {
-                        AuctionId = auction.Id,
-                        RecipientId = request.UserId, // Tạm gán seller cho tới khi phiên chốt sẽ đổi sang winner
-                        FileName = !string.IsNullOrWhiteSpace(request.MasterFileName) ? request.MasterFileName : $"{artwork.Title}-MasterPack.zip",
-                        FileUrl = request.MasterFileUrl,
-                        MimeType = isZip ? "application/zip" : "application/octet-stream",
-                        FileSizeBytes = request.MasterFileSizeBytes ?? 0,
-                        IsDelivered = false
-                    });
-                }
 
                 await EnsureContributorOwnerRowAsync(request.UserId, artwork, cancellationToken);
                 await _db.SaveChangesAsync(cancellationToken);

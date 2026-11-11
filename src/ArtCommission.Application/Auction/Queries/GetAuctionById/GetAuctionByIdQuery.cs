@@ -12,7 +12,6 @@ namespace ArtCommission.Application.Auction.Queries.GetAuctionById;
 /// UC32 — GET /api/v1/auctions/{auctionId}
 /// Chi tiết phiên: giá hiện tại, số lượt bid, thời gian còn lại, lịch sử bid gần nhất.
 ///
-/// LƯU Ý BẢO MẬT: <c>reservePrice</c> là giá sàn BÍ MẬT. Không trả cho người ngoài
 /// (không phải seller và không phải người đang dẫn đầu), nếu không thì giá sàn
 /// trở thành thông tin công khai và mất hết tác dụng.
 /// </summary>
@@ -61,6 +60,14 @@ public class GetAuctionByIdQueryHandler
             .Select(u => new { u.Id, u.FullName })
             .FirstOrDefaultAsync(cancellationToken);
 
+        // Nút "Xem profile" cần mã HỒ SƠ CREATOR (không phải userId), nếu không trang
+        // profile công khai sẽ tra cứu sai khoá và trả 404.
+        var sellerCreatorProfileId = await _db.CreatorProfiles
+            .AsNoTracking()
+            .Where(p => p.UserId == auction.SellerId && !p.IsDeleted)
+            .Select(p => (Guid?)p.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
         var watchCount = await _db.AuctionWatches
             .AsNoTracking()
             .CountAsync(w => w.AuctionId == auction.Id && !w.IsDeleted, cancellationToken);
@@ -83,11 +90,6 @@ public class GetAuctionByIdQueryHandler
             .Where(b => b.AuctionId == auction.Id && b.Status == BidStatus.Leading && !b.IsDeleted)
             .Select(b => new { b.BidderId })
             .FirstOrDefaultAsync(cancellationToken);
-
-        // Chỉ seller và người đang dẫn đầu được thấy giá sàn.
-        var canSeeReserve = request.CurrentUserId.HasValue
-                            && (request.CurrentUserId.Value == auction.SellerId
-                                || (leading is not null && leading.BidderId == request.CurrentUserId.Value));
 
         var recentCount = request.RecentBidCount <= 0
             ? 20
@@ -157,15 +159,33 @@ public class GetAuctionByIdQueryHandler
             .AsNoTracking()
             .FirstOrDefaultAsync(e => e.AuctionId == auction.Id && !e.IsDeleted, cancellationToken);
 
+        // Quyền đánh giá người bán: chỉ người thắng, sau khi giao dịch khép lại, và mỗi phiên 1 lần.
+        var hasRatedSeller = request.CurrentUserId is { } viewerId
+                              && viewerId != Guid.Empty
+                              && await _db.CreatorReviews
+                                  .AsNoTracking()
+                                  .AnyAsync(r => r.AuctionId == auction.Id
+                                                 && r.ReviewerUserId == viewerId
+                                                 && !r.IsDeleted,
+                                      cancellationToken);
+
+        var transactionClosed =
+            auction.Status == AuctionStatus.Completed
+            || delivery is { Status: DeliveryStatus.Delivered or DeliveryStatus.Resolved }
+            || delivery?.DisputeResolvedAt is not null;
+
+        var canRateSeller = transactionClosed
+                            && !hasRatedSeller
+                            && request.CurrentUserId == auction.WinnerId;
+
         var detail = new AuctionDetailDto(
             AuctionId: auction.Id,
             Artwork: AuctionMapper.ToArtworkDto(auction.Artwork) is { } artwork
                 ? artwork with { DeliverableCount = deliverableCount, HasMasterFilePack = deliverableCount > 0 }
                 : null,
-            Seller: seller is null ? null : new AuctionSellerDto(seller.Id, seller.FullName),
+            Seller: seller is null ? null : new AuctionSellerDto(seller.Id, seller.FullName, sellerCreatorProfileId),
             AuctionType: auction.AuctionType.ToString(),
             StartPrice: auction.StartPrice,
-            ReservePrice: canSeeReserve ? auction.ReservePrice : null,
             BuyNowPrice: auction.BuyNowPrice,
             BidStep: auction.BidStep,
             CurrentPrice: auction.CurrentPrice,
@@ -183,9 +203,9 @@ public class GetAuctionByIdQueryHandler
             PhysicalDescription: auction.PhysicalDescription,
             RequiresPhysicalDelivery: auction.RequiresPhysicalDelivery,
             PhysicalChoiceDeadline: auction.PhysicalChoiceDeadline,
-            Delivery: AuctionMapper.ToDeliveryDto(delivery),
-            Receipts: AuctionMapper.BuildReceipts(auction, escrow, delivery));
-
+            Delivery: AuctionMapper.ToDeliveryDto(delivery, canRateSeller, hasRatedSeller),
+            Receipts: AuctionMapper.BuildReceipts(auction, escrow, delivery),
+            FinalPrice: auction.FinalPrice);
         return (true, detail, recentBids, []);
     }
 }

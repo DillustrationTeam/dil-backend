@@ -78,6 +78,15 @@ public class RequestPhysicalDeliveryCommandHandler
             return (false, null, ["Phiên đấu giá này không hỗ trợ bàn giao bản tranh vật lý."]);
         }
 
+        // Đã chọn nhận bản điện tử (hoặc phiên đã đóng) thì không quay lại xin giao tranh
+        // vật lý được nữa — ký quỹ đã giải ngân cho người bán, giao thêm hàng là vô nghĩa.
+        if (auction.RequiresPhysicalDelivery == false
+            || auction.Status is AuctionStatus.Settled or AuctionStatus.Completed)
+        {
+            return (false, null,
+                ["Bạn đã chọn nhận bản điện tử nên không thể yêu cầu giao tranh vật lý nữa."]);
+        }
+
         var now = DateTimeOffset.UtcNow;
         if (auction.PhysicalChoiceDeadline.HasValue && auction.PhysicalChoiceDeadline.Value < now)
         {
@@ -264,12 +273,39 @@ public class UpdateShippingInfoCommandHandler
             return (false, null, ["Chỉ người bán của phiên mới có quyền cập nhật thông tin vận chuyển."]);
         }
 
+        // Bắt buộc có ít nhất MỘT bằng chứng gửi hàng để người mua đối soát được:
+        // ảnh biên lai bưu cục, ảnh kiện hàng đã đóng gói, hoặc link tra cứu hành trình.
+        // (Kiểm tra sau bước phân quyền để lỗi 400 trả về đúng lý do cho từng trường hợp.)
+        if (string.IsNullOrWhiteSpace(request.ShippingReceiptUrl)
+            && string.IsNullOrWhiteSpace(request.PackageImageUrl)
+            && string.IsNullOrWhiteSpace(request.TrackingUrl))
+        {
+            return (false, null,
+                ["Vui lòng cung cấp ít nhất một bằng chứng gửi hàng: ảnh biên lai bưu cục, ảnh kiện hàng hoặc link tra cứu hành trình."]);
+        }
+
         var delivery = await _db.Set<AuctionDelivery>()
             .FirstOrDefaultAsync(d => d.AuctionId == auction.Id && !d.IsDeleted, cancellationToken);
 
         if (delivery is null)
         {
             return (false, null, ["Người mua chưa yêu cầu giao tranh vật lý hoặc chưa có thông tin nhận hàng."]);
+        }
+
+        // Người mua đã nhận bản điện tử (phiên Completed, ký quỹ giải ngân sớm) thì NGƯỜI BÁN
+        // VẪN PHẢI giao tranh vật lý — chỉ khác là không còn quỹ bồi hoàn. Vì vậy chỉ chặn ship
+        // khi đơn đã giao xong / đã huỷ / đang khiếu nại, hoặc phiên bị huỷ - hết hạn.
+        if (delivery.Status is DeliveryStatus.Delivered or DeliveryStatus.Cancelled
+            or DeliveryStatus.Disputed or DeliveryStatus.Resolved)
+        {
+            return (false, null,
+                ["Đơn giao nhận đã kết thúc hoặc đang khiếu nại, không cập nhật vận đơn được nữa."]);
+        }
+
+        if (auction.Status is AuctionStatus.Cancelled or AuctionStatus.Expired or AuctionStatus.Disputed)
+        {
+            return (false, null,
+                ["Phiên đã huỷ, hết hạn hoặc đang khiếu nại nên không cập nhật vận đơn được nữa."]);
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -375,6 +411,14 @@ public class ConfirmPhysicalDeliveryCommandHandler
             return (true, AuctionMapper.ToDeliveryDto(delivery), []); // Idempotent
         }
 
+        // NgÆ°á»i mua cÃ³ thá»ƒ Ä‘Ã£ nháº­n Ä‘Æ°á»£c tranh dÃ¹ ngÆ°á»i bÃ¡n chÆ°a ká»‹p cáº­p nháº­t váº­n Ä‘Æ¡n,
+        // nÃªn cho xÃ¡c nháº­n tá»« cáº£ AwaitingShipment. Chá»‰ cháº·n khi Ä‘Æ¡n Ä‘Ã£ chá»‘t/huá»·.
+        if (delivery.Status is not (DeliveryStatus.AwaitingShipment or DeliveryStatus.InTransit))
+        {
+            return (false, null,
+                ["ÄÆ¡n giao nháº­n Ä‘Ã£ á»Ÿ tráº¡ng thÃ¡i káº¿t thÃºc, khÃ´ng thá»ƒ xÃ¡c nháº­n nháº­n hÃ ng."]);
+        }
+
         var now = DateTimeOffset.UtcNow;
         delivery.Status = DeliveryStatus.Delivered;
         delivery.DeliveredAt ??= now;
@@ -472,6 +516,13 @@ public class DisputePhysicalDeliveryCommandHandler
             return (false, null, ["Chỉ người thắng phiên mới có quyền gửi khiếu nại."]);
         }
 
+        // Phiên đã huỷ / hết hạn thì không còn gì để khiếu nại.
+        if (auction.Status is AuctionStatus.Cancelled or AuctionStatus.Expired)
+        {
+            return (false, null,
+                ["Phiên đã huỷ hoặc hết hạn nên không thể mở khiếu nại giao nhận."]);
+        }
+
         var delivery = await _db.Set<AuctionDelivery>()
             .FirstOrDefaultAsync(d => d.AuctionId == auction.Id && !d.IsDeleted, cancellationToken);
 
@@ -480,14 +531,49 @@ public class DisputePhysicalDeliveryCommandHandler
             return (false, null, ["Không tìm thấy thông tin giao nhận của phiên."]);
         }
 
+        if (delivery.Status == DeliveryStatus.Disputed)
+        {
+            return (false, null, ["Khiếu nại của phiên này đã được ghi nhận và đang chờ phân xử."]);
+        }
+
+        // Mỗi đơn chỉ mở một hồ sơ khiếu nại; Admin đã đóng thì chỉ còn quyền đánh giá người bán.
+        if (delivery.Status == DeliveryStatus.Resolved)
+        {
+            return (false, null,
+                ["Khiếu nại của phiên này đã được Ban quản trị xử lý xong. Bạn có thể đánh giá người bán."]);
+        }
+
+        var escrow = await _db.EscrowTransactions
+            .FirstOrDefaultAsync(e => e.AuctionId == auction.Id && !e.IsDeleted, cancellationToken);
+
+        // Ký quỹ đã giải ngân (người mua nhận bản điện tử hoặc Admin đã bác khiếu nại trước đó)
+        // thì vẫn PHẢI ghi nhận phản ánh của người mua: tranh vật lý vẫn đang trên đường tới,
+        // hàng có thể vỡ hỏng. Chỉ khác là không còn quỹ để đóng băng hay hoàn lại — khiếu nại
+        // được đánh dấu IsPostPayoutDispute để Admin biết mà đối soát và để người mua dùng
+        // quyền đánh giá người bán.
+        var isPostPayout = auction.Status == AuctionStatus.Completed
+                           || escrow?.Status == EscrowStatus.Released;
+
         var now = DateTimeOffset.UtcNow;
         delivery.Status = DeliveryStatus.Disputed;
         delivery.DisputeReason = request.DisputeReason.Trim();
         delivery.DisputeEvidenceUrl = request.DisputeEvidenceUrl?.Trim();
+        delivery.IsPostPayoutDispute = isPostPayout;
+        delivery.DisputeResolution = null;
+        delivery.DisputeResolvedAt = null;
+        delivery.DisputeResolvedNote = null;
         delivery.UpdatedAt = now;
 
-        var escrow = await _db.EscrowTransactions
-            .FirstOrDefaultAsync(e => e.AuctionId == auction.Id && !e.IsDeleted, cancellationToken);
+        // Phiên phải phản ánh đúng là đang tranh chấp, nếu không dashboard/Admin vẫn thấy
+        // "đang giao" và các guard phía sau (ship/confirm) không nhận ra đang bị đóng băng.
+        // Riêng phiên đã Completed thì giữ nguyên: tiền đã về ví người bán, đổi trạng thái
+        // phiên chỉ làm sai lệch sổ sách chứ không thu hồi được đồng nào.
+        if (!isPostPayout)
+        {
+            auction.Status = AuctionStatus.Disputed;
+            auction.UpdatedAt = now;
+        }
+
         if (escrow is not null && escrow.Status != EscrowStatus.Released)
         {
             escrow.Status = EscrowStatus.Disputed;
@@ -498,23 +584,44 @@ public class DisputePhysicalDeliveryCommandHandler
         await _db.SaveChangesAsync(cancellationToken);
 
         _logger.LogWarning(
-            "Người mua {BuyerId} đã khiếu nại giao nhận phiên {AuctionId}: {Reason}",
-            request.UserId, auction.Id, request.DisputeReason);
+            "Người mua {BuyerId} đã khiếu nại giao nhận phiên {AuctionId} (sau giải ngân: {PostPayout}): {Reason}",
+            request.UserId, auction.Id, isPostPayout, request.DisputeReason);
+
+        var shortId = auction.Id.ToString()[..8].ToUpperInvariant();
 
         try
         {
             await _notifications.PublishAsync(
                 userId: auction.SellerId,
-                notificationType: NotificationType.AuctionLifecycle,
-                title: "Khiếu nại đơn giao tranh",
-                body: $"Người mua đã gửi khiếu nại về phiên #{auction.Id.ToString()[..8].ToUpperInvariant()}: {request.DisputeReason}. Ban quản trị sẽ đối soát bưu cục.",
+                notificationType: NotificationType.DisputeStatusChanged,
+                title: isPostPayout
+                    ? "Người mua phản ánh đơn hàng sau khi đã giải ngân"
+                    : "Khiếu nại đơn giao tranh",
+                body: isPostPayout
+                    ? $"Người mua báo vấn đề với tranh vật lý phiên #{shortId}: {request.DisputeReason.Trim()}. Tiền bán tranh đã về ví bạn nên sàn không thể tự động hoàn lại — Ban quản trị sẽ đối soát bưu cục và điểm uy tín của bạn có thể bị ảnh hưởng."
+                    : $"Người mua đã gửi khiếu nại về phiên #{shortId}: {request.DisputeReason.Trim()}. Ký quỹ đang bị đóng băng, Ban quản trị sẽ đối soát bưu cục.",
+                refType: "Auction",
+                refId: auction.Id,
+                cancellationToken: cancellationToken);
+
+            // Người mua cũng phải nhận thông báo, để biết tiền đã giải ngân thì không thu hồi
+            // được nữa và mình còn quyền đánh giá người bán.
+            await _notifications.PublishAsync(
+                userId: request.UserId,
+                notificationType: NotificationType.DisputeStatusChanged,
+                title: isPostPayout
+                    ? "Đã ghi nhận phản ánh — tiền đã giải ngân cho người bán"
+                    : "Đã ghi nhận khiếu nại giao nhận",
+                body: isPostPayout
+                    ? $"Phản ánh của bạn về phiên #{shortId} đã được ghi nhận. Ký quỹ đã giải ngân cho người bán trước đó nên không thể hoàn tiền được nữa; Ban quản trị sẽ đối soát bưu cục. Bạn có thể đánh giá người bán để cảnh báo cộng đồng."
+                    : $"Khiếu nại của bạn về phiên #{shortId} đã được ghi nhận và ký quỹ đã được tạm đóng băng để Ban quản trị đối soát.",
                 refType: "Auction",
                 refId: auction.Id,
                 cancellationToken: cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Lỗi gửi thông báo cho Seller {SellerId}", auction.SellerId);
+            _logger.LogWarning(ex, "Lỗi gửi thông báo khiếu nại phiên {AuctionId}", auction.Id);
         }
 
         return (true, AuctionMapper.ToDeliveryDto(delivery), []);
