@@ -13,7 +13,8 @@ public record GetSubmissionDisputesQuery(
     Guid? RaisedById = null,
     string? Status = null,
     int PageNumber = 1,
-    int PageSize = 20
+    int PageSize = 20,
+    string? Category = null
 ) : IRequest<(List<SubmissionDisputeDto> Items, int TotalCount)>;
 
 public class GetSubmissionDisputesQueryHandler
@@ -32,6 +33,7 @@ public class GetSubmissionDisputesQueryHandler
     {
         var query = _db.SubmissionDisputes
             .AsNoTracking()
+            .Where(d => !d.IsDeleted)
             .Include(d => d.Event)
             .Include(d => d.Submission)
                 .ThenInclude(s => s!.Artwork)
@@ -55,6 +57,12 @@ public class GetSubmissionDisputesQueryHandler
         if (!string.IsNullOrWhiteSpace(request.Status))
         {
             query = query.Where(d => d.Status == request.Status.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Category))
+        {
+            var cat = request.Category.Trim();
+            query = query.Where(d => d.Category == cat);
         }
 
         int totalCount = await query.CountAsync(cancellationToken);
@@ -95,6 +103,7 @@ public class GetSubmissionDisputesQueryHandler
                 ArtworkImageUrl = d.ArtworkImageUrlSnapshot ?? d.Submission?.Artwork?.ImageUrl ?? d.Submission?.Artwork?.ThumbnailUrl,
                 RaisedById = d.RaisedById,
                 RaisedByName = user?.FullName ?? user?.UserName ?? "Unknown",
+                Category = string.IsNullOrWhiteSpace(d.Category) ? "Other" : d.Category,
                 Priority = d.Priority,
                 Reason = d.Reason,
                 EvidenceUrls = d.EvidenceUrls,

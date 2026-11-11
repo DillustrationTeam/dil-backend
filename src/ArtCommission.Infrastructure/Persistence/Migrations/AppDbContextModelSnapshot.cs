@@ -2471,6 +2471,13 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasDefaultValue("Other");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -2835,10 +2842,11 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("EventId")
                         .IsUnique()
-                        .HasFilter("[IsHeadJury] = 1");
+                        .HasFilter("[IsHeadJury] = 1 AND [IsDeleted] = 0");
 
                     b.HasIndex("EventId", "CreatorId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("Juries", (string)null);
                 });

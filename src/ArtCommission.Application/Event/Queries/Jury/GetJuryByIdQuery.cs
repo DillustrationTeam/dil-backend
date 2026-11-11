@@ -39,6 +39,7 @@ public class GetJuryByIdQueryHandler
                 UserId = j.Creator != null ? j.Creator.UserId : (Guid?)null,
                 CreatorName = j.Creator != null && j.Creator.User != null ? j.Creator.User.FullName : null,
                 CreatorDisplayName = j.Creator != null ? j.Creator.DisplayName : null,
+                CreatorEmail = j.Creator != null && j.Creator.User != null ? j.Creator.User.Email : null,
                 CreatorAvatarUrl = null,
                 CreatorBio = j.Creator != null ? j.Creator.Bio : null,
                 IsHeadJury = j.IsHeadJury,

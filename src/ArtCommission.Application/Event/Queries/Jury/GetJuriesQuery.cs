@@ -90,6 +90,7 @@ public class GetJuriesQueryHandler
                 (j.Creator != null && j.Creator.DisplayName.ToLower().Contains(keyword)) ||
                 (j.Creator != null && j.Creator.User != null && j.Creator.User.FullName != null && j.Creator.User.FullName.ToLower().Contains(keyword)) ||
                 (j.Creator != null && j.Creator.User != null && j.Creator.User.UserName != null && j.Creator.User.UserName.ToLower().Contains(keyword)) ||
+                (j.Creator != null && j.Creator.User != null && j.Creator.User.Email != null && j.Creator.User.Email.ToLower().Contains(keyword)) ||
                 (j.Event != null && j.Event.Title.ToLower().Contains(keyword))
             );
         }
@@ -115,6 +116,7 @@ public class GetJuriesQueryHandler
                 UserId = j.Creator != null ? j.Creator.UserId : (Guid?)null,
                 CreatorName = j.Creator != null && j.Creator.User != null ? j.Creator.User.FullName : null,
                 CreatorDisplayName = j.Creator != null ? j.Creator.DisplayName : null,
+                CreatorEmail = j.Creator != null && j.Creator.User != null ? j.Creator.User.Email : null,
                 CreatorAvatarUrl = null,
                 CreatorBio = j.Creator != null ? j.Creator.Bio : null,
                 IsHeadJury = j.IsHeadJury,

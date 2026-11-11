@@ -1,12 +1,18 @@
+using ArtCommission.Application.Dispute.SubmissionDispute.Commands;
+using ArtCommission.Application.Dispute.SubmissionDispute.Queries;
 using ArtCommission.Application.Event.Commands;
 using ArtCommission.Application.Event.DTOs;
+using ArtCommission.Application.Event.Queries;
 using ArtCommission.Application.Event.Validators;
+using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Domain.Entities.ArtistStudio;
 using ArtCommission.Domain.Entities.Event;
 using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Domain.Enums;
 using ArtCommission.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 Console.WriteLine("=================================================");
 Console.WriteLine("STARTING EVENT DTO & ENTITY VALIDATION TEST SUITE");
@@ -585,8 +591,329 @@ Assert(!disqVoteRes.Success, "Voting on disqualified submission must be rejected
 Assert(disqVoteRes.Errors.Any(e => e.Contains("truất quyền thi đấu")),
     "Rejection error must state submission is disqualified.");
 
+// =========================================================================
+// SECTION 8: Submission Dispute Rules (Category Priority, Re-dispute, Multi-user)
+// =========================================================================
+Console.WriteLine("\n--- Section 8: Submission Dispute Rules Tests ---");
+
+var disputeTargetArt = new Artwork
+{
+    Id = Guid.NewGuid(),
+    CreatorProfileId = Guid.NewGuid(),
+    Title = "Dispute Subject Art",
+    ImageUrl = "https://example.com/art-v1.png",
+    ModerationStatus = "Approved"
+};
+var activeSub = new EventSubmission
+{
+    Id = Guid.NewGuid(),
+    EventId = votingEvent.Id,
+    SubmitterId = submitterId,
+    ArtworkId = disputeTargetArt.Id,
+    Artwork = disputeTargetArt,
+    Title = "Dispute Subject Entry",
+    IsDisqualified = false
+};
+var client1Id = Guid.NewGuid();
+var client2Id = Guid.NewGuid();
+db.Users.AddRange(
+    new ApplicationUser { Id = client1Id, UserName = "client1", FullName = "Client One" },
+    new ApplicationUser { Id = client2Id, UserName = "client2", FullName = "Client Two" }
+);
+db.Artworks.Add(disputeTargetArt);
+db.EventSubmissions.Add(activeSub);
+await db.SaveChangesAsync();
+
+var createDisputeHandler = new CreateSubmissionDisputeCommandHandler(db);
+
+// 8.1 Server-side priority derivation prevents user from spoofing High priority
+var lowCatSpoofHigh = await createDisputeHandler.Handle(new CreateSubmissionDisputeCommand(
+    SubmissionId: activeSub.Id,
+    RaisedById: client1Id,
+    Reason: "Minor caption typo",
+    Priority: "High",
+    Category: "Other"
+), CancellationToken.None);
+Assert(lowCatSpoofHigh.Success && lowCatSpoofHigh.DisputeId.HasValue,
+    "Valid Other category dispute must succeed.");
+
+var savedLowDispute = await db.SubmissionDisputes.FindAsync(lowCatSpoofHigh.DisputeId!.Value);
+Assert(savedLowDispute != null && savedLowDispute.Category == "Other" && savedLowDispute.Priority == "Low",
+    "Client-supplied High priority on Other category must be overridden server-side to Low.");
+
+// 8.2 Duplicate pending dispute with SAME category is blocked, DIFFERENT category is allowed
+var duplicateSameCat = await createDisputeHandler.Handle(new CreateSubmissionDisputeCommand(
+    SubmissionId: activeSub.Id,
+    RaisedById: client1Id,
+    Reason: "Minor caption typo",
+    Category: "Other"
+), CancellationToken.None);
+Assert(!duplicateSameCat.Success,
+    "Duplicate pending dispute in the same category/reason by same user must be rejected.");
+
+var secondDiffCat = await createDisputeHandler.Handle(new CreateSubmissionDisputeCommand(
+    SubmissionId: activeSub.Id,
+    RaisedById: client1Id,
+    Reason: "Looks AI-generated",
+    Priority: "Low",
+    Category: "AiArt"
+), CancellationToken.None);
+Assert(secondDiffCat.Success && secondDiffCat.DisputeId.HasValue,
+    "Same user must be allowed to raise a 2nd dispute on the same submission for a different category.");
+var savedAiDispute = await db.SubmissionDisputes.FindAsync(secondDiffCat.DisputeId!.Value);
+Assert(savedAiDispute != null && savedAiDispute.Priority == "High" && savedAiDispute.Category == "AiArt",
+    "AiArt dispute must be assigned High priority server-side.");
+
+// 8.3 Another account can also dispute the same submission, and Admin query returns all disputes
+var otherAccountDispute = await createDisputeHandler.Handle(new CreateSubmissionDisputeCommand(
+    SubmissionId: activeSub.Id,
+    RaisedById: client2Id,
+    Reason: "Traced from existing illustration",
+    Category: "Copyright"
+), CancellationToken.None);
+Assert(otherAccountDispute.Success && otherAccountDispute.DisputeId.HasValue,
+    "Second account must be able to dispute the same submission.");
+
+// 8.4 After dispute is resolved (Dismiss), client1 can re-dispute the same category & query returns all
+savedAiDispute!.Status = "Rejected";
+savedAiDispute.Resolution = "Dismiss";
+await db.SaveChangesAsync();
+
+var reDisputeAfterResolve = await createDisputeHandler.Handle(new CreateSubmissionDisputeCommand(
+    SubmissionId: activeSub.Id,
+    RaisedById: client1Id,
+    Reason: "New evidence of AI generation",
+    Category: "AiArt"
+), CancellationToken.None);
+Assert(reDisputeAfterResolve.Success && reDisputeAfterResolve.DisputeId.HasValue,
+    "Client must be able to raise a new dispute on same category after prior dispute is dismissed.");
+
+var getDisputesHandler = new GetSubmissionDisputesQueryHandler(db);
+var (allSubDisputes, allSubDisputeCount) = await getDisputesHandler.Handle(
+    new GetSubmissionDisputesQuery(SubmissionId: activeSub.Id, PageNumber: 1, PageSize: 20),
+    CancellationToken.None);
+Assert(allSubDisputeCount == 4 && allSubDisputes.Count == 4,
+    $"Admin query must return all 4 disputes across users and post-resolution history (got {allSubDisputeCount}).");
+
+// 8.5 Disqualified submission rejects new disputes
+activeSub.IsDisqualified = true;
+await db.SaveChangesAsync();
+var disqDispute = await createDisputeHandler.Handle(new CreateSubmissionDisputeCommand(
+    SubmissionId: activeSub.Id,
+    RaisedById: client2Id,
+    Reason: "Another issue",
+    Category: "VoteFraud"
+), CancellationToken.None);
+Assert(!disqDispute.Success,
+    "Creating dispute on an already disqualified submission must be rejected.");
+
+// =========================================================================
+// SECTION 9: Admin Signals, Jury Email, Invitation Errors, Candidates & Re-Accept
+// =========================================================================
+Console.WriteLine("\n--- Section 9: Admin Jury & Dispute Signal Tests ---");
+
+var stubNotif = new RecordingNotificationPublisher();
+
+var roleAdminId = Guid.NewGuid();
+var roleCreatorId = Guid.NewGuid();
+var roleClientId = Guid.NewGuid();
+db.Roles.AddRange(
+    new IdentityRole<Guid> { Id = roleAdminId, Name = UserRoleNames.Administrator, NormalizedName = UserRoleNames.Administrator.ToUpperInvariant() },
+    new IdentityRole<Guid> { Id = roleCreatorId, Name = UserRoleNames.Creator, NormalizedName = UserRoleNames.Creator.ToUpperInvariant() },
+    new IdentityRole<Guid> { Id = roleClientId, Name = UserRoleNames.Client, NormalizedName = UserRoleNames.Client.ToUpperInvariant() }
+);
+
+var section9AdminId = Guid.NewGuid();
+var testAdminUser = new ApplicationUser { Id = section9AdminId, UserName = "admin9", FullName = "Platform Admin 9", Email = "admin9@dillustration.vn" };
+var testCreatorUser = new ApplicationUser { Id = Guid.NewGuid(), UserName = "jurycreator", FullName = "Jury Creator Real", Email = "real.creator@dillustration.vn" };
+var testClientOnlyUser = new ApplicationUser { Id = Guid.NewGuid(), UserName = "clientonly", FullName = "Client Only", Email = "client.only@dillustration.vn" };
+db.Users.AddRange(testAdminUser, testCreatorUser, testClientOnlyUser);
+
+db.UserRoles.AddRange(
+    new IdentityUserRole<Guid> { UserId = testAdminUser.Id, RoleId = roleAdminId },
+    new IdentityUserRole<Guid> { UserId = testCreatorUser.Id, RoleId = roleCreatorId },
+    new IdentityUserRole<Guid> { UserId = testClientOnlyUser.Id, RoleId = roleClientId }
+);
+
+var testCreatorProfile = new CreatorProfile
+{
+    Id = Guid.NewGuid(),
+    UserId = testCreatorUser.Id,
+    DisplayName = "Creator Real Display",
+    CreatedAt = now
+};
+db.CreatorProfiles.Add(testCreatorProfile);
+
+// Create a fresh active submission for notification check
+var notifSub = new EventSubmission
+{
+    Id = Guid.NewGuid(),
+    EventId = votingEvent.Id,
+    SubmitterId = submitterId,
+    ArtworkId = disputeTargetArt.Id,
+    Artwork = disputeTargetArt,
+    Title = "Notif Subject Entry",
+    IsDisqualified = false
+};
+db.EventSubmissions.Add(notifSub);
+
+// Create an Open event whose JudgingStartAt is in the future so Jury invites are allowed
+var inviteEvent = new PlatformEvent
+{
+    Id = Guid.NewGuid(),
+    Title = "Jury Invite Contest",
+    Description = "Desc",
+    Status = EventStatus.Open,
+    CreatedByAdminId = adminId,
+    SubmissionStartAt = now.AddDays(-1),
+    SubmissionEndAt = now.AddDays(5),
+    JudgingStartAt = now.AddDays(6),
+    JudgingEndAt = now.AddDays(10),
+    VotingStartAt = now.AddDays(11),
+    VotingEndAt = now.AddDays(15),
+    ResultAnnouncementAt = now.AddDays(16),
+    CreatedAt = now.AddDays(-2)
+};
+db.PlatformEvents.Add(inviteEvent);
+await db.SaveChangesAsync();
+
+// 9.1 Admin receives notification when client files submission dispute
+var notifDisputeHandler = new CreateSubmissionDisputeCommandHandler(db, stubNotif);
+var notifDisputeRes = await notifDisputeHandler.Handle(new CreateSubmissionDisputeCommand(
+    SubmissionId: notifSub.Id,
+    RaisedById: client1Id,
+    Reason: "Suspected AI image generation",
+    Category: "AiArt"
+), CancellationToken.None);
+Assert(notifDisputeRes.Success && notifDisputeRes.DisputeId.HasValue,
+    "Dispute creation with notification publisher must succeed.");
+Assert(stubNotif.Published.Any(n =>
+        n.UserId == section9AdminId &&
+        n.NotificationType == NotificationType.SubmissionDisputeCreated &&
+        n.RefType == "SubmissionDispute" &&
+        n.RefId == notifDisputeRes.DisputeId),
+    "Active Administrator must receive SubmissionDisputeCreated notification when dispute is raised.");
+
+// 9.2 Sending invitation to Client returns explicit reason (not generic 400)
+var sendInviteHandler = new SendInvitationCommandHandler(db, stubNotif, NullLogger<SendInvitationCommandHandler>.Instance);
+var clientInviteRes = await sendInviteHandler.Handle(new SendInvitationCommand(
+    EventId: inviteEvent.Id,
+    AdminId: section9AdminId,
+    Email: "client.only@dillustration.vn",
+    IsHeadJury: false
+), CancellationToken.None);
+Assert(!clientInviteRes.Success && clientInviteRes.Errors.Any(e => e.Contains("Creator", StringComparison.OrdinalIgnoreCase)),
+    "Inviting a Client account must return a descriptive Creator-requirement error.");
+
+// 9.3 Candidate picker lists both eligible Creator and ineligible Client with clear reason
+var candidatesHandler = new GetInvitationCandidatesQueryHandler(db);
+var (allCandidates, allCandidateCount) = await candidatesHandler.Handle(
+    new GetInvitationCandidatesQuery(inviteEvent.Id, Search: null, RoleFilter: "All", Page: 1, PageSize: 20),
+    CancellationToken.None);
+var creatorCand = allCandidates.FirstOrDefault(c => c.UserId == testCreatorUser.Id);
+var clientCand = allCandidates.FirstOrDefault(c => c.UserId == testClientOnlyUser.Id);
+Assert(creatorCand != null && creatorCand.CanInvite && creatorCand.Email == "real.creator@dillustration.vn",
+    "Invitation candidates query must list eligible Creator with real email.");
+Assert(clientCand != null && !clientCand.CanInvite && !string.IsNullOrWhiteSpace(clientCand.IneligibleReason),
+    "Invitation candidates query must mark Client account ineligible with explicit reason.");
+
+// 9.4 Invite Creator -> Accept -> GetJuriesQuery returns real CreatorEmail -> Duplicate invite fails cleanly
+var firstInviteRes = await sendInviteHandler.Handle(new SendInvitationCommand(
+    EventId: inviteEvent.Id,
+    AdminId: adminId,
+    Email: "real.creator@dillustration.vn",
+    IsHeadJury: true
+), CancellationToken.None);
+Assert(firstInviteRes.Success && firstInviteRes.Data != null,
+    "Sending invitation to valid Creator must succeed.");
+
+var updateInviteHandler = new UpdateInvitationStatusCommandHandler(db, stubNotif, NullLogger<UpdateInvitationStatusCommandHandler>.Instance);
+var firstAcceptRes = await updateInviteHandler.Handle(new UpdateInvitationStatusCommand(
+    InvitationId: firstInviteRes.Data!.Id,
+    CurrentUserId: testCreatorUser.Id,
+    Status: InvitationStatus.Accepted
+), CancellationToken.None);
+Assert(firstAcceptRes.Success, "Creator accepting first jury invitation must succeed.");
+
+var getJuriesHandler = new GetJuriesQueryHandler(db);
+var (eventJuries, _) = await getJuriesHandler.Handle(new GetJuriesQuery(EventId: inviteEvent.Id), CancellationToken.None);
+var acceptedJury = eventJuries.FirstOrDefault(j => j.CreatorId == testCreatorProfile.Id);
+Assert(acceptedJury != null && acceptedJury.CreatorEmail == "real.creator@dillustration.vn",
+    "GetJuriesQuery must return Creator's real account email after accepting invitation.");
+
+var dupJuryInviteRes = await sendInviteHandler.Handle(new SendInvitationCommand(
+    EventId: inviteEvent.Id,
+    AdminId: adminId,
+    Email: "real.creator@dillustration.vn",
+    IsHeadJury: false
+), CancellationToken.None);
+Assert(!dupJuryInviteRes.Success && dupJuryInviteRes.Errors.Any(e => e.Contains("ban giám khảo", StringComparison.OrdinalIgnoreCase)),
+    "Re-inviting an already active Jury member must return explicit duplicate-jury error.");
+
+// 9.5 Remove Jury -> Send 2nd invitation -> Creator accepts 2nd invitation succeeds cleanly
+var removeJuryHandler = new RemoveJuryCommandHandler(db);
+var removeRes = await removeJuryHandler.Handle(RemoveJuryCommand.ByJuryId(acceptedJury!.Id, adminId), CancellationToken.None);
+Assert(removeRes.Success, "Removing active Jury member must succeed.");
+
+var removedRow = await db.Juries.FirstOrDefaultAsync(j => j.Id == acceptedJury.Id);
+Assert(removedRow != null && removedRow.IsDeleted && !removedRow.IsHeadJury,
+    "RemoveJuryCommand must soft-delete row and clear IsHeadJury flag.");
+
+var secondInviteRes = await sendInviteHandler.Handle(new SendInvitationCommand(
+    EventId: inviteEvent.Id,
+    AdminId: adminId,
+    Email: "real.creator@dillustration.vn",
+    IsHeadJury: true
+), CancellationToken.None);
+Assert(secondInviteRes.Success && secondInviteRes.Data != null,
+    "Sending 2nd invitation to previously removed Jury Creator must succeed.");
+
+var secondAcceptRes = await updateInviteHandler.Handle(new UpdateInvitationStatusCommand(
+    InvitationId: secondInviteRes.Data!.Id,
+    CurrentUserId: testCreatorUser.Id,
+    Status: InvitationStatus.Accepted
+), CancellationToken.None);
+Assert(secondAcceptRes.Success,
+    "Creator accepting 2nd jury invitation after previous removal must succeed cleanly.");
+
+var (restoredJuries, _) = await getJuriesHandler.Handle(new GetJuriesQuery(EventId: inviteEvent.Id), CancellationToken.None);
+Assert(restoredJuries.Count == 1 && restoredJuries[0].CreatorEmail == "real.creator@dillustration.vn" && restoredJuries[0].IsHeadJury,
+    "Removed Jury member must be restored as active Jury with real email after accepting 2nd invitation.");
+
 
 Console.WriteLine("\n=================================================");
 Console.WriteLine($"RESULTS: {passed} PASSED, {failed} FAILED.");
 Console.WriteLine("ALL EVENT DTO & ENTITY VALIDATION TESTS PASSED!");
 Console.WriteLine("=================================================");
+
+sealed record PublishedNotif(Guid UserId, NotificationType NotificationType, string Title, string Body, string? RefType, Guid? RefId);
+
+sealed class RecordingNotificationPublisher : INotificationPublisher
+{
+    public List<PublishedNotif> Published { get; } = new();
+
+    public Task<NotificationDto?> PublishAsync(
+        Guid userId,
+        NotificationType notificationType,
+        string title,
+        string body,
+        string? refType = null,
+        Guid? refId = null,
+        NotificationChannel channel = NotificationChannel.InApp,
+        string? dedupKey = null,
+        CancellationToken cancellationToken = default)
+    {
+        Published.Add(new PublishedNotif(userId, notificationType, title, body, refType, refId));
+        return Task.FromResult<NotificationDto?>(new NotificationDto(
+            Guid.NewGuid(),
+            notificationType.ToString(),
+            title,
+            body,
+            refType,
+            refId,
+            channel.ToString(),
+            false,
+            null,
+            DateTimeOffset.UtcNow));
+    }
+}
