@@ -70,16 +70,18 @@ public sealed class AdminGetCategoriesQueryHandler : IRequestHandler<AdminGetCat
         var trendingTags = await _db.Tags
             .AsNoTracking()
             .Where(t => !t.IsDeleted)
-            .Select(t => new TrendingTagDto(
+            .Select(t => new
+            {
                 t.Id,
                 t.Name,
-                t.ArtworkTags.Count(at => at.Artwork != null && !at.Artwork.IsDeleted),
+                ArtworkCount = t.ArtworkTags.Count(at => at.Artwork != null && !at.Artwork.IsDeleted),
                 t.IsAiGenerated
-            ))
+            })
             .Where(t => t.ArtworkCount > 0)
             .OrderByDescending(t => t.ArtworkCount)
             .ThenBy(t => t.Name)
             .Take(limit)
+            .Select(t => new TrendingTagDto(t.Id, t.Name, t.ArtworkCount, t.IsAiGenerated))
             .ToListAsync(cancellationToken);
 
         return new AdminCategoriesOverviewDto(categories, trendingTags);
