@@ -1801,7 +1801,7 @@ if (args.Contains("--sql"))
     finally
     {
         await using var cleanupDb = new AppDbContext(sqlOptions);
-        await cleanupDb.CriteriaScores.Where(cs => cs.EventCriteria.EventId == sqlEventId).ExecuteDeleteAsync();
+        await cleanupDb.CriteriaScores.Where(cs => cs.EventCriteria != null && cs.EventCriteria.EventId == sqlEventId).ExecuteDeleteAsync();
         await cleanupDb.EventCriteria.IgnoreQueryFilters().Where(ec => ec.EventId == sqlEventId).ExecuteDeleteAsync();
         await cleanupDb.Invitations.IgnoreQueryFilters().Where(i => i.EventId == sqlEventId).ExecuteDeleteAsync();
         await cleanupDb.Juries.IgnoreQueryFilters().Where(j => j.EventId == sqlEventId).ExecuteDeleteAsync();
