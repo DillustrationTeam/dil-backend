@@ -121,7 +121,8 @@ public class GetAuctionsQueryHandler
                 a.Artwork!.Style,
                 a.Watches.Count(w => !w.IsDeleted),
                 a.HasPhysicalCopy,
-                a.PhysicalDescription))
+                a.PhysicalDescription,
+                a.FinalPrice))
             .ToListAsync(cancellationToken);
 
         var hasMore = rows.Count > limit;
@@ -142,7 +143,8 @@ public class GetAuctionsQueryHandler
             AuctionStatus: r.Status.ToString(),
             WatchCount: r.WatchCount,
             HasPhysicalCopy: r.HasPhysicalCopy,
-            PhysicalDescription: r.PhysicalDescription)).ToList();
+            PhysicalDescription: r.PhysicalDescription,
+            FinalPrice: r.FinalPrice)).ToList();
 
         var last = page.LastOrDefault();
         var nextCursor = hasMore && last is not null
@@ -222,7 +224,8 @@ public class GetAuctionsQueryHandler
         string? Style,
         int WatchCount,
         bool HasPhysicalCopy = false,
-        string? PhysicalDescription = null);
+        string? PhysicalDescription = null,
+        decimal? FinalPrice = null);
 }
 
 /// <summary>

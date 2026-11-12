@@ -9,7 +9,9 @@ using Microsoft.EntityFrameworkCore;
 namespace ArtCommission.Application.Auction.Queries.GetCommercialRightsDeed;
 
 public sealed record GetCommercialRightsDeedQuery(
-    Guid AuctionId
+    Guid AuctionId,
+    Guid? CurrentUserId = null,
+    bool IsAdmin = false
 ) : IRequest<(bool Success, CommercialRightsDeedDto? Data, int StatusCode, string[] Errors)>;
 
 public sealed class GetCommercialRightsDeedQueryHandler
@@ -37,9 +39,26 @@ public sealed class GetCommercialRightsDeedQueryHandler
             return (false, null, 404, ["Không tìm thấy phiên đấu giá."]);
         }
 
-        if (auction.Status != AuctionStatus.Settled || !auction.WinnerId.HasValue || !auction.SettledAt.HasValue)
+        // Văn bản bàn giao quyền thương mại có hiệu lực ngay khi phiên chốt có người thắng,
+        // độc lập với tiến độ bưu cục — người thắng phiên vật lý vẫn xem được khi đang chờ giao tranh.
+        if (!auction.WinnerId.HasValue || auction.Status is not (
+                AuctionStatus.Settled
+                or AuctionStatus.AwaitingPhysical
+                or AuctionStatus.InTransit
+                or AuctionStatus.Completed))
         {
             return (false, null, 400, ["Phiên đấu giá chưa được chốt hoặc chưa có người thắng hợp lệ."]);
+        }
+
+        // VÄƒn báº£n bÃ n giao quyá»n thÆ°Æ¡ng máº¡i chá»©a tÃªn, giÃ¡ chá»‘t vÃ  chá»¯ kÃ½ sá»‘ cá»§a hai bÃªn.
+        // Chá»‰ ngÆ°á»i trong cuá»™c (ngÆ°á»i tháº¯ng / ngÆ°á»i bÃ¡n) hoáº·c Admin Ä‘Æ°á»£c Ä‘á»c.
+        var isParticipant = request.CurrentUserId.HasValue
+                            && (request.CurrentUserId.Value == auction.WinnerId
+                                || request.CurrentUserId.Value == auction.SellerId);
+        if (!request.IsAdmin && !isParticipant)
+        {
+            return (false, null, 403,
+                ["Chá»‰ ngÆ°á»i tháº¯ng, ngÆ°á»i bÃ¡n hoáº·c Ban quáº£n trá»‹ má»›i xem Ä‘Æ°á»£c vÄƒn báº£n nÃ y."]);
         }
 
         var artwork = await _db.Artworks
@@ -65,7 +84,12 @@ public sealed class GetCommercialRightsDeedQueryHandler
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == auction.WinnerId.Value, cancellationToken);
 
-        var issuedAt = ownership?.AcquiredAt ?? auction.SettledAt.Value;
+        // SettledAt có thể null khi phiên đang chờ giao tranh vật lý — lấy mốc chuyển quyền sở hữu
+        // hoặc thời điểm cập nhật cuối cùng làm ngày cấp văn bản.
+        var issuedAt = ownership?.AcquiredAt
+                       ?? auction.SettledAt
+                       ?? auction.UpdatedAt
+                       ?? auction.CreatedAt;
         var certNumber = $"DIL-CERT-{issuedAt:yyyyMMdd}-{auction.Id.ToString()[..8].ToUpperInvariant()}";
         var verificationCode = $"VERIFY-{(ownership?.Id ?? auction.Id).ToString()[..12].ToUpperInvariant()}";
 
@@ -73,11 +97,12 @@ public sealed class GetCommercialRightsDeedQueryHandler
         var signatureHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(signatureRaw)));
 
         var terms = "VĂN BẢN CHUYỂN GIAO TOÀN DIỆN QUYỀN KHAI THÁC THƯƠNG MẠI (COMMERCIAL RIGHTS TRANSFER DEED)\n\n"
-            + "1. Chuyển giao toàn quyền thương mại: Người sáng tác (Artist) cam kết chuyển giao vĩnh viễn và độc quyền toàn bộ quyền sử dụng, quyền phái sinh và quyền khai thác thương mại đối với thiết kế/tác phẩm này cho Người thắng đấu giá (Collector/Owner).\n"
-            + "2. Ứng dụng truyền thông & phát triển: Chủ sở hữu có toàn quyền ứng dụng vào dự án Game, thiết kế mô hình VTuber (Live2D/3D), sản xuất ấn phẩm phái sinh (Merchandise, Artbook, Poster), và phát hành đa nền tảng.\n"
-            + "3. Cam kết tính độc bản (1-of-1 Exclusivity): Người sáng tác cam kết không tái bán, không chuyển nhượng hoặc cấp phép trùng lặp thiết kế này cho bất kỳ bên thứ ba nào khác.\n"
-            + "4. Quyền tài sản & thị trường thứ cấp: Chủ sở hữu có toàn quyền chuyển nhượng hoặc niêm yết bán lại (Resell) trên thị trường thứ cấp của Dillustration.\n"
-            + "5. Quyền nhân thân bất khả xâm phạm (Inalienable Moral Rights): Quyền tác giả và quyền đứng tên tác giả vĩnh viễn và tuyệt đối thuộc về Họa sĩ sáng tác gốc. Dù người mua nắm giữ 100% quyền sở hữu độc bản và quyền khai thác thương mại, người mua cam kết KHÔNG được mạo danh là tác giả, đồng thời bảo đảm ghi nhận danh tính Họa sĩ sáng tác trong hồ sơ lai lịch (Provenance) và mọi sản phẩm phái sinh.";
+            + "1. Chuyển giao quyền tài sản đối với bức tranh: Người sáng tác (Artist) cam kết chuyển giao vĩnh viễn và độc quyền quyền sở hữu bức tranh — gồm bản số độc bản và bản tranh gốc vật lý nếu phiên đấu giá có kèm bản vật lý — cho Người thắng đấu giá (Collector/Owner).\n"
+            + "2. Quyền khai thác thương mại hình ảnh bức tranh: Chủ sở hữu có toàn quyền sử dụng hình ảnh bức tranh để sinh lời, gồm in ấn tranh để bán, đưa hình ảnh tranh vào ấn phẩm quảng cáo, bao bì và nội dung truyền thông, không giới hạn doanh thu và không phải trả thêm phí tác quyền định kỳ.\n"
+            + "3. Quyền trưng bày và cho mượn tranh: Chủ sở hữu được trưng bày bức tranh tại không gian riêng, phòng tranh hoặc triển lãm, và được cho mượn tranh để giới thiệu với công chúng, miễn ghi rõ tên Hoạ sĩ sáng tác.\n"
+            + "4. Cam kết tính độc bản (Exclusivity): Người sáng tác cam kết không vẽ lại, không tái bán, không chuyển nhượng hoặc cấp phép trùng lặp bức tranh này cho bất kỳ bên thứ ba nào khác.\n"
+            + "5. Quyền tài sản & thị trường thứ cấp: Chủ sở hữu có toàn quyền chuyển nhượng hoặc niêm yết bán lại (Resell) bức tranh trên thị trường thứ cấp của Dillustration.\n"
+            + "6. Quyền nhân thân bất khả xâm phạm (Inalienable Moral Rights): Quyền tác giả và quyền đứng tên tác giả vĩnh viễn và tuyệt đối thuộc về Họa sĩ sáng tác gốc. Dù người mua nắm giữ 100% quyền sở hữu độc bản và quyền khai thác thương mại đối với bức tranh, người mua cam kết KHÔNG được mạo danh là tác giả, đồng thời bảo đảm ghi nhận danh tính Họa sĩ sáng tác trong hồ sơ lai lịch (Provenance) và mọi ấn phẩm có sử dụng hình ảnh tranh.";
 
         var dto = new CommercialRightsDeedDto(
             AuctionId: auction.Id,
@@ -93,7 +118,7 @@ public sealed class GetCommercialRightsDeedQueryHandler
             OwnerName: winner?.FullName ?? "Exclusive Collector",
             FinalPrice: auction.FinalPrice ?? 0m,
             SettledAt: issuedAt,
-            ScopeOfRights: "1-of-1 Exclusive Commercial Exploitation & Derivative Rights",
+            ScopeOfRights: "Exclusive Commercial Exploitation & Derivative Rights",
             CommercialExploitationAllowed: true,
             VtuberAndGameDevAllowed: true,
             ResellAllowed: true,

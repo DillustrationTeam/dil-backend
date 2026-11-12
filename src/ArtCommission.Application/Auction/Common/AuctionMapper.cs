@@ -54,7 +54,6 @@ public static class AuctionMapper
         SellerId: auction.SellerId,
         AuctionType: auction.AuctionType.ToString(),
         StartPrice: auction.StartPrice,
-        ReservePrice: auction.ReservePrice,
         BidStep: auction.BidStep,
         BuyNowPrice: auction.BuyNowPrice,
         CurrentPrice: auction.CurrentPrice,
@@ -86,9 +85,13 @@ public static class AuctionMapper
         AuctionStatus: auction.Status.ToString(),
         WatchCount: watchCount,
         HasPhysicalCopy: auction.HasPhysicalCopy,
-        PhysicalDescription: auction.PhysicalDescription);
+        PhysicalDescription: auction.PhysicalDescription,
+        FinalPrice: auction.FinalPrice);
 
-    public static AuctionDeliveryDto? ToDeliveryDto(AuctionDelivery? delivery) =>
+    public static AuctionDeliveryDto? ToDeliveryDto(
+        AuctionDelivery? delivery,
+        bool canRateSeller = false,
+        bool hasRatedSeller = false) =>
         delivery is null
             ? null
             : new AuctionDeliveryDto(
@@ -110,7 +113,16 @@ public static class AuctionMapper
                 DeliveredAt: delivery.DeliveredAt,
                 ConfirmedAt: delivery.ConfirmedAt,
                 DisputeReason: delivery.DisputeReason,
-                DisputeEvidenceUrl: delivery.DisputeEvidenceUrl);
+                DisputeEvidenceUrl: delivery.DisputeEvidenceUrl,
+                AutoConfirmAt: delivery.Status is DeliveryStatus.InTransit && delivery.ShippedAt.HasValue
+                    ? delivery.ShippedAt.Value.AddHours(AuctionDeliveryRules.AutoConfirmHours)
+                    : null,
+                IsPostPayoutDispute: delivery.IsPostPayoutDispute,
+                DisputeResolution: delivery.DisputeResolution,
+                DisputeResolvedAt: delivery.DisputeResolvedAt,
+                DisputeResolvedNote: delivery.DisputeResolvedNote,
+                CanRateSeller: canRateSeller,
+                HasRatedSeller: hasRatedSeller);
 
     public static IReadOnlyList<AuctionReceiptDto> BuildReceipts(
         Domain.Entities.Auction.Auction auction,
@@ -127,11 +139,14 @@ public static class AuctionMapper
                 ReceiptNumber: $"REC-ESC-{shortId}",
                 IssuedAt: escrow.CreatedAt,
                 Amount: escrow.Amount,
-                FeeAmount: escrow.FeeAmount,
-                NetAmount: escrow.Amount,
+                // Biên lai TẠM GIỮ chưa trừ phí — phí nền tảng chỉ phát sinh ở bước quyết toán.
+                // Hiển thị phí ở đây khiến người dùng tưởng bị trừ tiền hai lần.
+                FeeAmount: null,
+                NetAmount: null,
                 Title: "Biên lai Tạm giữ Tiền Ký quỹ Đấu giá",
                 ProofImageUrl: null,
-                Description: $"Khoản tiền trúng đấu giá phiên {auction.Id} đang được sàn Dillustration bảo chứng ký quỹ an toàn.",
+                Description: $"Sàn Dillustration đang tạm giữ {escrow.Amount:N0} VND của phiên {auction.Id}. " +
+                             "Đây là khoản giữ hộ, chưa chuyển cho người bán và chưa bị trừ phí nền tảng.",
                 PayerId: escrow.PayerId,
                 PayeeId: escrow.PayeeId));
         }

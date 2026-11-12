@@ -97,6 +97,22 @@ public sealed class GetPhysicalDeliveriesQueryHandler
             .Select(g => g.OrderByDescending(e => e.CreatedAt).First())
             .ToDictionaryAsync(e => e.AuctionId, cancellationToken);
 
+        // Phiên nào người dùng hiện tại đã đánh giá người bán rồi (mỗi phiên chỉ đánh giá 1 lần).
+        var ratedAuctionIds = request.CurrentUserId is { } viewerId && viewerId != Guid.Empty
+            ? await _db.CreatorReviews
+                .AsNoTracking()
+                .Where(r => r.AuctionId != null && r.ReviewerUserId == viewerId && !r.IsDeleted)
+                .Select(r => r.AuctionId!.Value)
+                .ToListAsync(cancellationToken)
+            : new List<Guid>();
+
+        // Hồ sơ nghệ sĩ của người bán — cần cho form đánh giá.
+        var sellerIds = auctions.Select(a => a.SellerId).Distinct().ToList();
+        var sellerProfileMap = await _db.CreatorProfiles
+            .AsNoTracking()
+            .Where(p => sellerIds.Contains(p.UserId) && !p.IsDeleted)
+            .ToDictionaryAsync(p => p.UserId, p => p.Id, cancellationToken);
+
         var result = new List<PhysicalDeliveryListItemDto>();
 
         foreach (var a in auctions)
@@ -104,9 +120,19 @@ public sealed class GetPhysicalDeliveriesQueryHandler
             deliveries.TryGetValue(a.Id, out var delivery);
             escrows.TryGetValue(a.Id, out var escrow);
 
-            var deliveryDto = AuctionMapper.ToDeliveryDto(delivery);
-            var escrowStatusStr = escrow?.Status.ToString() ?? (a.Status == AuctionStatus.Active ? "BiddingHold" : "None");
+            // Người mua đánh giá được người bán khi giao dịch đã khép lại (hoàn tất, đã giao xong,
+            // hoặc khiếu nại đã được Admin đóng) và chưa đánh giá cho phiên này.
+            var hasRatedSeller = ratedAuctionIds.Contains(a.Id);
+            var transactionClosed =
+                a.Status == AuctionStatus.Completed
+                || delivery is { Status: DeliveryStatus.Delivered or DeliveryStatus.Resolved }
+                || delivery?.DisputeResolvedAt is not null;
+            var canRateSeller = transactionClosed
+                                && !hasRatedSeller
+                                && a.WinnerId == request.CurrentUserId;
 
+            var deliveryDto = AuctionMapper.ToDeliveryDto(delivery, canRateSeller, hasRatedSeller);
+            var escrowStatusStr = escrow?.Status.ToString() ?? (a.Status == AuctionStatus.Active ? "BiddingHold" : "None");
             // Bộ lọc status nếu có
             if (!string.IsNullOrWhiteSpace(request.Status) && !string.Equals(request.Status, "ALL", StringComparison.OrdinalIgnoreCase))
             {
@@ -145,7 +171,8 @@ public sealed class GetPhysicalDeliveriesQueryHandler
                 PhysicalChoiceDeadline: a.PhysicalChoiceDeadline,
                 RequiresPhysicalDelivery: a.RequiresPhysicalDelivery,
                 Delivery: deliveryDto,
-                EscrowStatus: escrowStatusStr));
+                EscrowStatus: escrowStatusStr,
+                SellerCreatorProfileId: sellerProfileMap.TryGetValue(a.SellerId, out var profileId) ? profileId : null));
         }
 
         return (true, result, []);

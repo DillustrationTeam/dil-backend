@@ -131,59 +131,6 @@ public class SettleAuctionCommandHandler
             return (false, null, ["Phiên không có lượt đặt giá hợp lệ nên không có người thắng."]);
         }
 
-        // Giá sàn bí mật: có bid nhưng chưa đạt giá sàn thì KHÔNG bán.
-        if (auction.ReservePrice.HasValue && winningBid.Amount < auction.ReservePrice.Value)
-        {
-            auction.Status = AuctionStatus.Ended;
-            auction.CancelReason ??=
-                $"Giá cao nhất {winningBid.Amount:N0} chưa đạt giá sàn {auction.ReservePrice.Value:N0}.";
-            auction.UpdatedAt = now;
-
-            // Nhả cọc cho người đã đặt giá — họ không có lỗi gì.
-            //
-            // LỖI ĐÃ SỬA: trước đây nhánh này chỉ đặt Status = Lost rồi commit mà KHÔNG
-            // gọi RefundDepositAsync ⇒ HoldStatus giữ nguyên Held và số tiền cọc nằm
-            // vĩnh viễn trong LockedBalance của bidder (không ai giải phóng được nữa,
-            // vi phạm bất biến của IAuctionMoneyService: mọi bid thôi dẫn đầu phải
-            // được Refunded/Released).
-            winningBid.Status = BidStatus.Lost;
-            winningBid.UpdatedAt = now;
-
-            await _moneyService.RefundDepositAsync(
-                winningBid, "Phiên không bán được vì chưa đạt giá sàn.", cancellationToken);
-
-            // Nhả luôn cọc của các bid thua khác — nếu chỉ nhả bid cao nhất thì các
-            // bid còn lại vẫn Held và tiền tiếp tục mắc kẹt.
-            var otherHeldBids = await _db.Bids
-                .Where(b => b.AuctionId == auction.Id
-                            && !b.IsDeleted
-                            && b.Id != winningBid.Id
-                            && b.HoldStatus == HoldStatus.Held)
-                .ToListAsync(cancellationToken);
-
-            foreach (var heldBid in otherHeldBids)
-            {
-                heldBid.Status = BidStatus.Lost;
-                heldBid.UpdatedAt = now;
-
-                await _moneyService.RefundDepositAsync(
-                    heldBid, "Phiên không bán được vì chưa đạt giá sàn.", cancellationToken);
-            }
-
-            await _db.SaveChangesAsync(cancellationToken);
-            await tx.CommitAsync(cancellationToken);
-
-            await PublishEndedAsync(auction, !isLifecycleWorker, cancellationToken);
-
-            if (request.Force && request.IsAdministrator)
-            {
-                return (true, new AuctionSettlementDto(auction.Id, null, winningBid.Amount, now, null, null), Array.Empty<string>());
-            }
-
-            return (false, null,
-                [$"Giá cao nhất chưa đạt giá sàn {auction.ReservePrice.Value:N0} VND nên phiên không bán được."]);
-        }
-
         var result = await _settlementService.SettleWithHeldDepositAsync(auction, winningBid, cancellationToken);
 
         // Không chốt được (ví dụ người mua không đủ số dư để bù phần cọc thiếu).

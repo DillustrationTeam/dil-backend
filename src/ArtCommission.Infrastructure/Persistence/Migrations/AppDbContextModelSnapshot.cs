@@ -297,9 +297,6 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("datetimeoffset");
 
-                    b.Property<Guid?>("CategoryId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -394,65 +391,11 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CategoryId");
-
                     b.HasIndex("CreatorProfileId");
 
                     b.HasIndex("ModerationStatus");
 
                     b.ToTable("Artworks", (string)null);
-                });
-
-            modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.ArtworkCategory", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<int>("DisplayOrder")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(0);
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("Slug")
-                        .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("nvarchar(120)");
-
-                    b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DisplayOrder");
-
-                    b.HasIndex("Name")
-                        .IsUnique();
-
-                    b.HasIndex("Slug")
-                        .IsUnique();
-
-                    b.ToTable("ArtworkCategories", (string)null);
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.ArtworkComment", b =>
@@ -989,6 +932,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("AuctionId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Comment")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
@@ -1008,12 +954,20 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ReviewerUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("Source")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
 
                     b.HasKey("Id");
 
                     b.HasIndex("CreatorProfileId");
+
+                    b.HasIndex("AuctionId", "ReviewerUserId")
+                        .IsUnique()
+                        .HasFilter("[AuctionId] IS NOT NULL AND [IsDeleted] = 0");
 
                     b.ToTable("CreatorReviews", (string)null);
                 });
@@ -1309,10 +1263,6 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<bool?>("RequiresPhysicalDelivery")
                         .HasColumnType("bit");
 
-                    b.Property<decimal?>("ReservePrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -1442,10 +1392,22 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<string>("DisputeResolution")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DisputeResolvedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DisputeResolvedNote")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
+
+                    b.Property<bool>("IsPostPayoutDispute")
+                        .HasColumnType("bit");
 
                     b.Property<string>("NoteToSeller")
                         .HasMaxLength(500)
@@ -4426,18 +4388,11 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.Artwork", b =>
                 {
-                    b.HasOne("ArtCommission.Domain.Entities.ArtistStudio.ArtworkCategory", "Category")
-                        .WithMany("Artworks")
-                        .HasForeignKey("CategoryId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("ArtCommission.Domain.Entities.ArtistStudio.CreatorProfile", "CreatorProfile")
                         .WithMany("Artworks")
                         .HasForeignKey("CreatorProfileId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Category");
 
                     b.Navigation("CreatorProfile");
                 });
@@ -5389,11 +5344,6 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.Artwork", b =>
                 {
                     b.Navigation("ArtworkTags");
-                });
-
-            modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.ArtworkCategory", b =>
-                {
-                    b.Navigation("Artworks");
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.CreatorProfile", b =>

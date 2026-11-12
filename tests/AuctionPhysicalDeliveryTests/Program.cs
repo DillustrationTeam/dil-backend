@@ -58,7 +58,6 @@ class Program
                 UserId: Guid.NewGuid(),
                 ArtworkId: Guid.NewGuid(),
                 StartPrice: 100_000m,
-                ReservePrice: 150_000m,
                 BidStep: 10_000m,
                 BuyNowPrice: 500_000m,
                 StartAt: DateTimeOffset.UtcNow.AddMinutes(5),
