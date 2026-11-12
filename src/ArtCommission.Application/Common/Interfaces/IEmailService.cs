@@ -18,4 +18,36 @@ public interface IEmailService
 
     /// <summary>Gửi mã OTP 6 số tới email HIỆN TẠI để xác thực lại danh tính (tài khoản không có mật khẩu) trước khi đổi email.</summary>
     Task SendReauthCodeEmailAsync(string toEmail, string code, CancellationToken cancellationToken = default);
+
+    /// <summary>Gửi email biên lai ký quỹ Escrow cho Khách hàng khi nạp tiền ký quỹ.</summary>
+    Task SendEscrowReceiptEmailAsync(
+        string toEmail,
+        string clientName,
+        string creatorName,
+        string commissionTitle,
+        decimal amount,
+        string commissionId,
+        string licenseType,
+        IEnumerable<(string Title, int Percentage, decimal Price)> milestones,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Gửi email chứng nhận hoàn thành & chứng nhận bản quyền số (COA) cho Khách hàng khi nghiệm thu.</summary>
+    Task SendCertificateCompletedEmailAsync(
+        string toEmail,
+        string clientName,
+        string creatorName,
+        string commissionTitle,
+        string commissionId,
+        string licenseType,
+        string? previewImageUrl,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Gửi email phản hồi từ Admin cho người dùng đã gửi báo cáo sự cố / hỗ trợ.</summary>
+    Task SendBugReportReplyEmailAsync(
+        string toEmail,
+        string reportTitle,
+        string replyMessage,
+        string statusLabel,
+        CancellationToken cancellationToken = default);
+
 }

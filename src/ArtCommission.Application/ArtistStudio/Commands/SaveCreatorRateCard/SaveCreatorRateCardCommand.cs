@@ -39,17 +39,51 @@ public class SaveCreatorRateCardCommandHandler
                 m.Price <= 0 || decimal.Truncate(m.Price) != m.Price || m.Price > 1000000000000m || m.MaxRevisions is < 0 or > 20) ||
             !p.Milestones.Select(m => m.Sequence).SequenceEqual(Enumerable.Range(1, p.Milestones.Count)) ||
             p.Price != p.Milestones.Sum(m => m.Price) ||
+            (p.MaxSlots.HasValue && (p.MaxSlots.Value < 0 || p.MaxSlots.Value > 100)) ||
             p.SampleUrls?.Count > 10 ||
             p.SampleUrls?.Any(u => string.IsNullOrWhiteSpace(u) || u.Length > 2000) == true))
-            return (false, null, new[] { "Gói cần 1–10 mốc, giá VND nguyên dương, tổng giá đúng, 0–20 lần sửa và tối đa 10 ảnh mẫu hợp lệ." });
+            return (false, null, new[] { "Gói cần 1–10 mốc, giá VND nguyên dương, tổng giá đúng, 0–20 lần sửa, 0–100 slot (hoặc không giới hạn) và tối đa 10 ảnh mẫu hợp lệ." });
 
         try
         {
-            profile.RateCardJson = JsonSerializer.Serialize(request.Packages ?? new List<RateCardPackageDto>(), JsonOptions);
+            var categoryIds = (request.Packages ?? new List<RateCardPackageDto>())
+                .Where(p => p.CategoryId.HasValue && p.CategoryId.Value != Guid.Empty)
+                .Select(p => p.CategoryId!.Value)
+                .Distinct()
+                .ToList();
+
+            var categoryMap = categoryIds.Count > 0
+                ? await _db.ArtworkCategories
+                    .AsNoTracking()
+                    .Where(c => categoryIds.Contains(c.Id) && !c.IsDeleted && c.IsActive)
+                    .ToDictionaryAsync(c => c.Id, c => c.Name, cancellationToken)
+                : new Dictionary<Guid, string>();
+
+            if (categoryIds.Any(id => !categoryMap.ContainsKey(id)))
+            {
+                return (false, null, new[] { "Một hoặc nhiều danh mục lớn được chọn cho gói dịch vụ không hợp lệ hoặc đã ngừng hoạt động." });
+            }
+
+            var normalized = (request.Packages ?? new List<RateCardPackageDto>())
+                .Select(p =>
+                {
+                    Guid? catId = p.CategoryId.HasValue && p.CategoryId.Value != Guid.Empty ? p.CategoryId.Value : null;
+                    string? catName = catId.HasValue && categoryMap.TryGetValue(catId.Value, out var name) ? name : null;
+                    return p with
+                    {
+                        OrderCount = 0,
+                        ActiveOrderCount = 0,
+                        RemainingSlots = null,
+                        CategoryId = catId,
+                        CategoryName = catName
+                    };
+                })
+                .ToList();
+            profile.RateCardJson = JsonSerializer.Serialize(normalized, JsonOptions);
             profile.UpdatedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(cancellationToken);
 
-            return (true, request.Packages, Array.Empty<string>());
+            return (true, normalized, Array.Empty<string>());
         }
         catch (Exception ex)
         {

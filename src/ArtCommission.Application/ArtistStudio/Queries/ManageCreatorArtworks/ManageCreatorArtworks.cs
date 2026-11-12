@@ -60,7 +60,7 @@ public sealed class GetCreatorArtworksQueryHandler
                 artwork.ModerationStatus,
                 artwork.ViewCount,
                 artwork.CreatedAt,
-                artwork.ArtworkTags.Select(link => link.Tag!.Name).ToList()))
+                artwork.ArtworkTags.Select(link => link.Tag!.Name).ToList()) { Style = artwork.Style, CategoryId = artwork.CategoryId, CategoryName = artwork.Category != null ? artwork.Category.Name : artwork.Style })
             .ToListAsync(cancellationToken);
     }
 }
@@ -72,7 +72,7 @@ public record UpdateCreatorArtworkCommand(
     string? Description,
     IReadOnlyList<string>? Tags,
     string? ImageUrl,
-    string? ThumbnailUrl)
+    string? ThumbnailUrl, Guid? CategoryId = null)
     : IRequest<(ArtworkDto? Data, string[] Errors)>;
 
 public sealed class UpdateCreatorArtworkCommandValidator : AbstractValidator<UpdateCreatorArtworkCommand>
@@ -107,7 +107,7 @@ public sealed class UpdateCreatorArtworkCommandHandler
     {
         var title = request.Title?.Trim() ?? string.Empty;
         var tags = (request.Tags ?? Array.Empty<string>())
-            .Select(tag => tag.Trim())
+            .Select(tag => tag.Trim().TrimStart('#'))
             .Where(tag => tag.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -135,7 +135,7 @@ public sealed class UpdateCreatorArtworkCommandHandler
 
         var artwork = profileId is null
             ? null
-            : await _db.Artworks
+            : await _db.Artworks.Include(item => item.Category)
                 .Include(item => item.ArtworkTags)
                 .ThenInclude(link => link.Tag)
                 .FirstOrDefaultAsync(item => item.Id == request.ArtworkId
@@ -147,18 +147,52 @@ public sealed class UpdateCreatorArtworkCommandHandler
             return (null, new[] { "Artwork not found." });
         }
 
+        ArtworkCategory? category = artwork.Category;
+        if (request.CategoryId.HasValue && request.CategoryId.Value != Guid.Empty && request.CategoryId.Value != artwork.CategoryId)
+        {
+            category = await _db.ArtworkCategories.AsNoTracking().FirstOrDefaultAsync(c => c.Id == request.CategoryId.Value && !c.IsDeleted && c.IsActive, cancellationToken);
+            if (category is null) return (null, new[] { "Danh mục tác phẩm không tồn tại hoặc đã ngừng hoạt động." });
+            artwork.CategoryId = category.Id;
+            artwork.Style = category.Name;
+        }
         artwork.Title = title;
         artwork.Description = request.Description?.Trim();
         if (request.ImageUrl is not null)
         {
+            var previewReceipt = await _db.ArtworkWatermarkReceipts
+                .FirstOrDefaultAsync(r =>
+                    r.ViewerUserId == request.UserId
+                    && r.WatermarkType == "DwtPublish"
+                    && r.Notes != null
+                    && r.Notes.StartsWith(request.ImageUrl + "\n"),
+                    cancellationToken);
+
+            string? watermarkedUrl = null;
+            if (previewReceipt?.Notes is { } notes)
+            {
+                var splitIdx = notes.IndexOf('\n');
+                if (splitIdx >= 0 && splitIdx + 1 < notes.Length)
+                {
+                    watermarkedUrl = notes[(splitIdx + 1)..];
+                }
+            }
+
             artwork.ImageUrl = request.ImageUrl;
+            artwork.WatermarkedUrl = watermarkedUrl;
+            if (previewReceipt is not null)
+            {
+                previewReceipt.ArtworkId = artwork.Id;
+            }
             artwork.AiDetectionScore = null;
             artwork.AiScanStatus = "Queued";
             artwork.AiScanImageUrl = null;
             artwork.AiScanAttempts = 0;
             artwork.AiScanUpdatedAt = DateTimeOffset.UtcNow;
             artwork.AiScanError = null;
-            artwork.ThumbnailUrl = request.ThumbnailUrl ?? request.ImageUrl;
+            artwork.ThumbnailUrl = !string.IsNullOrWhiteSpace(watermarkedUrl)
+                && (string.IsNullOrWhiteSpace(request.ThumbnailUrl) || string.Equals(request.ThumbnailUrl, request.ImageUrl, StringComparison.Ordinal))
+                ? watermarkedUrl
+                : (request.ThumbnailUrl ?? watermarkedUrl ?? request.ImageUrl);
             artwork.ModerationStatus = "Pending";
             artwork.ModeratorId = null;
             artwork.ModeratedAt = null;
@@ -211,7 +245,7 @@ public sealed class UpdateCreatorArtworkCommandHandler
             artwork.ModerationStatus,
             artwork.ViewCount,
             artwork.CreatedAt,
-            artwork.ArtworkTags.Where(link => link.Tag is not null).Select(link => link.Tag!.Name).ToList()),
+            artwork.ArtworkTags.Where(link => link.Tag is not null).Select(link => link.Tag!.Name).ToList()) { Style = artwork.Style, CategoryId = artwork.CategoryId, CategoryName = category?.Name ?? artwork.Style },
             Array.Empty<string>());
     }
 }

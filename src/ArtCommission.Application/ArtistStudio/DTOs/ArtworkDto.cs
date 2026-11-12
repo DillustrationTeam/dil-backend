@@ -20,6 +20,8 @@ public record ArtworkDto(
     public decimal CreatorRating { get; init; }
     public int AvailableSlots { get; init; }
     public string? Style { get; init; }
+    public Guid? CategoryId { get; init; }
+    public string? CategoryName { get; init; }
     public string LicenseType { get; init; } = "Personal";
     public decimal? StartingPrice { get; init; }
 }
@@ -31,7 +33,8 @@ public record CreateArtworkRequest(
     string? ThumbnailUrl,
     bool IsAiGenerated = false,
     decimal? AiDetectionScore = null,
-    IReadOnlyList<string>? Tags = null
+    IReadOnlyList<string>? Tags = null,
+    Guid? CategoryId = null
 );
 
 public record UpdateArtworkRequest(
@@ -42,7 +45,8 @@ public record UpdateArtworkRequest(
     bool? IsAiGenerated,
     decimal? AiDetectionScore,
     string? ModerationStatus,
-    IReadOnlyList<string>? Tags
+    IReadOnlyList<string>? Tags,
+    Guid? CategoryId = null
 );
 
 public record UpdateCreatorArtworkRequest(
@@ -50,4 +54,5 @@ public record UpdateCreatorArtworkRequest(
     string? Description,
     IReadOnlyList<string>? Tags,
     string? ImageUrl,
-    string? ThumbnailUrl);
+    string? ThumbnailUrl,
+    Guid? CategoryId = null);

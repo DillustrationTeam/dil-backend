@@ -1,11 +1,13 @@
 using ArtCommission.Domain.Entities.Ai;
 using ArtCommission.Domain.Entities.ArtistStudio;
 using ArtCommission.Domain.Entities.Chat;
+using ArtCommission.Domain.Entities.Dispute;
 using ArtCommission.Domain.Entities.Event;
 using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Domain.Entities.Notifications;
 using ArtCommission.Domain.Entities.Payment;
 using ArtCommission.Domain.Entities.Revenue;
+using ArtCommission.Domain.Entities.Trade;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 
@@ -19,6 +21,7 @@ using AuctionWatchEntity = ArtCommission.Domain.Entities.Auction.AuctionWatch;
 using ArtworkOwnershipEntity = ArtCommission.Domain.Entities.Auction.ArtworkOwnership;
 using EscrowTransactionEntity = ArtCommission.Domain.Entities.Auction.EscrowTransaction;
 using DeliverableEntity = ArtCommission.Domain.Entities.Auction.Deliverable;
+using ArtTradeEntity = ArtCommission.Domain.Entities.Trade.ArtTrade;
 
 namespace ArtCommission.Application.Common.Interfaces;
 
@@ -33,6 +36,7 @@ public interface IApplicationDbContext
 {
     // Module Artist Studio
     DbSet<CreatorProfile> CreatorProfiles { get; }
+    DbSet<ArtworkCategory> ArtworkCategories { get; }
     DbSet<Artwork> Artworks { get; }
     DbSet<Tag> Tags { get; }
     DbSet<ArtworkTag> ArtworkTags { get; }
@@ -50,6 +54,7 @@ public interface IApplicationDbContext
     DbSet<CreatorFaq> CreatorFaqs { get; }
     DbSet<CreatorWorkItem> CreatorWorkItems { get; }
     DbSet<CreatorAsset> CreatorAssets { get; }
+    DbSet<ArtworkWatermarkReceipt> ArtworkWatermarkReceipts { get; }
 
     // Module Payment & Wallet
     DbSet<Wallet> Wallets { get; }
@@ -85,6 +90,9 @@ public interface IApplicationDbContext
     DbSet<ArtworkOwnershipEntity> ArtworkOwnerships { get; }
     DbSet<EscrowTransactionEntity> EscrowTransactions { get; }
     DbSet<DeliverableEntity> Deliverables { get; }
+    DbSet<ArtTradeEntity> ArtTrades { get; }
+    DbSet<TradeSlotFreeze> TradeSlotFreezes { get; }
+    DbSet<TradeDispute> TradeDisputes { get; }
 
     // Module Workroom Chat (UC43)
     DbSet<ChatRoom> ChatRooms { get; }

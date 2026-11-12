@@ -13,6 +13,7 @@ using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Domain.Entities.Notifications;
 using ArtCommission.Domain.Entities.Payment;
 using ArtCommission.Domain.Entities.Revenue;
+using ArtCommission.Domain.Entities.Trade;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -31,6 +32,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
 
     // Module Artist Studio
     public DbSet<CreatorProfile> CreatorProfiles => Set<CreatorProfile>();
+    public DbSet<ArtworkCategory> ArtworkCategories => Set<ArtworkCategory>();
     public DbSet<Artwork> Artworks => Set<Artwork>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<ArtworkTag> ArtworkTags => Set<ArtworkTag>();
@@ -48,6 +50,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<CreatorFaq> CreatorFaqs => Set<CreatorFaq>();
     public DbSet<CreatorWorkItem> CreatorWorkItems => Set<CreatorWorkItem>();
     public DbSet<CreatorAsset> CreatorAssets => Set<CreatorAsset>();
+    public DbSet<ArtworkWatermarkReceipt> ArtworkWatermarkReceipts => Set<ArtworkWatermarkReceipt>();
 
     // Module Commission & Dispute
     public DbSet<Commission> Commissions => Set<Commission>();
@@ -86,6 +89,9 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<ArtworkOwnership> ArtworkOwnerships => Set<ArtworkOwnership>();
     public DbSet<EscrowTransaction> EscrowTransactions => Set<EscrowTransaction>();
     public DbSet<Deliverable> Deliverables => Set<Deliverable>();
+    public DbSet<ArtTrade> ArtTrades => Set<ArtTrade>();
+    public DbSet<TradeSlotFreeze> TradeSlotFreezes => Set<TradeSlotFreeze>();
+    public DbSet<TradeDispute> TradeDisputes => Set<TradeDispute>();
 
     // ---------------------------------------------------------------------
     // Module Workroom Chat (UC43)

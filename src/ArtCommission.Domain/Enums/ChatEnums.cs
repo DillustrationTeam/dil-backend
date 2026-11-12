@@ -13,7 +13,10 @@ public enum ChatRoomType
     Auction,
 
     /// <summary>Phòng hỗ trợ giữa người dùng và Moderator/Admin.</summary>
-    Support
+    Support,
+
+    /// <summary>Phòng trao đổi giữa hai họa sĩ trong giao dịch Art Trade.</summary>
+    ArtTrade
 }
 
 /// <summary>

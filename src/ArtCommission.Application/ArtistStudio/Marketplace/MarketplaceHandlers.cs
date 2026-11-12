@@ -1,4 +1,4 @@
-using ArtCommission.Application.ArtistStudio.DTOs;
+﻿using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.ArtistStudio.Queries;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Entities.ArtistStudio;
@@ -19,32 +19,46 @@ public record GetFollowingFeedQuery(Guid UserId, int Take = 30) : IRequest<IRead
 public record GetCreatorFollowStatusQuery(Guid UserId, Guid CreatorProfileId) : IRequest<bool>;
 public record GetFeaturedBannersQuery() : IRequest<IReadOnlyList<BannerDto>>;
 public record GetMarketplaceHomeQuery(Guid UserId, int Take = 12) : IRequest<MarketplaceHomeFeedDto>;
+public record GetSearchSuggestionsQuery(string? Query) : IRequest<SearchSuggestionsDto>;
 
-public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, IReadOnlyList<ArtworkDto>>, IRequestHandler<GetArtworkDetailQuery, ArtworkDetailDto?>, IRequestHandler<GetArtworkCommentsQuery, IReadOnlyList<ArtworkCommentDto>>, IRequestHandler<GetCreatorServicesQuery, IReadOnlyList<CommissionServiceDto>>, IRequestHandler<GetCreatorReviewsQuery, IReadOnlyList<CreatorReviewDto>>, IRequestHandler<GetMyCollectionsQuery, IReadOnlyList<PersonalCollectionDto>>, IRequestHandler<GetMyFavoritesQuery, IReadOnlyList<ArtworkDto>>, IRequestHandler<GetFollowingFeedQuery, IReadOnlyList<ArtworkDto>>, IRequestHandler<GetCreatorFollowStatusQuery, bool>, IRequestHandler<GetFeaturedBannersQuery, IReadOnlyList<BannerDto>>, IRequestHandler<GetMarketplaceHomeQuery, MarketplaceHomeFeedDto>
+public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, IReadOnlyList<ArtworkDto>>, IRequestHandler<GetArtworkDetailQuery, ArtworkDetailDto?>, IRequestHandler<GetArtworkCommentsQuery, IReadOnlyList<ArtworkCommentDto>>, IRequestHandler<GetCreatorServicesQuery, IReadOnlyList<CommissionServiceDto>>, IRequestHandler<GetCreatorReviewsQuery, IReadOnlyList<CreatorReviewDto>>, IRequestHandler<GetMyCollectionsQuery, IReadOnlyList<PersonalCollectionDto>>, IRequestHandler<GetMyFavoritesQuery, IReadOnlyList<ArtworkDto>>, IRequestHandler<GetFollowingFeedQuery, IReadOnlyList<ArtworkDto>>, IRequestHandler<GetCreatorFollowStatusQuery, bool>, IRequestHandler<GetFeaturedBannersQuery, IReadOnlyList<BannerDto>>, IRequestHandler<GetMarketplaceHomeQuery, MarketplaceHomeFeedDto>, IRequestHandler<GetSearchSuggestionsQuery, SearchSuggestionsDto>
 {
     private readonly IApplicationDbContext _db;
     public MarketplaceQueryHandler(IApplicationDbContext db) => _db = db;
-    private static ArtworkDto Map(Artwork x) => new(x.Id, x.CreatorProfileId, x.Title, x.Description, x.ImageUrl, x.ThumbnailUrl, x.IsAiGenerated, x.AiDetectionScore, x.ModerationStatus, x.ViewCount, x.CreatedAt, x.ArtworkTags.Select(t => t.Tag!.Name).ToList())
+    private static ArtworkDto Map(Artwork x) => new(x.Id, x.CreatorProfileId, x.Title, x.Description, x.WatermarkedUrl ?? x.ImageUrl, x.WatermarkedUrl ?? x.ThumbnailUrl ?? x.ImageUrl, x.IsAiGenerated, x.AiDetectionScore, x.ModerationStatus, x.ViewCount, x.CreatedAt, x.ArtworkTags.Select(t => t.Tag!.Name).ToList())
     {
         CreatorName = x.CreatorProfile?.DisplayName,
         CreatorHeadline = x.CreatorProfile?.Headline,
         CreatorRating = x.CreatorProfile?.RatingAverage ?? 0,
         AvailableSlots = x.CreatorProfile?.AvailableSlots ?? 0,
         Style = x.Style,
+        CategoryId = x.CategoryId,
+        CategoryName = x.Category?.Name ?? x.Style,
         LicenseType = x.LicenseType,
         StartingPrice = x.StartingPrice
     };
-    private static BannerDto MapBanner(Artwork x) => new($"banner-{x.Id}", x.Title, x.Description ?? "Featured artwork", x.ImageUrl, "Khám phá", $"/artworks/{x.Id}");
+    private static BannerDto MapBanner(Artwork x) => new($"banner-{x.Id}", x.Title, x.Description ?? "Featured artwork", x.WatermarkedUrl ?? x.ImageUrl, "Khám phá", $"/artworks/{x.Id}");
 
     public async Task<IReadOnlyList<ArtworkDto>> Handle(SearchMarketplaceQuery query, CancellationToken ct)
     {
         var r = query.Request;
         var ratings = await CreatorRatingStats.LoadAsync(_db, ct);
         var ratedCreators = ratings.Where(pair => pair.Value.Average >= (r.MinRating ?? 0)).Select(pair => pair.Key).ToArray();
-        var items = await _db.Artworks.AsNoTracking().Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).Include(x => x.CreatorProfile)
+        var items = await _db.Artworks.AsNoTracking().Include(x => x.Category).Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).Include(x => x.CreatorProfile)
             .Where(x => !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted)
-            .Where(x => string.IsNullOrWhiteSpace(r.Query) || x.Title.Contains(r.Query) || (x.Description != null && x.Description.Contains(r.Query)))
-            .Where(x => string.IsNullOrWhiteSpace(r.Style) || x.Style == r.Style || x.ArtworkTags.Any(t => t.Tag!.Name == r.Style))
+            .Where(x => string.IsNullOrWhiteSpace(r.Query)
+                || x.Title.Contains(r.Query)
+                || (x.Description != null && x.Description.Contains(r.Query))
+                || (x.Style != null && x.Style.Contains(r.Query))
+                || (x.Category != null && x.Category.Name.Contains(r.Query))
+                || (x.CreatorProfile != null && x.CreatorProfile.DisplayName.Contains(r.Query))
+                || x.ArtworkTags.Any(t => t.Tag != null && t.Tag.Name.Contains(r.Query)))
+            .Where(x => !r.CategoryId.HasValue || x.CategoryId == r.CategoryId.Value)
+            .Where(x => string.IsNullOrWhiteSpace(r.Category)
+                || (x.Category != null && (x.Category.Slug == r.Category || x.Category.Name == r.Category))
+                || x.Style == r.Category)
+            .Where(x => string.IsNullOrWhiteSpace(r.Tag) || x.ArtworkTags.Any(t => t.Tag != null && t.Tag.Name == r.Tag))
+            .Where(x => string.IsNullOrWhiteSpace(r.Style) || x.Style == r.Style || (x.Category != null && (x.Category.Name == r.Style || x.Category.Slug == r.Style)) || x.ArtworkTags.Any(t => t.Tag!.Name == r.Style))
             .Where(x => r.MinPrice == null || x.StartingPrice >= r.MinPrice).Where(x => r.MaxPrice == null || x.StartingPrice <= r.MaxPrice)
             .Where(x => string.IsNullOrWhiteSpace(r.LicenseType) || x.LicenseType == r.LicenseType)
             .Where(x => r.MinRating == null || r.MinRating <= 0 || ratedCreators.Contains(x.CreatorProfileId))
@@ -54,7 +68,7 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
     }
     public async Task<ArtworkDetailDto?> Handle(GetArtworkDetailQuery q, CancellationToken ct)
     {
-        var artwork = await _db.Artworks.Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).Include(x => x.CreatorProfile).FirstOrDefaultAsync(x => x.Id == q.ArtworkId && !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted, ct);
+        var artwork = await _db.Artworks.Include(x => x.Category).Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).Include(x => x.CreatorProfile).FirstOrDefaultAsync(x => x.Id == q.ArtworkId && !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted, ct);
         if (artwork is null) return null;
         artwork.ViewCount++; await _db.SaveChangesAsync(ct);
         var favorites = await _db.ArtworkFavorites.CountAsync(x => x.ArtworkId == q.ArtworkId, ct);
@@ -65,18 +79,109 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
     public async Task<IReadOnlyList<CommissionServiceDto>> Handle(GetCreatorServicesQuery q, CancellationToken ct) => await _db.CommissionServices.AsNoTracking().Where(x => x.CreatorProfileId == q.CreatorId && x.IsActive && !x.IsDeleted).OrderBy(x => x.StartingPrice).Select(x => new CommissionServiceDto(x.Id, x.Title, x.Description, x.StartingPrice, x.DeliveryDays, x.MaxRevisions, x.IsActive)).ToListAsync(ct);
     public async Task<IReadOnlyList<CreatorReviewDto>> Handle(GetCreatorReviewsQuery q, CancellationToken ct)
     {
+        var users = await _db.Users.AsNoTracking().ToDictionaryAsync(u => u.Id, u => u.FullName ?? u.UserName ?? "Khách hàng", ct);
+
+        var creator = await _db.CreatorProfiles.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == q.CreatorId && !p.IsDeleted, ct);
+
+        var packageMap = new Dictionary<Guid, string>();
+        string? defaultPackageName = null;
+
+        if (!string.IsNullOrWhiteSpace(creator?.RateCardJson))
+        {
+            try
+            {
+                var options = new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    Converters = { new ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardIdConverter() }
+                };
+                var packages = System.Text.Json.JsonSerializer.Deserialize<List<ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardPackageDto>>(creator.RateCardJson, options);
+                if (packages != null)
+                {
+                    foreach (var pkg in packages)
+                    {
+                        if (pkg != null && !string.IsNullOrWhiteSpace(pkg.Name))
+                        {
+                            packageMap[pkg.Id] = pkg.Name;
+                            defaultPackageName ??= pkg.Name;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // ignore parsing error
+            }
+        }
+
         var direct = await _db.CreatorReviews.AsNoTracking().Where(x => x.CreatorProfileId == q.CreatorId && !x.IsDeleted)
-            .Select(x => new CreatorReviewDto(x.Id, x.ReviewerUserId, x.Rating, x.Comment, x.CreatedAt, null, null)).ToListAsync(ct);
-        var commissions = await _db.Reviews.AsNoTracking().Where(x => !x.IsDeleted && x.IsVisible && !x.Commission.IsDeleted && x.Commission.CreatorId == q.CreatorId)
-            .Select(x => new CreatorReviewDto(x.Id, x.ReviewerId, x.Rating, x.Comment, x.CreatedAt, x.ReviewerReply, x.CommissionId)).ToListAsync(ct);
-        return direct.Concat(commissions).OrderByDescending(x => x.CreatedAt).ToList();
+            .Select(x => new { x.Id, x.ReviewerUserId, x.Rating, x.Comment, x.CreatedAt, x.Source })
+            .ToListAsync(ct);
+
+        var directDtos = direct.Select(x => new CreatorReviewDto(
+            x.Id,
+            x.ReviewerUserId,
+            x.Rating,
+            x.Comment,
+            x.CreatedAt,
+            null,
+            null,
+            string.Equals(x.Source, "auction", StringComparison.OrdinalIgnoreCase)
+                ? null
+                : defaultPackageName ?? "Gói Commission",
+            users.GetValueOrDefault(x.ReviewerUserId, "Khách hàng"),
+            x.Source
+        ));
+
+        var commissions = await _db.Reviews.AsNoTracking()
+            .Where(x => !x.IsDeleted && x.IsVisible && !x.Commission.IsDeleted && x.Commission.CreatorId == q.CreatorId)
+            .Select(x => new {
+                x.Id,
+                x.ReviewerId,
+                x.Rating,
+                x.Comment,
+                x.CreatedAt,
+                x.ReviewerReply,
+                x.CommissionId,
+                x.Commission.PackageId,
+                CommissionTitle = x.Commission.Title
+            })
+            .ToListAsync(ct);
+
+        var commissionDtos = commissions.Select(x => {
+            string? pkgName = null;
+            if (x.PackageId.HasValue && packageMap.TryGetValue(x.PackageId.Value, out var foundName))
+            {
+                pkgName = foundName;
+            }
+
+            var effectivePackageName = !string.IsNullOrWhiteSpace(pkgName)
+                ? pkgName
+                : (defaultPackageName ?? x.CommissionTitle);
+
+            return new CreatorReviewDto(
+                x.Id,
+                x.ReviewerId,
+                x.Rating,
+                x.Comment,
+                x.CreatedAt,
+                x.ReviewerReply,
+                x.CommissionId,
+                effectivePackageName,
+                users.GetValueOrDefault(x.ReviewerId, "Khách hàng"),
+                "commission"
+            );
+        });
+
+        return directDtos.Concat(commissionDtos).OrderByDescending(x => x.CreatedAt).ToList();
     }
     public async Task<IReadOnlyList<PersonalCollectionDto>> Handle(GetMyCollectionsQuery q, CancellationToken ct) => await _db.PersonalCollections.AsNoTracking().Where(x => x.OwnerUserId == q.UserId && !x.IsDeleted).OrderByDescending(x => x.CreatedAt).Select(x => new PersonalCollectionDto(x.Id, x.Name, x.IsPublic, x.CollectionArtworks.Count(a => !a.Artwork!.IsDeleted && a.Artwork.ModerationStatus == "Approved" && !a.Artwork.CreatorProfile!.IsDeleted), x.CreatedAt)).ToListAsync(ct);
-    public async Task<IReadOnlyList<ArtworkDto>> Handle(GetMyFavoritesQuery q, CancellationToken ct) { var items = await _db.Artworks.AsNoTracking().Where(a => _db.ArtworkFavorites.Any(f => f.UserId == q.UserId && f.ArtworkId == a.Id)).Where(x => !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted).Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).Include(x => x.CreatorProfile).ToListAsync(ct); return items.Select(Map).ToList(); }
+    public async Task<IReadOnlyList<ArtworkDto>> Handle(GetMyFavoritesQuery q, CancellationToken ct) { var items = await _db.Artworks.AsNoTracking().Where(a => _db.ArtworkFavorites.Any(f => f.UserId == q.UserId && f.ArtworkId == a.Id)).Where(x => !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted).Include(x => x.Category).Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).Include(x => x.CreatorProfile).ToListAsync(ct); return items.Select(Map).ToList(); }
     public async Task<IReadOnlyList<ArtworkDto>> Handle(GetFollowingFeedQuery q, CancellationToken ct)
     {
         var ratings = await CreatorRatingStats.LoadAsync(_db, ct);
-        var items = await _db.Artworks.AsNoTracking().Where(a => _db.Follows.Any(f => f.FollowerUserId == q.UserId && f.CreatorProfileId == a.CreatorProfileId)).Where(x => !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted).Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).Include(x => x.CreatorProfile).OrderByDescending(x => x.CreatedAt).Take(Math.Clamp(q.Take, 1, 100)).ToListAsync(ct);
+        var items = await _db.Artworks.AsNoTracking().Where(a => _db.Follows.Any(f => f.FollowerUserId == q.UserId && f.CreatorProfileId == a.CreatorProfileId)).Where(x => !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted).Include(x => x.Category).Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).Include(x => x.CreatorProfile).OrderByDescending(x => x.CreatedAt).Take(Math.Clamp(q.Take, 1, 100)).ToListAsync(ct);
         return items.Select(x => Map(x) with { CreatorRating = ratings.GetValueOrDefault(x.CreatorProfileId).Average }).ToList();
     }
 
@@ -97,6 +202,52 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
         var following = q.UserId != Guid.Empty ? await Handle(new GetFollowingFeedQuery(q.UserId, Math.Clamp(q.Take, 1, 30)), ct) : Array.Empty<ArtworkDto>();
         var banners = await Handle(new GetFeaturedBannersQuery(), ct);
         return new MarketplaceHomeFeedDto(banners, recommended, following);
+    }
+
+    public async Task<SearchSuggestionsDto> Handle(GetSearchSuggestionsQuery request, CancellationToken ct)
+    {
+        var term = request.Query?.Trim();
+
+        var catQuery = _db.ArtworkCategories
+            .AsNoTracking()
+            .Where(c => !c.IsDeleted && c.IsActive);
+
+        if (!string.IsNullOrWhiteSpace(term))
+        {
+            catQuery = catQuery.Where(c => c.Name.Contains(term) || c.Slug.Contains(term));
+        }
+
+        var categories = await catQuery
+            .OrderBy(c => c.DisplayOrder)
+            .ThenBy(c => c.Name)
+            .Take(6)
+            .Select(c => new SearchSuggestionCategoryDto(c.Id, c.Name, c.Slug))
+            .ToListAsync(ct);
+
+        var tagQuery = _db.Tags
+            .AsNoTracking()
+            .Where(t => !t.IsDeleted);
+
+        if (!string.IsNullOrWhiteSpace(term))
+        {
+            tagQuery = tagQuery.Where(t => t.Name.Contains(term));
+        }
+
+        var tags = await tagQuery
+            .Select(t => new
+            {
+                t.Id,
+                t.Name,
+                ArtworkCount = t.ArtworkTags.Count(at => at.Artwork != null && !at.Artwork.IsDeleted && at.Artwork.ModerationStatus == "Approved" && !at.Artwork.CreatorProfile!.IsDeleted)
+            })
+            .Where(t => t.ArtworkCount > 0)
+            .OrderByDescending(t => t.ArtworkCount)
+            .ThenBy(t => t.Name)
+            .Take(10)
+            .Select(t => new SearchSuggestionTagDto(t.Id, t.Name, t.ArtworkCount))
+            .ToListAsync(ct);
+
+        return new SearchSuggestionsDto(categories, tags);
     }
 }
 

@@ -218,7 +218,7 @@ public class GetDeliverableDownloadUrlQueryHandler
             deliverable.MimeType,
             deliverable.FileSizeBytes,
             certNumber,
-            "1-of-1 Exclusive Ownership & Commercial Rights",
+            "Exclusive Ownership & Commercial Rights",
             artworkImageUrl,
             artworkDownloadUrl ?? artworkImageUrl,
             artwork?.Title,

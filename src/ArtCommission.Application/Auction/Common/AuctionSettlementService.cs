@@ -64,7 +64,8 @@ public interface IAuctionSettlementService
     /// </summary>
     Task<(bool Success, string[] Errors)> ReleaseEscrowToSellerAsync(
         Domain.Entities.Auction.Auction auction,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        bool allowDisputed = false);
 }
 
 public class AuctionSettlementService : IAuctionSettlementService
@@ -507,7 +508,8 @@ public class AuctionSettlementService : IAuctionSettlementService
 
     public async Task<(bool Success, string[] Errors)> ReleaseEscrowToSellerAsync(
         Domain.Entities.Auction.Auction auction,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool allowDisputed = false)
     {
         var now = DateTimeOffset.UtcNow;
         var escrow = await _db.EscrowTransactions
@@ -523,6 +525,16 @@ public class AuctionSettlementService : IAuctionSettlementService
             return (true, []);
         }
 
+        // KÃ½ quá»¹ Ä‘ang bá»‹ Ä‘Ã³ng bÄƒng do khiáº¿u náº¡i bÆ°u pháº©m: tuyá»‡t Ä‘á»‘i khÃ´ng giáº£i ngÃ¢n.
+        // TrÆ°á»›c Ä‘Ã¢y hÃ m nÃ y chá»‰ cháº·n tráº¡ng thÃ¡i Released nÃªn "confirm" sau khiáº¿u náº¡i váº«n
+        // ghi Ä‘Ã¨ Disputed -> Released vÃ  ngÆ°á»i mua máº¥t tiá»n dÃ¹ tranh há»ng.
+        // allowDisputed = true chá»‰ dÃ¹ng tá»« luá»“ng Admin phÃ¢n xá»­ khiáº¿u náº¡i (bÃ¡c khiáº¿u náº¡i).
+        if (escrow.Status == EscrowStatus.Disputed && !allowDisputed)
+        {
+            return (false,
+                ["KÃ½ quá»¹ Ä‘ang bá»‹ Ä‘Ã³ng bÄƒng do khiáº¿u náº¡i. Ban quáº£n trá»‹ pháº£i phÃ¢n xá»­ trÆ°á»›c khi giáº£i ngÃ¢n."]);
+        }
+
         var feePercent = await _walletService.GetDecimalConfigAsync(
             PlatformConfigKeys.PlatformFeePercent, DefaultPlatformFeePercent, cancellationToken);
         var finalPrice = escrow.Amount;
@@ -530,25 +542,46 @@ public class AuctionSettlementService : IAuctionSettlementService
 
         var sellerWallet = await _walletService.GetOrCreateWalletAsync(auction.SellerId, cancellationToken);
 
-        await _walletService.CreditAsync(
-            sellerWallet,
-            WalletTransactionType.EscrowReceive,
-            finalPrice,
-            AuctionRefTypes.Settlement,
-            auction.Id,
-            $"Thu tiền bán đấu giá (giao tranh vật lý hoàn tất) phiên {auction.Id}",
-            cancellationToken);
+        // CHỐNG GIẢI NGÂN HAI LẦN: bảng WalletTransactions có unique index
+        // (RefType, RefId, Type). Nếu phiên này đã từng được cộng tiền (ví dụ phiên được
+        // chốt trước đó rồi trạng thái bị đặt lại), lần gọi thứ hai sẽ làm SQL ném lỗi
+        // trùng khoá 2601 và người dùng nhận 409 khó hiểu. Kiểm tra trước khi ghi sổ.
+        var alreadySettled = await _db.WalletTransactions
+            .AsNoTracking()
+            .AnyAsync(
+                t => t.RefType == AuctionRefTypes.Settlement
+                     && t.RefId == auction.Id
+                     && t.Type == WalletTransactionType.EscrowReceive,
+                cancellationToken);
 
-        if (feeAmount > 0m)
+        if (!alreadySettled)
         {
-            await _walletService.DebitAsync(
+            await _walletService.CreditAsync(
                 sellerWallet,
-                WalletTransactionType.PlatformFee,
-                feeAmount,
+                WalletTransactionType.EscrowReceive,
+                finalPrice,
                 AuctionRefTypes.Settlement,
                 auction.Id,
-                $"Phí nền tảng {feePercent}% trên phiên {auction.Id}",
+                $"Thu tiền bán đấu giá (giao tranh vật lý hoàn tất) phiên {auction.Id}",
                 cancellationToken);
+
+            if (feeAmount > 0m)
+            {
+                await _walletService.DebitAsync(
+                    sellerWallet,
+                    WalletTransactionType.PlatformFee,
+                    feeAmount,
+                    AuctionRefTypes.Settlement,
+                    auction.Id,
+                    $"Phí nền tảng {feePercent}% trên phiên {auction.Id}",
+                    cancellationToken);
+            }
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Phiên {AuctionId} đã có giao dịch EscrowReceive trước đó — bỏ qua cộng tiền, chỉ đóng ký quỹ.",
+                auction.Id);
         }
 
         escrow.Status = EscrowStatus.Released;

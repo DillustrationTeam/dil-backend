@@ -1,3 +1,4 @@
+﻿using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Commission.DTOs;
 using ArtCommission.Application.Commission.Interfaces;
@@ -5,6 +6,7 @@ using ArtCommission.Application.Commission.Validators;
 using ArtCommission.Application.Dispute.CommissionDispute.DTOs;
 using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
+using ArtCommission.Domain.Entities.ArtistStudio;
 using ArtCommission.Domain.Entities.Commission;
 using ArtCommission.Domain.Entities.Dispute;
 using ArtCommission.Domain.Entities.Payment;
@@ -19,6 +21,7 @@ namespace ArtCommission.Infrastructure.Services;
 public class CommissionService : ICommissionService
 {
     private const string CurrentWorkroomTermsVersion = "1.0";
+    public const decimal StagedEscrowThresholdVnd = 2_000_000m;
     private readonly AppDbContext _dbContext;
     private readonly IWalletService _walletService;
     private readonly IWatermarkService _watermarkService;
@@ -26,10 +29,13 @@ public class CommissionService : ICommissionService
     private readonly IVoucherCheckService _voucherCheckService;
     private readonly INotificationPublisher? _notifications;
     private readonly ILogger<CommissionService>? _logger;
+    private readonly IEmailService? _emailService;
+    private readonly IArtworkWatermarkService? _artworkWatermarkService;
 
     public CommissionService(AppDbContext dbContext, IWalletService walletService, IWatermarkService watermarkService,
         IStorageService storageService, IVoucherCheckService voucherCheckService,
-        INotificationPublisher? notifications = null, ILogger<CommissionService>? logger = null)
+        INotificationPublisher? notifications = null, ILogger<CommissionService>? logger = null, IEmailService? emailService = null,
+        IArtworkWatermarkService? artworkWatermarkService = null)
     {
         _dbContext = dbContext;
         _walletService = walletService;
@@ -38,6 +44,18 @@ public class CommissionService : ICommissionService
         _voucherCheckService = voucherCheckService;
         _notifications = notifications;
         _logger = logger;
+        _emailService = emailService;
+        _artworkWatermarkService = artworkWatermarkService;
+    }
+
+    private static ulong GenerateNonZeroPayload()
+    {
+        ulong val;
+        do
+        {
+            val = BitConverter.ToUInt64(System.Security.Cryptography.RandomNumberGenerator.GetBytes(8));
+        } while (val == 0);
+        return val;
     }
 
     private static void RequireClient(Commission commission, Guid userId)
@@ -98,6 +116,7 @@ public class CommissionService : ICommissionService
         }
         if (selectedPackage is null)
             throw new ArgumentException("Gói giá không tồn tại hoặc đã bị thay đổi. Vui lòng chọn lại.");
+        await EnsurePackageSlotAvailableAsync(creator.Id, creator.RateCardJson, selectedPackage.Id, asArgumentError: true, cancellationToken);
         var stages = selectedPackage.Milestones;
         if (selectedPackage.Price <= 0 || stages is null || stages.Count == 0
             || stages.Any(stage => stage is null || stage.Price <= 0 || stage.MaxRevisions < 0 || stage.MaxRevisions > 20 || string.IsNullOrWhiteSpace(stage.Title))
@@ -109,12 +128,9 @@ public class CommissionService : ICommissionService
         {
             Sequence = stage.Sequence, Title = stage.Title, Price = stage.Price, MaxRevisions = stage.MaxRevisions > 0 ? stage.MaxRevisions : (selectedPackage.MaxRevisions > 0 ? selectedPackage.MaxRevisions : 3), Status = MilestoneStatus.Pending
         }).ToList();
-        var multiplier = request.LicenseType == "Commercial"
-            ? await _dbContext.CreatorTerms.AsNoTracking()
-                .Where(x => x.CreatorProfileId == creator.Id && !x.IsDeleted)
-                .Select(x => (decimal?)x.CommercialLicenseMultiplier)
-                .FirstOrDefaultAsync(cancellationToken) ?? 1.5m
-            : 1m;
+        var creatorTerms = await _dbContext.CreatorTerms.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.CreatorProfileId == creator.Id && !x.IsDeleted, cancellationToken);
+        var multiplier = request.LicenseType == "Commercial" ? creatorTerms?.CommercialLicenseMultiplier ?? 1.5m : 1m;
         totalPrice = Math.Round(totalPrice * multiplier, 2, MidpointRounding.AwayFromZero);
         foreach (var milestone in milestones)
             milestone.Price = Math.Round(milestone.Price * multiplier, 2, MidpointRounding.AwayFromZero);
@@ -163,6 +179,7 @@ public class CommissionService : ICommissionService
             VoucherId = voucherId,
             LicenseType = request.LicenseType,
             LicenseMultiplierApplied = multiplier,
+            CreatorTermsSnapshotJson = ArtCommission.Application.ArtistStudio.DTOs.CreatorTermsHelper.SerializeSnapshot(creatorTerms),
             TotalPrice = totalPrice,
             DiscountAmount = discountAmount,
             FinalPrice = finalPrice,
@@ -197,6 +214,8 @@ public class CommissionService : ICommissionService
             $"Khách hàng đã gửi yêu cầu “{commission.Title}”.",
             commission.Id, $"CommissionCreated:{commission.Id}:{creator.UserId}", cancellationToken,
             refType: "CreatorCommissionRequests");
+
+
 
         return MapToDto(commission);
     }
@@ -289,6 +308,7 @@ public class CommissionService : ICommissionService
 
         if (string.Equals(request.Action, "Accept", StringComparison.OrdinalIgnoreCase))
         {
+            await EnsurePackageSlotAvailableAsync(commission.CreatorId, null, commission.PackageId, asArgumentError: false, cancellationToken);
             commission.Status = CommissionStatus.InProgress;
         }
         else if (string.Equals(request.Action, "Reject", StringComparison.OrdinalIgnoreCase))
@@ -339,6 +359,10 @@ public class CommissionService : ICommissionService
         if (commission.Status != CommissionStatus.Negotiating)
             throw new InvalidOperationException("Commission has no pending counter-offer.");
 
+        if (accept)
+        {
+            await EnsurePackageSlotAvailableAsync(commission.CreatorId, null, commission.PackageId, asArgumentError: false, cancellationToken);
+        }
         commission.Status = accept ? CommissionStatus.InProgress : CommissionStatus.Cancelled;
         commission.UpdatedAt = DateTimeOffset.UtcNow;
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -360,11 +384,13 @@ public class CommissionService : ICommissionService
             throw new ArgumentException("Only wallet escrow is supported.");
         await using var tx = await BeginTransactionAsync(cancellationToken);
         var commission = await OwnedCommissionAsync(id, clientId, creator: false, cancellationToken);
+        await _dbContext.Entry(commission).Collection(c => c.Milestones).LoadAsync(cancellationToken);
         if (commission.ClientTermsAcceptedAt is null || commission.ClientTermsVersion != CurrentWorkroomTermsVersion)
             throw new InvalidOperationException("Client must accept the current Workroom terms before depositing escrow.");
         if (commission.Status != CommissionStatus.InProgress || commission.EscrowStatus != EscrowStatus.Pending)
             throw new InvalidOperationException("Commission is not ready for escrow deposit.");
-        if (commission.VoucherId.HasValue)
+        var isInitialDeposit = commission.DisbursedAmount == 0m && commission.EscrowHeldAmount == 0m;
+        if (isInitialDeposit && commission.VoucherId.HasValue)
         {
             var voucher = await _dbContext.Vouchers.SingleAsync(v => v.Id == commission.VoucherId.Value, cancellationToken);
             var voucherCheck = await _voucherCheckService.CheckAsync(
@@ -402,14 +428,27 @@ public class CommissionService : ICommissionService
                 FinalAmount = commission.FinalPrice
             });
         }
-        await AllocateFundedMilestonesAsync(commission, cancellationToken);
+        if (isInitialDeposit)
+            await AllocateFundedMilestonesAsync(commission, cancellationToken);
+        var amountToHold = ComputeNextEscrowDepositAmount(commission);
+        if (amountToHold <= 0m)
+            throw new InvalidOperationException("Commission is not ready for escrow deposit.");
         var wallet = await _walletService.GetOrCreateWalletAsync(clientId, cancellationToken);
         if (wallet.Status != WalletStatus.Active) throw new InvalidOperationException("Wallet is inactive.");
-        await _walletService.HoldFundsAsync(wallet, WalletTransactionType.EscrowHold, commission.FinalPrice,
-            nameof(Commission), commission.Id, "Commission escrow deposit", cancellationToken);
+        var isStaged = commission.FinalPrice >= StagedEscrowThresholdVnd;
+        var currentMilestone = commission.Milestones.FirstOrDefault(m => !m.IsDeleted && m.Sequence == commission.CurrentStage);
+        var holdRefType = isStaged && currentMilestone is not null ? nameof(Milestone) : nameof(Commission);
+        var holdRefId = isStaged && currentMilestone is not null ? currentMilestone.Id : commission.Id;
+        var holdNote = isStaged
+            ? $"Commission staged escrow deposit (Stage {commission.CurrentStage})"
+            : "Commission escrow deposit";
+        await _walletService.HoldFundsAsync(wallet, WalletTransactionType.EscrowHold, amountToHold,
+            holdRefType, holdRefId, holdNote, cancellationToken);
 
-        commission.EscrowHeldAmount = commission.FinalPrice;
-        commission.EscrowStatus = EscrowStatus.Deposited;
+        commission.EscrowHeldAmount += amountToHold;
+        commission.EscrowStatus = commission.DisbursedAmount > 0m
+            ? EscrowStatus.PartialReleased
+            : EscrowStatus.Deposited;
         commission.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -417,11 +456,37 @@ public class CommissionService : ICommissionService
             await tx.CommitAsync(cancellationToken);
 
         var creatorUserId = await CreatorUserIdAsync(commission.CreatorId, cancellationToken);
+        var fundedMilestone = commission.Milestones.FirstOrDefault(m => !m.IsDeleted && m.Sequence == commission.CurrentStage);
+        var stageSummary = isStaged
+            ? $"cho Mốc #{commission.CurrentStage}{(string.IsNullOrWhiteSpace(fundedMilestone?.Title) ? string.Empty : $" ({fundedMilestone.Title})")}"
+            : "toàn bộ 100% giá trị đơn hàng";
         await PublishSafeAsync(
             creatorUserId, NotificationType.EscrowStatusChanged,
-            "Đơn đặt vẽ đã được ký quỹ",
-            $"Khách hàng đã ký quỹ {commission.FinalPrice:N0} VND cho “{commission.Title}”.",
-            commission.Id, $"EscrowDeposited:{commission.Id}:{creatorUserId}", cancellationToken);
+            isStaged ? $"Đã ký quỹ Mốc #{commission.CurrentStage}" : "Đơn đặt vẽ đã được ký quỹ 100%",
+            $"Khách hàng đã ký quỹ {amountToHold:N0} VND {stageSummary} cho “{commission.Title}”. Bạn có thể bắt đầu thực hiện.",
+            commission.Id, $"EscrowDeposited:{commission.Id}:{commission.CurrentStage}:{creatorUserId}", cancellationToken);
+
+        // Gửi email biên nhận ký quỹ Escrow cho khách hàng
+        try
+        {
+            var clientUser = await _dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == clientId, cancellationToken);
+            if (clientUser?.Email != null && _emailService != null)
+            {
+                var creatorUser = await _dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == creatorUserId, cancellationToken);
+                var clientName = clientUser.FullName ?? "Khách hàng";
+                var creatorName = creatorUser?.FullName ?? "Creator";
+                var mList = commission.Milestones.OrderBy(m => m.Sequence)
+                    .Select(m => (m.Title ?? $"Mốc #{m.Sequence}", commission.FinalPrice > 0 ? (int)Math.Round((double)m.Price / (double)commission.FinalPrice * 100) : 33, m.Price))
+                    .ToList();
+                await _emailService.SendEscrowReceiptEmailAsync(
+                    clientUser.Email, clientName, creatorName, commission.Title,
+                    amountToHold, commission.Id.ToString(), commission.LicenseType, mList, cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Không thể gửi email biên lai ký quỹ cho commission {CommissionId}", commission.Id);
+        }
 
         return MapToDto(commission);
     }
@@ -461,27 +526,69 @@ public class CommissionService : ICommissionService
         if (milestone == null) throw new KeyNotFoundException("Không tìm thấy cột mốc milestone.");
         if (milestone.Sequence != commission.CurrentStage || milestone.Status is not (MilestoneStatus.Pending or MilestoneStatus.RevisionRequested))
             throw new InvalidOperationException("Milestone cannot be submitted in this state.");
+        if (commission.EscrowHeldAmount < milestone.Price)
+            throw new InvalidOperationException("Current milestone escrow has not been deposited.");
 
         // Upload original
         var originalKey = $"commissions/{commissionId}/milestone-{milestone.Sequence}-original-{Guid.NewGuid()}.jpg";
         var originalUrl = await _storageService.UploadPrivateAsync(fileStream, originalKey, contentType, cancellationToken);
 
-        // Reset stream for watermark
+        // Reset stream for watermark (DWT + lưu biên lai truy vết WIP)
         fileStream.Position = 0;
-        using var watermarkedStream = await _watermarkService.ApplyWatermarkAsync(fileStream, "PROTECTED DEMO · DO NOT COPY", cancellationToken);
+        var watermarkedKey = $"commissions/{commissionId}/milestone-{milestone.Sequence}-watermarked-{Guid.NewGuid()}.png";
+        string watermarkedUrl;
+        if (_artworkWatermarkService is not null)
+        {
+            var wipPayload = GenerateNonZeroPayload();
+            var wipToken = $"WIP-{commissionId.ToString("N")[..6].ToUpperInvariant()}-M{milestone.Sequence}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}";
+            var wipResult = await _artworkWatermarkService.CreateReducedMarketplacePreviewAsync(
+                fileStream, wipPayload, wipToken, 1920, cancellationToken);
+            await using var wipStream = wipResult.ProcessedStream;
+            wipStream.Position = 0;
+            var wipSha = Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(wipStream, cancellationToken)).ToLowerInvariant();
+            wipStream.Position = 0;
+            watermarkedUrl = await _storageService.UploadPublicAsync(wipStream, watermarkedKey, wipResult.ContentType, cancellationToken);
 
-        var watermarkedKey = $"commissions/{commissionId}/milestone-{milestone.Sequence}-watermarked-{Guid.NewGuid()}.jpg";
-        var watermarkedUrl = await _storageService.UploadPublicAsync(watermarkedStream, watermarkedKey, "image/jpeg", cancellationToken);
+            _dbContext.ArtworkWatermarkReceipts.Add(new ArtworkWatermarkReceipt
+            {
+                CommissionId = commissionId,
+                MilestoneId = milestone.Id,
+                ReceiptToken = wipToken,
+                NumericPayload = (long)wipPayload,
+                FileSha256 = wipSha,
+                FileName = Path.GetFileName(watermarkedKey),
+                ViewerUserId = commission.ClientId,
+                IpAddress = "commission-wip",
+                WatermarkType = "DwtCommissionWip",
+                Status = "Active",
+                Notes = $"Commission WIP Milestone #{milestone.Sequence}: {commission.Title}"
+            });
+        }
+        else
+        {
+            using var watermarkedStream = await _watermarkService.ApplyWatermarkAsync(fileStream, "PROTECTED DEMO · DO NOT COPY", cancellationToken);
+            watermarkedUrl = await _storageService.UploadPublicAsync(watermarkedStream, watermarkedKey, "image/png", cancellationToken);
+        }
+
 
         milestone.OriginalWipUrl = originalUrl;
         milestone.WipPreviewUrl = watermarkedUrl;
         milestone.WatermarkedUrl = watermarkedUrl;
         milestone.CreatorNote = creatorNote;
+        var wasRevision = milestone.Status == MilestoneStatus.RevisionRequested;
         milestone.Status = MilestoneStatus.Submitted;
         milestone.SubmittedAt = DateTimeOffset.UtcNow;
         milestone.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await PublishSafeAsync(
+            commission.ClientId, NotificationType.CommissionStatusChanged,
+            wasRevision ? $"Creator đã gửi bản chỉnh sửa Mốc #{milestone.Sequence}" : $"Creator đã nộp phác thảo Mốc #{milestone.Sequence}",
+            wasRevision
+                ? $"Creator đã gửi lại bản chỉnh sửa cho Mốc #{milestone.Sequence} ({milestone.Title}) trên đơn “{commission.Title}”. Vui lòng kiểm tra (tự động duyệt sau 72h nếu chưa có phản hồi)."
+                : $"Creator đã nộp bản phác thảo Mốc #{milestone.Sequence} ({milestone.Title}) cho “{commission.Title}”. Vui lòng kiểm tra (tự động duyệt sau 72h nếu chưa có phản hồi).",
+            commission.Id, $"MilestoneSubmitted:{milestone.Id}:{milestone.RevisionCount}:{milestone.SubmittedAt:O}", cancellationToken);
 
         return MapToMilestoneDto(milestone);
     }
@@ -498,30 +605,42 @@ public class CommissionService : ICommissionService
         if (milestone == null) throw new KeyNotFoundException("Không tìm thấy cột mốc milestone.");
         if (milestone.Status != MilestoneStatus.Submitted || milestone.Sequence != commission.CurrentStage || milestone.Price > commission.EscrowHeldAmount)
             throw new InvalidOperationException("Milestone cannot be approved in this state.");
+
+        await ApproveMilestoneCoreAsync(commission, milestone, clientId, cancellationToken);
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        if (tx is not null)
+            await tx.CommitAsync(cancellationToken);
+
+        await PublishMilestoneApprovedNotificationsAsync(commission, milestone, isAutoAccepted: false, cancellationToken);
+
+        return MapToMilestoneDto(milestone);
+    }
+
+    private async Task ApproveMilestoneCoreAsync(Commission commission, Milestone milestone, Guid clientId, CancellationToken cancellationToken)
+    {
         var clientWallet = await _walletService.GetOrCreateWalletAsync(clientId, cancellationToken);
-        var creatorUserId = await _dbContext.CreatorProfiles.Where(p => p.Id == commission.CreatorId)
-            .Select(p => p.UserId).SingleAsync(cancellationToken);
+        var creatorUserId = await CreatorUserIdAsync(commission.CreatorId, cancellationToken);
         var creatorWallet = await _walletService.GetOrCreateWalletAsync(creatorUserId, cancellationToken);
         await _walletService.ReleaseFundsAsync(clientWallet, WalletTransactionType.EscrowRelease, milestone.Price,
             nameof(Milestone), milestone.Id, "Commission milestone release", cancellationToken);
         await _walletService.CreditAsync(creatorWallet, WalletTransactionType.EscrowReceive, milestone.Price,
             nameof(Milestone), milestone.Id, "Commission milestone earning", cancellationToken);
 
+        var now = DateTimeOffset.UtcNow;
         milestone.Status = MilestoneStatus.Approved;
-        milestone.ApprovedAt = DateTimeOffset.UtcNow;
-        milestone.UpdatedAt = DateTimeOffset.UtcNow;
+        milestone.ApprovedAt = now;
+        milestone.UpdatedAt = now;
 
         commission.DisbursedAmount += milestone.Price;
-        commission.EscrowHeldAmount = Math.Max(0, commission.EscrowHeldAmount - milestone.Price);
+        commission.EscrowHeldAmount = Math.Max(0m, commission.EscrowHeldAmount - milestone.Price);
         commission.CurrentStage += 1;
-        commission.EscrowStatus = commission.EscrowHeldAmount == 0 ? EscrowStatus.Released : EscrowStatus.PartialReleased;
-        commission.UpdatedAt = DateTimeOffset.UtcNow;
-
-        await _dbContext.SaveChangesAsync(cancellationToken);
-        if (tx is not null)
-            await tx.CommitAsync(cancellationToken);
-
-        return MapToMilestoneDto(milestone);
+        commission.EscrowStatus = commission.EscrowHeldAmount == 0m && commission.DisbursedAmount >= commission.FinalPrice
+            ? EscrowStatus.Released
+            : commission.EscrowHeldAmount > 0m
+                ? EscrowStatus.PartialReleased
+                : EscrowStatus.Pending;
+        commission.UpdatedAt = now;
     }
 
     public async Task<MilestoneDto> RequestMilestoneRevisionAsync(Guid commissionId, Guid milestoneId, RequestRevisionRequest request, Guid clientId, CancellationToken cancellationToken = default)
@@ -546,36 +665,275 @@ public class CommissionService : ICommissionService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        var creatorUserId = await CreatorUserIdAsync(commission.CreatorId, cancellationToken);
+        var remainingRevisions = Math.Max(0, milestone.MaxRevisions - milestone.RevisionCount);
+        await PublishSafeAsync(
+            creatorUserId, NotificationType.CommissionStatusChanged,
+            $"Yêu cầu chỉnh sửa Mốc #{milestone.Sequence}",
+            $"Khách hàng yêu cầu chỉnh sửa Mốc #{milestone.Sequence} ({milestone.Title}) trên đơn “{commission.Title}”. Còn {remainingRevisions} lượt sửa.",
+            commission.Id, $"MilestoneRevision:{milestone.Id}:{milestone.RevisionCount}", cancellationToken);
+
         return MapToMilestoneDto(milestone);
     }
 
-    public async Task<CommissionDto> DeliverFinalWorkAsync(Guid id, Stream fileStream, string contentType, string fileName, Guid creatorId, CancellationToken cancellationToken = default)
+    public Task<CommissionDto> DeliverFinalWorkAsync(Guid id, Stream fileStream, string contentType, string fileName, Guid creatorId, CancellationToken cancellationToken = default)
+    {
+        if (fileStream is null) throw new ArgumentException("Final deliverable file is required.");
+        var item = new DeliverableUploadItem(fileStream, contentType, fileName, fileStream.CanSeek ? fileStream.Length : 0);
+        return DeliverFinalWorkAsync(id, new[] { item }, creatorId, cancellationToken);
+    }
+
+    private sealed record StoredDeliverableEntry(
+        string Id,
+        string Name,
+        string StorageKey,
+        long SizeBytes,
+        string Sha256,
+        DateTimeOffset UploadedAt);
+
+    private sealed record StoredDeliverablesManifest(string Version, List<StoredDeliverableEntry> Files);
+
+    private static string MakeUniqueEntryName(string fileName, HashSet<string> usedNames)
+    {
+        if (usedNames.Add(fileName)) return fileName;
+        var stem = Path.GetFileNameWithoutExtension(fileName);
+        var ext = Path.GetExtension(fileName);
+        var idx = 1;
+        while (!usedNames.Add($"{stem}_{idx}{ext}")) idx++;
+        return $"{stem}_{idx}{ext}";
+    }
+
+    private static string ComputeManifestVersion(IEnumerable<StoredDeliverableEntry> entries)
+    {
+        var raw = string.Join("\n", entries.Select(e => $"{e.Id}|{e.StorageKey}|{e.Sha256}|{e.SizeBytes}"));
+        var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(raw));
+        return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    private async Task<StoredDeliverablesManifest> LoadStoredManifestAsync(Milestone? lastMilestone, CancellationToken ct)
+    {
+        var url = lastMilestone?.FinalDeliverableUrl;
+        if (string.IsNullOrWhiteSpace(url))
+            return new StoredDeliverablesManifest(string.Empty, []);
+
+        if (url.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        {
+            await using var stream = await _storageService.OpenPrivateReadAsync(url, ct);
+            if (stream is not null)
+            {
+                var parsed = await System.Text.Json.JsonSerializer.DeserializeAsync<StoredDeliverablesManifest>(stream, cancellationToken: ct);
+                if (parsed is not null)
+                {
+                    var version = string.IsNullOrWhiteSpace(parsed.Version) ? ComputeManifestVersion(parsed.Files) : parsed.Version;
+                    return new StoredDeliverablesManifest(version, parsed.Files);
+                }
+            }
+        }
+
+        var fileName = Path.GetFileName(url);
+        if (fileName.Length > 37 && fileName[36] == '-' && Guid.TryParse(fileName[..36], out _))
+            fileName = fileName[37..];
+        long size = 0;
+        var sha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(url))).ToLowerInvariant();
+        await using (var existing = await _storageService.OpenPrivateReadAsync(url, ct))
+        {
+            if (existing is not null)
+            {
+                if (existing.CanSeek) size = existing.Length;
+                sha = Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(existing, ct)).ToLowerInvariant();
+            }
+        }
+        var legacy = new StoredDeliverableEntry("legacy", fileName, url, size, sha, lastMilestone?.SubmittedAt ?? DateTimeOffset.UtcNow);
+        return new StoredDeliverablesManifest(ComputeManifestVersion([legacy]), [legacy]);
+    }
+
+    private async Task<DeliverablesManifestDto> SaveManifestAsync(
+        Guid commissionId,
+        Milestone lastMilestone,
+        List<StoredDeliverableEntry> entries,
+        CancellationToken ct)
+    {
+        var version = ComputeManifestVersion(entries);
+        var manifest = new StoredDeliverablesManifest(version, entries);
+        var jsonBytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(manifest);
+        await using var ms = new MemoryStream(jsonBytes);
+        var manifestKey = $"commissions/{commissionId}/final/manifest-{Guid.NewGuid():N}.json";
+        lastMilestone.FinalDeliverableUrl = await _storageService.UploadPrivateAsync(ms, manifestKey, "application/json", ct);
+        return ToDeliverablesDto(manifest);
+    }
+
+    private static DeliverablesManifestDto ToDeliverablesDto(StoredDeliverablesManifest manifest) =>
+        new(
+            manifest.Version,
+            manifest.Files.Sum(f => f.SizeBytes),
+            manifest.Files.Select(f => new DeliverableFileDto(f.Id, f.Name, f.SizeBytes, f.Sha256, f.UploadedAt)).ToList());
+
+    public async Task<CommissionDto> DeliverFinalWorkAsync(Guid id, IReadOnlyList<DeliverableUploadItem> files, Guid creatorId, CancellationToken cancellationToken = default)
     {
         var commission = await OwnedCommissionAsync(id, creatorId, creator: true, cancellationToken);
         await _dbContext.Entry(commission).Collection(c => c.Milestones).LoadAsync(cancellationToken);
-        if (commission.Status != CommissionStatus.InProgress || commission.Milestones.Count == 0
+        var isRedelivery = commission.Status == CommissionStatus.Delivered;
+        if (commission.Status is not (CommissionStatus.InProgress or CommissionStatus.Delivered) || commission.Milestones.Count == 0
             || commission.Milestones.Any(m => m.Status != MilestoneStatus.Approved))
             throw new InvalidOperationException("All milestones must be approved before final delivery.");
-        if (fileStream == null) throw new ArgumentException("Final deliverable file is required.");
+        if (files is null || files.Count == 0)
+            throw new ArgumentException("Final deliverable file is required.");
 
-        var key = $"commissions/{id}/final/{Guid.NewGuid()}-{fileName}";
-        var storageKey = await _storageService.UploadPrivateAsync(fileStream, key, contentType, cancellationToken);
+        var lastMilestone = commission.Milestones.OrderByDescending(m => m.Sequence).First();
+        var existingManifest = await LoadStoredManifestAsync(lastMilestone, cancellationToken);
+        long totalBytes = existingManifest.Files.Sum(f => f.SizeBytes);
 
-        commission.Status = CommissionStatus.Delivered;
-        commission.UpdatedAt = DateTimeOffset.UtcNow;
-
-        var lastMilestone = commission.Milestones.OrderByDescending(m => m.Sequence).FirstOrDefault();
-        if (lastMilestone != null)
+        var validated = new List<(DeliverableUploadItem Item, string SafeName, string Sha256, long Length)>(files.Count);
+        foreach (var file in files)
         {
-            lastMilestone.FinalDeliverableUrl = storageKey;
+            var safeName = await DeliverableFileValidator.ValidateAndSanitizeAsync(file, cancellationToken);
+            totalBytes += file.FileStream.Length;
+            if (totalBytes > DeliverableFileValidator.MaxTotalBytes)
+                throw new ArgumentException("Total final deliverable size exceeds the 1 GB limit.");
+
+            file.FileStream.Position = 0;
+            var sha256 = Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(file.FileStream, cancellationToken)).ToLowerInvariant();
+            file.FileStream.Position = 0;
+            validated.Add((file, safeName, sha256, file.FileStream.Length));
         }
 
+        var entries = new List<StoredDeliverableEntry>(existingManifest.Files);
+        var usedNames = new HashSet<string>(entries.Select(e => e.Name), StringComparer.OrdinalIgnoreCase);
+        var now = DateTimeOffset.UtcNow;
+
+        var finalBatchToken = $"FIN-{id.ToString("N")[..6].ToUpperInvariant()}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}";
+        var finalPayload = GenerateNonZeroPayload();
+        var clientUser = await _dbContext.Users.AsNoTracking()
+            .Where(u => u.Id == commission.ClientId)
+            .Select(u => new { u.Email, u.FullName })
+            .FirstOrDefaultAsync(cancellationToken);
+        var receiptSeq = 0;
+
+        foreach (var (item, safeName, sha256, length) in validated)
+        {
+            if (_artworkWatermarkService is not null)
+            {
+                var summary = $"Commission={id} | Title={commission.Title} | Client={clientUser?.Email ?? commission.ClientId.ToString()}";
+                var processed = await _artworkWatermarkService.ProcessDeliverableWatermarkAsync(
+                    item.FileStream, safeName, item.ContentType, finalPayload, finalBatchToken, summary, cancellationToken);
+                await using var outStream = processed.OutputStream;
+                outStream.Position = 0;
+
+                var uniqueName = MakeUniqueEntryName(processed.OutputFileName, usedNames);
+                var key = $"commissions/{id}/final/{Guid.NewGuid()}-{uniqueName}";
+                var storedKey = await _storageService.UploadPrivateAsync(outStream, key, processed.OutputContentType, cancellationToken);
+                entries.Add(new StoredDeliverableEntry(Guid.NewGuid().ToString("N")[..12], uniqueName, storedKey, processed.LengthBytes, processed.OuterSha256, now));
+
+                if (string.Equals(Path.GetExtension(uniqueName), ".zip", StringComparison.OrdinalIgnoreCase))
+                {
+                    receiptSeq++;
+                    _dbContext.ArtworkWatermarkReceipts.Add(new ArtworkWatermarkReceipt
+                    {
+                        CommissionId = id,
+                        MilestoneId = lastMilestone.Id,
+                        ReceiptToken = $"{finalBatchToken}-{receiptSeq:D2}",
+                        NumericPayload = null,
+                        FileSha256 = processed.OuterSha256,
+                        FileName = uniqueName,
+                        ViewerUserId = commission.ClientId,
+                        ViewerEmail = clientUser?.Email,
+                        ViewerName = clientUser?.FullName,
+                        IpAddress = "commission-final",
+                        WatermarkType = "HashCommissionFinal",
+                        Status = "Active",
+                        Notes = $"Commission Final ZIP: {commission.Title}"
+                    });
+                }
+
+                foreach (var rec in processed.Records)
+                {
+                    receiptSeq++;
+                    _dbContext.ArtworkWatermarkReceipts.Add(new ArtworkWatermarkReceipt
+                    {
+                        CommissionId = id,
+                        MilestoneId = lastMilestone.Id,
+                        ReceiptToken = $"{finalBatchToken}-{receiptSeq:D2}",
+                        NumericPayload = rec.HasDwtWatermark ? (long)finalPayload : null,
+                        FileSha256 = rec.Sha256,
+                        FileName = rec.FileName,
+                        ViewerUserId = commission.ClientId,
+                        ViewerEmail = clientUser?.Email,
+                        ViewerName = clientUser?.FullName,
+                        IpAddress = "commission-final",
+                        WatermarkType = rec.HasDwtWatermark ? "DwtCommissionFinal" : "HashCommissionFinal",
+                        Status = "Active",
+                        Notes = $"Commission Final Deliverable ({(rec.HasDwtWatermark ? "DWT+SHA256" : "SHA256")}): {commission.Title}"
+                    });
+                }
+            }
+            else
+            {
+                var uniqueName = MakeUniqueEntryName(safeName, usedNames);
+                var key = $"commissions/{id}/final/{Guid.NewGuid()}-{uniqueName}";
+                item.FileStream.Position = 0;
+                var storedKey = await _storageService.UploadPrivateAsync(item.FileStream, key, item.ContentType, cancellationToken);
+                entries.Add(new StoredDeliverableEntry(Guid.NewGuid().ToString("N")[..12], uniqueName, storedKey, length, sha256, now));
+            }
+        }
+
+        await SaveManifestAsync(id, lastMilestone, entries, cancellationToken);
+
+        commission.Status = CommissionStatus.Delivered;
+        commission.UpdatedAt = now;
+
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await PublishSafeAsync(
+            commission.ClientId, NotificationType.CommissionStatusChanged,
+            isRedelivery ? "Creator đã cập nhật tệp bàn giao (HD)" : "Creator đã gửi file hoàn chỉnh (HD)",
+            $"Kho bàn giao của “{commission.Title}” vừa được cập nhật ({entries.Count} tệp). Vui lòng tải kiểm tra kỹ trước khi xác nhận hoàn tất.",
+            commission.Id, $"FinalDelivered:{commission.Id}:{commission.UpdatedAt:O}", cancellationToken);
 
         return MapToDto(commission);
     }
 
-    public async Task<CommissionDto> CompleteCommissionAsync(Guid id, Guid clientId, CancellationToken cancellationToken = default)
+    public async Task<DeliverablesManifestDto> GetDeliverablesManifestAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
+    {
+        var commission = await PartyCommissionAsync(id, userId, cancellationToken);
+        await _dbContext.Entry(commission).Collection(c => c.Milestones).LoadAsync(cancellationToken);
+        var lastMilestone = commission.Milestones.OrderByDescending(m => m.Sequence).FirstOrDefault();
+        var manifest = await LoadStoredManifestAsync(lastMilestone, cancellationToken);
+        return ToDeliverablesDto(manifest);
+    }
+
+    public async Task<DeliverablesManifestDto> DeleteDeliverableFileAsync(Guid id, string fileId, Guid creatorId, CancellationToken cancellationToken = default)
+    {
+        var commission = await OwnedCommissionAsync(id, creatorId, creator: true, cancellationToken);
+        if (commission.Status != CommissionStatus.Delivered)
+            throw new InvalidOperationException("Deliverables can only be modified while waiting for client completion.");
+
+        await _dbContext.Entry(commission).Collection(c => c.Milestones).LoadAsync(cancellationToken);
+        var lastMilestone = commission.Milestones.OrderByDescending(m => m.Sequence).FirstOrDefault();
+        var manifest = await LoadStoredManifestAsync(lastMilestone, cancellationToken);
+        var target = manifest.Files.FirstOrDefault(f => string.Equals(f.Id, fileId, StringComparison.Ordinal))
+            ?? throw new KeyNotFoundException("Deliverable file not found.");
+
+        if (manifest.Files.Count <= 1)
+            throw new InvalidOperationException("Phải giữ lại ít nhất 1 tệp bàn giao. Hãy tải tệp mới lên trước khi xóa tệp cũ.");
+
+        var remaining = manifest.Files.Where(f => !string.Equals(f.Id, target.Id, StringComparison.Ordinal)).ToList();
+        var updatedDto = await SaveManifestAsync(id, lastMilestone!, remaining, cancellationToken);
+        commission.UpdatedAt = DateTimeOffset.UtcNow;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await PublishSafeAsync(
+            commission.ClientId, NotificationType.CommissionStatusChanged,
+            "Kho bàn giao vừa được họa sĩ cập nhật",
+            $"Họa sĩ đã gỡ tệp “{target.Name}” khỏi “{commission.Title}”. Vui lòng kiểm tra lại danh sách tệp mới nhất trước khi xác nhận.",
+            commission.Id, $"DeliverableDeleted:{commission.Id}:{commission.UpdatedAt:O}", cancellationToken);
+
+        return updatedDto;
+    }
+
+    public Task<CommissionDto> CompleteCommissionAsync(Guid id, Guid clientId, CancellationToken cancellationToken = default) =>
+        CompleteCommissionAsync(id, clientId, null, cancellationToken);
+
+    public async Task<CommissionDto> CompleteCommissionAsync(Guid id, Guid clientId, string? expectedManifestVersion, CancellationToken cancellationToken = default)
     {
         var commission = await OwnedCommissionAsync(id, clientId, creator: false, cancellationToken);
         await _dbContext.Entry(commission).Collection(c => c.Milestones).LoadAsync(cancellationToken);
@@ -583,16 +941,58 @@ public class CommissionService : ICommissionService
             || commission.Milestones.Any(m => m.Status != MilestoneStatus.Approved))
             throw new InvalidOperationException("Commission is not ready for completion.");
 
+        var lastMilestone = commission.Milestones.OrderByDescending(m => m.Sequence).FirstOrDefault();
+        var manifest = await LoadStoredManifestAsync(lastMilestone, cancellationToken);
+        if (manifest.Files.Count == 0)
+            throw new InvalidOperationException("No deliverable files are present for completion.");
+
+        if (!string.IsNullOrWhiteSpace(expectedManifestVersion)
+            && !string.Equals(expectedManifestVersion.Trim(), manifest.Version, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Danh sách tệp bàn giao vừa được họa sĩ thay đổi. Vui lòng tải lại và kiểm tra kỹ trước khi xác nhận hoàn tất.");
+        }
+
         commission.Status = CommissionStatus.Completed;
+        // Gửi email chứng nhận bản quyền số & nghiệm thu cho khách hàng
+        try
+        {
+            var clientUser = await _dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == clientId, cancellationToken);
+            if (clientUser?.Email != null && _emailService != null)
+            {
+                var creatorUserId = await CreatorUserIdAsync(commission.CreatorId, cancellationToken);
+                var creatorUser = await _dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == creatorUserId, cancellationToken);
+                var clientName = clientUser.FullName ?? "Khách hàng";
+                var creatorName = creatorUser?.FullName ?? "Creator";
+                var lastM = commission.Milestones.OrderByDescending(m => m.Sequence).FirstOrDefault();
+                await _emailService.SendCertificateCompletedEmailAsync(
+                    clientUser.Email, clientName, creatorName, commission.Title,
+                    commission.Id.ToString(), commission.LicenseType, lastM?.WipPreviewUrl, cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Không thể gửi email chứng nhận hoàn thành cho commission {CommissionId}", commission.Id);
+        }
+
         commission.EscrowStatus = EscrowStatus.Released;
         commission.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        var completedCreatorUserId = await CreatorUserIdAsync(commission.CreatorId, cancellationToken);
+        await PublishSafeAsync(
+            completedCreatorUserId, NotificationType.CommissionStatusChanged,
+            "Đơn hàng đã hoàn tất",
+            $"Khách hàng đã xác nhận nghiệm thu file hoàn chỉnh cho “{commission.Title}”.",
+            commission.Id, $"CommissionCompleted:{commission.Id}", cancellationToken);
+
         return MapToDto(commission);
     }
 
-    public async Task<FinalDownloadDto> GetFinalDownloadUrlAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
+    public Task<FinalDownloadDto> GetFinalDownloadUrlAsync(Guid id, Guid userId, CancellationToken cancellationToken = default) =>
+        GetFinalDownloadUrlAsync(id, userId, null, cancellationToken);
+
+    public async Task<FinalDownloadDto> GetFinalDownloadUrlAsync(Guid id, Guid userId, string? fileId, CancellationToken cancellationToken = default)
     {
         var commission = await PartyCommissionAsync(id, userId, cancellationToken);
         if (commission.Status != CommissionStatus.Delivered && commission.Status != CommissionStatus.Completed)
@@ -600,12 +1000,95 @@ public class CommissionService : ICommissionService
 
         await _dbContext.Entry(commission).Collection(c => c.Milestones).LoadAsync(cancellationToken);
         var lastMilestone = commission.Milestones.OrderByDescending(m => m.Sequence).FirstOrDefault();
-        if (lastMilestone?.FinalDeliverableUrl == null)
+        var manifest = await LoadStoredManifestAsync(lastMilestone, cancellationToken);
+        if (manifest.Files.Count == 0)
             throw new InvalidOperationException("Final deliverable not found.");
+
+        string targetStorageKey;
+        if (!string.IsNullOrWhiteSpace(fileId))
+        {
+            var entry = manifest.Files.FirstOrDefault(f => string.Equals(f.Id, fileId, StringComparison.Ordinal))
+                ?? throw new KeyNotFoundException("Deliverable file not found.");
+            targetStorageKey = entry.StorageKey;
+        }
+        else if (manifest.Files.Count == 1)
+        {
+            targetStorageKey = manifest.Files[0].StorageKey;
+        }
+        else
+        {
+            var shortVer = manifest.Version.Length >= 16 ? manifest.Version[..16] : manifest.Version;
+            var bundleKey = $"commissions/{id}/final/bundle-{shortVer}-all.zip";
+            await using var cached = await _storageService.OpenPrivateReadAsync(bundleKey, cancellationToken);
+            if (cached is not null)
+            {
+                targetStorageKey = bundleKey;
+            }
+            else
+            {
+                var tempZipPath = Path.Combine(Path.GetTempPath(), $"dil-all-{Guid.NewGuid():N}.zip");
+                try
+                {
+                    await using var zipFs = new FileStream(tempZipPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 81920, useAsync: true);
+                    using (var zip = new System.IO.Compression.ZipArchive(zipFs, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+                    {
+                        var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var file in manifest.Files)
+                        {
+                            await using var src = await _storageService.OpenPrivateReadAsync(file.StorageKey, cancellationToken);
+                            if (src is null) continue;
+                            var entry = zip.CreateEntry(MakeUniqueEntryName(file.Name, usedNames), System.IO.Compression.CompressionLevel.Fastest);
+                            await using var dst = entry.Open();
+                            await src.CopyToAsync(dst, cancellationToken);
+                        }
+                        var receiptEntry = zip.CreateEntry(MakeUniqueEntryName("DIL-FORENSIC-RECEIPT.txt", usedNames), System.IO.Compression.CompressionLevel.Fastest);
+                        await using (var rDst = receiptEntry.Open())
+                        {
+                            var lines = new List<string>
+                            {
+                                "DILLUSTRATION COMMISSION BUNDLE FORENSIC RECEIPT",
+                                $"CommissionId : {id}",
+                                $"Title        : {commission.Title}",
+                                $"ClientId     : {commission.ClientId}",
+                                $"ManifestVer  : {manifest.Version}",
+                                "",
+                                "INCLUDED DELIVERABLE FILES (SHA-256):"
+                            };
+                            lines.AddRange(manifest.Files.Select(f => $"- {f.Name} | {f.Sha256}"));
+                            var receiptBytes = System.Text.Encoding.UTF8.GetBytes(string.Join(Environment.NewLine, lines));
+                            await rDst.WriteAsync(receiptBytes, cancellationToken);
+                        }
+                    }
+                    await zipFs.FlushAsync(cancellationToken);
+                    zipFs.Position = 0;
+                    var bundleSha = Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(zipFs, cancellationToken)).ToLowerInvariant();
+                    zipFs.Position = 0;
+                    targetStorageKey = await _storageService.UploadPrivateAsync(zipFs, bundleKey, "application/zip", cancellationToken);
+                    _dbContext.ArtworkWatermarkReceipts.Add(new ArtworkWatermarkReceipt
+                    {
+                        CommissionId = id,
+                        MilestoneId = lastMilestone?.Id,
+                        ReceiptToken = $"BND-{id.ToString("N")[..6].ToUpperInvariant()}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}",
+                        FileSha256 = bundleSha,
+                        FileName = Path.GetFileName(bundleKey),
+                        ViewerUserId = userId,
+                        IpAddress = "commission-bundle",
+                        WatermarkType = "HashCommissionFinal",
+                        Status = "Active",
+                        Notes = $"Commission Bundle ZIP: {commission.Title}"
+                    });
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+                }
+                finally
+                {
+                    try { if (File.Exists(tempZipPath)) File.Delete(tempZipPath); } catch { }
+                }
+            }
+        }
 
         var expiresIn = TimeSpan.FromMinutes(15);
         var expiresAt = DateTimeOffset.UtcNow.Add(expiresIn);
-        var downloadUrl = _storageService.GeneratePresignedDownloadUrl(lastMilestone.FinalDeliverableUrl, expiresIn);
+        var downloadUrl = _storageService.GeneratePresignedDownloadUrl(targetStorageKey, expiresIn);
         return new FinalDownloadDto(downloadUrl, expiresAt);
     }
 
@@ -747,6 +1230,57 @@ public class CommissionService : ICommissionService
         }
     }
 
+    public async Task ProcessMilestoneAutoAcceptDeadlinesAsync(CancellationToken cancellationToken = default)
+    {
+        var cutoff = DateTimeOffset.UtcNow.AddHours(-72);
+        var dueTargets = await _dbContext.Milestones.AsNoTracking()
+            .Where(m => !m.IsDeleted
+                && m.Status == MilestoneStatus.Submitted
+                && m.SubmittedAt != null && m.SubmittedAt <= cutoff
+                && !m.Commission.IsDeleted
+                && m.Commission.Status == CommissionStatus.InProgress
+                && m.Commission.CancellationRequestStatus != "Pending"
+                && (m.Commission.EscrowStatus == EscrowStatus.Deposited || m.Commission.EscrowStatus == EscrowStatus.PartialReleased)
+                && m.Sequence == m.Commission.CurrentStage
+                && m.Price <= m.Commission.EscrowHeldAmount)
+            .Select(m => new { m.CommissionId, MilestoneId = m.Id })
+            .ToListAsync(cancellationToken);
+
+        foreach (var target in dueTargets)
+        {
+            await using var tx = await BeginTransactionAsync(cancellationToken);
+            if (_dbContext.Database.IsSqlServer())
+            {
+                await _dbContext.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT [Id] FROM [Commissions] WITH (UPDLOCK, ROWLOCK) WHERE [Id] = {target.CommissionId}",
+                    cancellationToken);
+            }
+
+            var commission = await _dbContext.Commissions
+                .Include(c => c.Milestones)
+                .FirstOrDefaultAsync(c => c.Id == target.CommissionId && !c.IsDeleted, cancellationToken);
+            var milestone = commission?.Milestones.FirstOrDefault(m => m.Id == target.MilestoneId && !m.IsDeleted);
+            if (commission is null || milestone is null
+                || commission.Status != CommissionStatus.InProgress
+                || commission.CancellationRequestStatus == "Pending"
+                || commission.EscrowStatus is not (EscrowStatus.Deposited or EscrowStatus.PartialReleased)
+                || milestone.Status != MilestoneStatus.Submitted
+                || milestone.SubmittedAt is null || milestone.SubmittedAt > DateTimeOffset.UtcNow.AddHours(-72)
+                || milestone.Sequence != commission.CurrentStage
+                || milestone.Price > commission.EscrowHeldAmount)
+            {
+                continue;
+            }
+
+            await ApproveMilestoneCoreAsync(commission, milestone, commission.ClientId, cancellationToken);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            if (tx is not null)
+                await tx.CommitAsync(cancellationToken);
+
+            await PublishMilestoneApprovedNotificationsAsync(commission, milestone, isAutoAccepted: true, cancellationToken);
+        }
+    }
+
     private async Task FinalizeCancellationAsync(Commission commission, string note, CancellationToken cancellationToken)
     {
         if (commission.EscrowHeldAmount > 0)
@@ -832,6 +1366,112 @@ public class CommissionService : ICommissionService
         return MapToReviewDto(review);
     }
 
+    public async Task<TipResultDto> SendTipAsync(Guid id, SendTipRequest request, Guid clientId, CancellationToken cancellationToken = default)
+    {
+        RequireUser(clientId);
+        if (request.Amount < 1000 || request.Amount > 100_000_000)
+            throw new ArgumentException("Số tiền tip phải từ 1.000 VND đến 100.000.000 VND.");
+
+        var commission = await _dbContext.Commissions
+            .FirstOrDefaultAsync(c => c.Id == id && !c.IsDeleted, cancellationToken)
+            ?? throw new KeyNotFoundException("Không tìm thấy đơn hàng.");
+
+        RequireClient(commission, clientId);
+
+        if (commission.Status != CommissionStatus.Completed && commission.Status != CommissionStatus.Delivered)
+            throw new InvalidOperationException("Chỉ có thể gửi tip khi đơn hàng đã hoàn thành hoặc đã bàn giao.");
+
+        var clientWallet = await _walletService.GetOrCreateWalletAsync(clientId, cancellationToken);
+        if (clientWallet.Balance < request.Amount)
+        {
+            throw new InvalidOperationException($"Số dư ví không đủ ({clientWallet.Balance:N0} VND). Vui lòng nạp thêm tiền vào ví để gửi tip.");
+        }
+
+        var creatorProfile = await _dbContext.CreatorProfiles
+            .Include(p => p.User)
+            .FirstOrDefaultAsync(p => p.Id == commission.CreatorId, cancellationToken)
+            ?? throw new KeyNotFoundException("Không tìm thấy thông tin họa sĩ.");
+
+        var creatorUserId = creatorProfile.UserId;
+        var creatorWallet = await _walletService.GetOrCreateWalletAsync(creatorUserId, cancellationToken);
+
+        var tipId = Guid.NewGuid();
+        var tipNote = string.IsNullOrWhiteSpace(request.Message)
+            ? $"Gửi tip đơn hàng #{commission.Id.ToString()[..8]}"
+            : request.Message.Trim();
+
+        await using var tx = await BeginTransactionAsync(cancellationToken);
+
+        // Trừ tiền ví Client
+        await _walletService.DebitAsync(
+            clientWallet,
+            WalletTransactionType.TipSent,
+            request.Amount,
+            "CommissionTip",
+            tipId,
+            $"Gửi tip cho họa sĩ {creatorProfile.User?.FullName ?? creatorProfile.DisplayName ?? "Creator"}: {tipNote}",
+            cancellationToken);
+
+        // Cộng tiền ví Creator
+        await _walletService.CreditAsync(
+            creatorWallet,
+            WalletTransactionType.TipReceived,
+            request.Amount,
+            "CommissionTip",
+            tipId,
+            $"Nhận tip từ khách hàng đơn hàng #{commission.Id.ToString()[..8]}: {tipNote}",
+            cancellationToken);
+
+        // Đăng thông báo vào phòng chat nếu có phòng
+        try
+        {
+            var chatRoom = await _dbContext.ChatRooms
+                .FirstOrDefaultAsync(r => r.CommissionId == id && !r.IsDeleted, cancellationToken);
+            if (chatRoom != null)
+            {
+                var sysMsg = new ArtCommission.Domain.Entities.Chat.Message
+                {
+                    RoomId = chatRoom.Id,
+                    CommissionId = id,
+                    SenderId = clientId,
+                    MessageType = MessageTypes.SystemEvent,
+                    Body = $"🎁 Khách hàng đã gửi tặng họa sĩ {request.Amount:N0} VND tiền tip! Lời nhắn: \"{tipNote}\""
+                };
+                _dbContext.Messages.Add(sysMsg);
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Không thể ghi tin nhắn hệ thống phòng chat cho tip commission {CommissionId}", id);
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        if (tx is not null)
+            await tx.CommitAsync(cancellationToken);
+
+        // Phát thông báo realtime cho Creator
+        var creatorDisplayName = creatorProfile.DisplayName ?? creatorProfile.User?.FullName ?? "Creator";
+        await PublishSafeAsync(
+            creatorUserId,
+            NotificationType.PaymentSucceeded,
+            "Bạn nhận được tiền tip!",
+            $"Khách hàng vừa gửi tặng bạn {request.Amount:N0} VND tiền tip cho đơn hàng {commission.Title}.",
+            id,
+            $"CommissionTip:{tipId}",
+            cancellationToken);
+
+        return new TipResultDto(
+            commission.Id,
+            request.Amount,
+            clientWallet.Balance,
+            creatorDisplayName,
+            DateTimeOffset.UtcNow,
+            tipNote
+        );
+    }
+
+
     public async Task<ReviewDto> ReplyReviewAsync(Guid id, string replyComment, Guid creatorId, CancellationToken cancellationToken = default)
     {
         var review = await _dbContext.Reviews.FirstOrDefaultAsync(r => r.CommissionId == id || r.Id == id, cancellationToken);
@@ -885,6 +1525,82 @@ public class CommissionService : ICommissionService
         _dbContext.CreatorProfiles.Where(p => p.Id == creatorProfileId && !p.IsDeleted)
             .Select(p => p.UserId).SingleAsync(cancellationToken);
 
+    private async Task PublishMilestoneApprovedNotificationsAsync(
+        Commission commission,
+        Milestone milestone,
+        bool isAutoAccepted,
+        CancellationToken cancellationToken)
+    {
+        var creatorUserId = await CreatorUserIdAsync(commission.CreatorId, cancellationToken);
+        var nextMilestone = commission.Milestones
+            .Where(m => !m.IsDeleted && m.Status != MilestoneStatus.Approved)
+            .OrderBy(m => m.Sequence)
+            .FirstOrDefault();
+
+        string creatorNextStep;
+        string clientNextStep;
+        if (nextMilestone is null)
+        {
+            creatorNextStep = "Toàn bộ các mốc đã hoàn tất — bạn có thể gửi file hoàn chỉnh (HD) ngay!";
+            clientNextStep = "Toàn bộ các mốc đã hoàn tất, đang chờ Creator gửi file hoàn chỉnh (HD).";
+        }
+        else if (commission.EscrowStatus == EscrowStatus.Pending)
+        {
+            creatorNextStep = $"Đang chờ khách hàng nạp ký quỹ Mốc #{nextMilestone.Sequence} ({nextMilestone.Title}) để bạn tiếp tục.";
+            clientNextStep = $"Vui lòng nạp ký quỹ Mốc #{nextMilestone.Sequence} ({nextMilestone.Title}) để Creator tiếp tục.";
+        }
+        else
+        {
+            creatorNextStep = $"Bạn có thể bắt đầu thực hiện Mốc #{nextMilestone.Sequence} ({nextMilestone.Title}).";
+            clientNextStep = $"Creator có thể tiếp tục thực hiện Mốc #{nextMilestone.Sequence} ({nextMilestone.Title}).";
+        }
+
+        if (!isAutoAccepted)
+        {
+            await PublishSafeAsync(
+                creatorUserId, NotificationType.EscrowStatusChanged,
+                nextMilestone is null
+                    ? $"Đã duyệt Mốc #{milestone.Sequence} — Sẵn sàng gửi file hoàn chỉnh"
+                    : $"Đã duyệt Mốc #{milestone.Sequence} ({milestone.Price:N0} VND)",
+                $"Khách hàng đã duyệt Mốc #{milestone.Sequence} ({milestone.Title}) và giải ngân {milestone.Price:N0} VND cho “{commission.Title}”. {creatorNextStep}",
+                commission.Id, $"MilestoneApproved:{milestone.Id}:{creatorUserId}", cancellationToken);
+            return;
+        }
+
+        try
+        {
+            var chatRoom = await _dbContext.ChatRooms
+                .FirstOrDefaultAsync(r => r.CommissionId == commission.Id && !r.IsDeleted, cancellationToken);
+            if (chatRoom != null)
+            {
+                _dbContext.Messages.Add(new ArtCommission.Domain.Entities.Chat.Message
+                {
+                    RoomId = chatRoom.Id,
+                    CommissionId = commission.Id,
+                    SenderId = commission.ClientId,
+                    MessageType = MessageTypes.SystemEvent,
+                    Body = $"⏱️ Mốc #{milestone.Sequence} ({milestone.Title}) đã được tự động duyệt và giải ngân {milestone.Price:N0} VND sau 72 giờ không phản hồi. {clientNextStep}"
+                });
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Không thể ghi tin nhắn tự động duyệt 72h cho commission {CommissionId}", commission.Id);
+        }
+
+        await PublishSafeAsync(
+            commission.ClientId, NotificationType.CommissionStatusChanged,
+            $"Tự động duyệt Mốc #{milestone.Sequence} (72h)",
+            $"Mốc #{milestone.Sequence} ({milestone.Title}) trên đơn “{commission.Title}” đã được tự động duyệt sau 72h. {clientNextStep}",
+            commission.Id, $"MilestoneAutoAccepted:{milestone.Id}:Client", cancellationToken);
+        await PublishSafeAsync(
+            creatorUserId, NotificationType.EscrowStatusChanged,
+            $"Tự động giải ngân Mốc #{milestone.Sequence} (72h)",
+            $"Mốc #{milestone.Sequence} ({milestone.Title}) trên đơn “{commission.Title}” ({milestone.Price:N0} VND) đã được tự động giải ngân sau 72h. {creatorNextStep}",
+            commission.Id, $"MilestoneAutoAccepted:{milestone.Id}:Creator", cancellationToken);
+    }
+
     private async Task PublishSafeAsync(
         Guid userId,
         NotificationType type,
@@ -911,6 +1627,121 @@ public class CommissionService : ICommissionService
         }
     }
 
+    
+    public async Task<RenameCommissionResultDto> RenameCommissionAsync(
+        Guid id,
+        string newTitle,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        var commission = await PartyCommissionAsync(id, userId, cancellationToken);
+        var trimmedTitle = newTitle?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedTitle) || trimmedTitle.Length > 200)
+        {
+            throw new ArgumentException("Tên dự án không được để trống và tối đa 200 ký tự.");
+        }
+
+        commission.Title = trimmedTitle;
+        commission.UpdatedAt = DateTimeOffset.UtcNow;
+
+        var chatRooms = await _dbContext.ChatRooms
+            .Where(r => r.CommissionId == id && !r.IsDeleted)
+            .ToListAsync(cancellationToken);
+
+        foreach (var r in chatRooms)
+        {
+            r.Title = trimmedTitle;
+            r.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
+        var isClient = commission.ClientId == userId;
+        var user = await _dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        var userDisplayName = user?.FullName ?? (isClient ? "Khách hàng" : "Họa sĩ");
+        var roleName = isClient ? "Khách hàng" : "Họa sĩ";
+
+        var mainChatRoom = chatRooms.FirstOrDefault();
+        ArtCommission.Domain.Entities.Chat.Message? sysMsg = null;
+        var now = DateTimeOffset.UtcNow;
+
+        if (mainChatRoom != null)
+        {
+            sysMsg = new ArtCommission.Domain.Entities.Chat.Message
+            {
+                RoomId = mainChatRoom.Id,
+                CommissionId = id,
+                SenderId = userId,
+                MessageType = MessageTypes.SystemEvent,
+                Body = $"✏️ {roleName} ({userDisplayName}) đã đổi tên dự án thành: \"{trimmedTitle}\"",
+                SentAt = now
+            };
+            _dbContext.Messages.Add(sysMsg);
+            mainChatRoom.LastMessageAt = now;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new RenameCommissionResultDto(
+            commission.Id,
+            trimmedTitle,
+            userDisplayName,
+            mainChatRoom?.Id,
+            sysMsg?.Id,
+            sysMsg?.Body,
+            sysMsg?.SentAt
+        );
+    }
+
+    private async Task EnsurePackageSlotAvailableAsync(
+        Guid creatorProfileId,
+        string? rateCardJson,
+        Guid? packageId,
+        bool asArgumentError,
+        CancellationToken cancellationToken)
+    {
+        if (!packageId.HasValue) return;
+
+        rateCardJson ??= await _dbContext.CreatorProfiles.AsNoTracking()
+            .Where(p => p.Id == creatorProfileId && !p.IsDeleted)
+            .Select(p => p.RateCardJson)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(rateCardJson)) return;
+
+        List<ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardPackageDto>? packages;
+        try
+        {
+            var options = new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                Converters = { new ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardIdConverter() }
+            };
+            packages = System.Text.Json.JsonSerializer.Deserialize<List<ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard.RateCardPackageDto>>(rateCardJson, options);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return;
+        }
+
+        var selectedPackage = packages?.FirstOrDefault(p => p != null && p.Id == packageId.Value);
+        if (selectedPackage?.MaxSlots is not int maxSlots) return;
+
+        var activeCount = await _dbContext.Commissions.AsNoTracking()
+            .CountAsync(c => !c.IsDeleted
+                && c.CreatorId == creatorProfileId
+                && c.PackageId == packageId.Value
+                && (c.Status == CommissionStatus.InProgress
+                    || c.Status == CommissionStatus.Delivered
+                    || c.Status == CommissionStatus.Disputed),
+                cancellationToken);
+
+        if (activeCount >= maxSlots)
+        {
+            var message = $"Gói \"{selectedPackage.Name}\" đã hết slot nhận đơn ({activeCount}/{maxSlots} đơn đang thực hiện).";
+            if (asArgumentError) throw new ArgumentException(message);
+            throw new InvalidOperationException(message);
+        }
+    }
+
     private async Task<Commission> PartyCommissionAsync(Guid id, Guid userId, CancellationToken cancellationToken)
     {
         RequireUser(userId);
@@ -934,6 +1765,22 @@ public class CommissionService : ICommissionService
             ? await _dbContext.Database.BeginTransactionAsync(cancellationToken)
             : null;
 
+    private static decimal ComputeNextEscrowDepositAmount(Commission c)
+    {
+        if (c.EscrowStatus != EscrowStatus.Pending) return 0m;
+        if (c.FinalPrice < StagedEscrowThresholdVnd) return Math.Max(0m, c.FinalPrice - c.EscrowHeldAmount);
+        var current = c.Milestones.FirstOrDefault(m => !m.IsDeleted && m.Sequence == c.CurrentStage);
+        if (current is null) return Math.Max(0m, c.FinalPrice - c.DisbursedAmount - c.EscrowHeldAmount);
+        var stagesTotal = c.Milestones.Where(m => !m.IsDeleted).Sum(m => m.Price);
+        var stagePrice = c.DisbursedAmount == 0m && stagesTotal > 0m && stagesTotal != c.FinalPrice
+            ? Math.Round(current.Price * c.FinalPrice / stagesTotal, 2, MidpointRounding.AwayFromZero)
+            : current.Price;
+        return Math.Max(0m, stagePrice - c.EscrowHeldAmount);
+
+
+
+    }
+
     #region Helper Mappers
     private static CommissionDto MapToDto(Commission c)
     {
@@ -953,6 +1800,8 @@ public class CommissionService : ICommissionService
             FinalPrice = c.FinalPrice,
             EscrowHeldAmount = c.EscrowHeldAmount,
             DisbursedAmount = c.DisbursedAmount,
+            IsStagedEscrow = c.FinalPrice >= StagedEscrowThresholdVnd,
+            NextEscrowDepositAmount = ComputeNextEscrowDepositAmount(c),
             EscrowStatus = c.EscrowStatus.ToString(),
             CurrentStage = c.CurrentStage,
             Status = c.Status.ToString(),
@@ -972,6 +1821,7 @@ public class CommissionService : ICommissionService
             CreatorTermsAcceptedAt = c.CreatorTermsAcceptedAt,
             CreatorTermsVersion = c.CreatorTermsVersion,
             CurrentWorkroomTermsVersion = CurrentWorkroomTermsVersion,
+            CreatorTermsSnapshot = ArtCommission.Application.ArtistStudio.DTOs.CreatorTermsHelper.ParseSnapshot(c.CreatorTermsSnapshotJson),
             CreatedAt = c.CreatedAt
         };
     }
@@ -995,6 +1845,8 @@ public class CommissionService : ICommissionService
             FinalPrice = dto.FinalPrice,
             EscrowHeldAmount = dto.EscrowHeldAmount,
             DisbursedAmount = dto.DisbursedAmount,
+            IsStagedEscrow = dto.IsStagedEscrow,
+            NextEscrowDepositAmount = dto.NextEscrowDepositAmount,
             EscrowStatus = dto.EscrowStatus,
             CurrentStage = dto.CurrentStage,
             Status = dto.Status,
@@ -1013,6 +1865,7 @@ public class CommissionService : ICommissionService
             CreatorTermsAcceptedAt = dto.CreatorTermsAcceptedAt,
             CreatorTermsVersion = dto.CreatorTermsVersion,
             CurrentWorkroomTermsVersion = dto.CurrentWorkroomTermsVersion,
+            CreatorTermsSnapshot = dto.CreatorTermsSnapshot,
             CreatedAt = dto.CreatedAt,
             Milestones = c.Milestones.Select(MapToMilestoneDto).ToList(),
             Review = c.Reviews.FirstOrDefault() != null ? MapToReviewDto(c.Reviews.First()) : null,

@@ -8,6 +8,7 @@ public class CreatorTerms : BaseEntity
     public decimal CommercialLicenseMultiplier { get; set; } = 1.5m;
     public string? RevisionPolicy { get; set; }
     public string? CancellationPolicy { get; set; }
+    public string? ExtendedTermsJson { get; set; }
     public CreatorProfile? CreatorProfile { get; set; }
 }
 

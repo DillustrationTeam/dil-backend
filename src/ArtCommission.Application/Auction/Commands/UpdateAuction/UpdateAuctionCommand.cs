@@ -19,13 +19,11 @@ public record UpdateAuctionCommand(
     Guid UserId,
     Guid AuctionId,
     decimal? StartPrice,
-    decimal? ReservePrice,
     decimal? BidStep,
     decimal? BuyNowPrice,
     DateTimeOffset? StartAt,
     DateTimeOffset? EndAt,
-    bool ClearBuyNowPrice = false,
-    bool ClearReservePrice = false
+    bool ClearBuyNowPrice = false
 ) : IRequest<(bool Success, AuctionDto? Data, string[] Errors)>;
 
 public class UpdateAuctionCommandValidator : AbstractValidator<UpdateAuctionCommand>
@@ -100,7 +98,6 @@ public class UpdateAuctionCommandHandler
         // từng trường riêng lẻ thì bộ giá trị ghép lại vẫn có thể vô lý.
         var newStartPrice = request.StartPrice ?? auction.StartPrice;
         var newBidStep = request.BidStep ?? auction.BidStep;
-        var newReserve = request.ClearReservePrice ? null : request.ReservePrice ?? auction.ReservePrice;
         var newBuyNow = request.ClearBuyNowPrice ? null : request.BuyNowPrice ?? auction.BuyNowPrice;
         var newStartAt = request.StartAt ?? auction.StartAt;
         var newEndAt = request.EndAt ?? auction.EndAt;
@@ -110,11 +107,6 @@ public class UpdateAuctionCommandHandler
             return (false, null, ["Thời điểm kết thúc phải sau thời điểm bắt đầu."]);
         }
 
-        if (newReserve.HasValue && newReserve.Value < newStartPrice)
-        {
-            return (false, null, ["Giá sàn không được thấp hơn giá khởi điểm."]);
-        }
-
         if (newBuyNow.HasValue && newBuyNow.Value <= newStartPrice)
         {
             return (false, null, ["Giá mua ngay phải cao hơn giá khởi điểm."]);
@@ -122,7 +114,6 @@ public class UpdateAuctionCommandHandler
 
         auction.StartPrice = newStartPrice;
         auction.BidStep = newBidStep;
-        auction.ReservePrice = newReserve;
         auction.BuyNowPrice = newBuyNow;
         auction.StartAt = newStartAt;
         auction.EndAt = newEndAt;

@@ -36,7 +36,10 @@ public sealed class EligibleArtworksQueryHandler
                     && !artwork.CreatorProfile.IsDeleted
                     && artwork.CreatorProfile.UserId == request.UserId))
             && !_db.Auctions.Any(auction => auction.ArtworkId == artwork.Id && !auction.IsDeleted
-                && (auction.Status == AuctionStatus.Scheduled || auction.Status == AuctionStatus.Active || auction.Status == AuctionStatus.Ended)));
+                && (auction.Status == AuctionStatus.Scheduled
+                    || auction.Status == AuctionStatus.Active
+                    || (auction.Status == AuctionStatus.Ended
+                        && (auction.BidCount > 0 || auction.WinnerId != null)))));
 
         if (!string.IsNullOrWhiteSpace(request.Cursor))
         {

@@ -58,7 +58,6 @@ class Program
                 UserId: Guid.NewGuid(),
                 ArtworkId: Guid.NewGuid(),
                 StartPrice: 100_000m,
-                ReservePrice: 150_000m,
                 BidStep: 10_000m,
                 BuyNowPrice: 500_000m,
                 StartAt: DateTimeOffset.UtcNow.AddMinutes(5),
@@ -180,6 +179,11 @@ class Program
             var requestDeliveryHandler = new RequestPhysicalDeliveryCommandHandler(
                 db, notifications, NullLogger<RequestPhysicalDeliveryCommandHandler>.Instance);
 
+            var (missingAddress, _, missingAddressErrors) = await requestDeliveryHandler.Handle(
+                new RequestPhysicalDeliveryCommand(winnerId, physicalAuction.Id, "Winner", "0912345678", " "), default);
+            AssertTest("TC-03a0: Thiếu địa chỉ nhận hàng bị chặn",
+                !missingAddress && missingAddressErrors.Any(e => e.Contains("Địa chỉ")));
+
             // 3.1 Kẻ lạ cố yêu cầu
             var intruderId = Guid.NewGuid();
             var (failAuth, _, authErrors) = await requestDeliveryHandler.Handle(
@@ -214,6 +218,16 @@ class Program
                 new UpdateShippingInfoCommand(winnerId, physicalAuction.Id, "VNPost", "VN123456789"), default);
             AssertTest("TC-04a: Chỉ Seller mới được cập nhật vận đơn", !failShipAuth && shipAuthErrors.Any(e => e.Contains("Chỉ người bán")));
 
+            var (missingProof, _, missingProofErrors) = await updateShippingHandler.Handle(
+                new UpdateShippingInfoCommand(seller2Id, physicalAuction.Id, "VNPost", "VN-NO-PROOF"), default);
+            AssertTest("TC-04a1: Vận đơn không có link/ảnh bằng chứng bị chặn",
+                !missingProof && missingProofErrors.Any(e => e.Contains("bằng chứng")));
+
+            var (missingTracking, _, missingTrackingErrors) = await updateShippingHandler.Handle(
+                new UpdateShippingInfoCommand(seller2Id, physicalAuction.Id, "VNPost", " ", TrackingUrl: "https://vnpost.vn"), default);
+            AssertTest("TC-04a2: Thiếu mã vận đơn bị chặn",
+                !missingTracking && missingTrackingErrors.Any(e => e.Contains("Mã vận đơn")));
+
             // 4.2 Seller cập nhật hợp lệ
             var (shipSuccess, shipDto, _) = await updateShippingHandler.Handle(
                 new UpdateShippingInfoCommand(
@@ -241,6 +255,11 @@ class Program
             var confirmHandler = new ConfirmPhysicalDeliveryCommandHandler(
                 db, settlementService, notifications, NullLogger<ConfirmPhysicalDeliveryCommandHandler>.Instance);
 
+            var (confirmIntruder, _, confirmIntruderErrors) = await confirmHandler.Handle(
+                new ConfirmPhysicalDeliveryCommand(intruderId, physicalAuction.Id), default);
+            AssertTest("TC-05a0: Người ngoài không thể xác nhận nhận hàng",
+                !confirmIntruder && confirmIntruderErrors.Any(e => e.Contains("Chỉ người thắng")));
+
             var (confirmSuccess, confirmDto, _) = await confirmHandler.Handle(
                 new ConfirmPhysicalDeliveryCommand(
                     winnerId,
@@ -262,6 +281,52 @@ class Program
                 finalReceipts.Any(r => r.ReceiptType == "CarrierShipping") &&
                 finalReceipts.Any(r => r.ReceiptType == "ProofOfDelivery") &&
                 finalReceipts.Any(r => r.ReceiptType == "SettlementPayout"));
+
+            var sellerBalanceAfterDelivery = seller2Wallet.Balance;
+            var (repeatConfirm, _, _) = await confirmHandler.Handle(
+                new ConfirmPhysicalDeliveryCommand(winnerId, physicalAuction.Id), default);
+            AssertTest("TC-05h: Xác nhận nhận hàng lặp lại là idempotent", repeatConfirm);
+            AssertTest("TC-05i: Xác nhận lặp không giải ngân hai lần", seller2Wallet.Balance == sellerBalanceAfterDelivery);
+
+            // -------------------------------------------------------------
+            // TC-05R: Đánh giá người bán sau đấu giá
+            // -------------------------------------------------------------
+            Console.WriteLine("\n--- TC-05R: Đánh giá người bán sau khi hoàn tất đấu giá ---");
+            var sellerProfile = new CreatorProfile
+            {
+                Id = Guid.NewGuid(),
+                UserId = seller2Id,
+                DisplayName = "Auction Seller",
+                IsApproved = true
+            };
+            db.CreatorProfiles.Add(sellerProfile);
+            await db.SaveChangesAsync();
+
+            var ratingHandler = new RateAuctionSellerCommandHandler(
+                db, notifications, NullLogger<RateAuctionSellerCommandHandler>.Instance);
+
+            var (invalidRating, _, invalidRatingErrors) = await ratingHandler.Handle(
+                new RateAuctionSellerCommand(winnerId, physicalAuction.Id, 6, "invalid"), default);
+            AssertTest("TC-05R-a: Điểm ngoài khoảng 1-5 bị chặn",
+                !invalidRating && invalidRatingErrors.Any(e => e.Contains("1 đến 5")));
+
+            var (intruderRating, _, intruderRatingErrors) = await ratingHandler.Handle(
+                new RateAuctionSellerCommand(intruderId, physicalAuction.Id, 5, "fake"), default);
+            AssertTest("TC-05R-b: Người không thắng phiên không được đánh giá",
+                !intruderRating && intruderRatingErrors.Any(e => e.Contains("Chỉ người thắng")));
+
+            var (ratingSuccess, ratingDto, _) = await ratingHandler.Handle(
+                new RateAuctionSellerCommand(winnerId, physicalAuction.Id, 5, "Đóng gói tốt"), default);
+            AssertTest("TC-05R-c: Winner đánh giá Seller sau giao dịch thành công", ratingSuccess && ratingDto != null);
+
+            var auctionReview = await db.CreatorReviews.SingleAsync(r => r.AuctionId == physicalAuction.Id);
+            AssertTest("TC-05R-d: Review đấu giá có Source riêng, không thuộc gói commission",
+                auctionReview.Source == "auction");
+
+            var (duplicateRating, _, duplicateRatingErrors) = await ratingHandler.Handle(
+                new RateAuctionSellerCommand(winnerId, physicalAuction.Id, 4, "duplicate"), default);
+            AssertTest("TC-05R-e: Mỗi phiên chỉ được đánh giá một lần",
+                !duplicateRating && duplicateRatingErrors.Any(e => e.Contains("đã đánh giá")));
 
             // -------------------------------------------------------------
             // TC-06: Nhánh Người thắng từ chối nhận tranh (Chỉ lấy file số)
@@ -350,6 +415,16 @@ class Program
             var disputeHandler = new DisputePhysicalDeliveryCommandHandler(
                 dbDispute, notifications, NullLogger<DisputePhysicalDeliveryCommandHandler>.Instance);
 
+            var (emptyDispute, _, emptyDisputeErrors) = await disputeHandler.Handle(
+                new DisputePhysicalDeliveryCommand(winnerId, disputeAuction.Id, " "), default);
+            AssertTest("TC-07a0: Khiếu nại thiếu lý do bị chặn",
+                !emptyDispute && emptyDisputeErrors.Any(e => e.Contains("không được để trống")));
+
+            var (intruderDispute, _, intruderDisputeErrors) = await disputeHandler.Handle(
+                new DisputePhysicalDeliveryCommand(intruderId, disputeAuction.Id, "Không phải đơn của tôi"), default);
+            AssertTest("TC-07a1: Người ngoài không thể khiếu nại",
+                !intruderDispute && intruderDisputeErrors.Any(e => e.Contains("Chỉ người thắng")));
+
             var (disputeSuccess, dispDto, _) = await disputeHandler.Handle(
                 new DisputePhysicalDeliveryCommand(winnerId, disputeAuction.Id, "Khung tranh bị nứt vỡ khi bưu tá giao hàng", "https://img.com/broken.jpg"), default);
 
@@ -357,6 +432,11 @@ class Program
             AssertTest("TC-07b: Delivery.Status = Disputed", disputeDelivery.Status == DeliveryStatus.Disputed);
             AssertTest("TC-07c: EscrowTransaction.Status = Disputed (Đóng băng tiền)", disputeEscrow.Status == EscrowStatus.Disputed);
             AssertTest("TC-07d: Đã gửi thông báo khiếu nại cho Seller", notifications.Notifications.Any(n => n.UserId == sellerId && n.Title.Contains("Khiếu nại")));
+
+            var (duplicateDispute, _, duplicateDisputeErrors) = await disputeHandler.Handle(
+                new DisputePhysicalDeliveryCommand(winnerId, disputeAuction.Id, "Khiếu nại lần hai"), default);
+            AssertTest("TC-07e: Không thể mở trùng khiếu nại cho cùng đơn",
+                !duplicateDispute && duplicateDisputeErrors.Any(e => e.Contains("đã được ghi nhận")));
 
             // -------------------------------------------------------------
             // TỔNG KẾT

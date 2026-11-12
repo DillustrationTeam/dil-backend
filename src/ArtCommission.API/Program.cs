@@ -1,4 +1,5 @@
 using ArtCommission.Infrastructure.ExternalServices.ArtworkAi;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using ArtCommission.Application.ArtistStudio.Ai;
 using ArtCommission.API.Services;
 using System.Threading.RateLimiting;
@@ -10,6 +11,7 @@ using ArtCommission.API.BackgroundWorkers;
 using ArtCommission.API.Common;
 using ArtCommission.API.Hubs;
 using ArtCommission.Application.Ai.Common;
+using ArtCommission.Application.ArtTrade.Common;
 using ArtCommission.Application.Auth.Commands.Register;
 using ArtCommission.Application.Auction.Common;
 using ArtCommission.Application.Chat.Common;
@@ -80,7 +82,10 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
     ?? "Server=(localdb)\\mssqllocaldb;Database=ArtCommissionDb;Trusted_Connection=True;MultipleActiveResultSets=true";
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(connectionString));
+{
+    options.UseSqlServer(connectionString);
+    options.ConfigureWarnings(w => w.Ignore(SqlServerEventId.SavepointsDisabledBecauseOfMARS));
+});
 
 // Hangfire lưu recurring job trong cùng SQL Server theo tài liệu kiến trúc.
 builder.Services.AddHangfire(configuration => configuration
@@ -124,6 +129,9 @@ builder.Services.AddHostedService<PaymentReconciliationWorker>();
 builder.Services.Configure<InvitationExpirationSettings>(
     builder.Configuration.GetSection(InvitationExpirationSettings.SectionName));
 builder.Services.AddHostedService<InvitationExpirationWorker>();
+
+// 3d-3. Job nền tự động hoàn tất đơn giao tranh vật lý sau 48h nếu người mua không xác nhận
+builder.Services.AddHostedService<DeliveryAutoConfirmWorker>();
 
 // 3c. Cổng thanh toán payOS
 // Secret lấy từ User Secrets (dev) hoặc biến môi trường PayOS__ClientId / PayOS__ApiKey / PayOS__ChecksumKey.
@@ -456,14 +464,19 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddScoped<ICommissionService, CommissionService>();
 builder.Services.AddScoped<IAddonService, AddonService>();
 builder.Services.AddScoped<IWatermarkService, WatermarkService>();
-if (string.IsNullOrWhiteSpace(builder.Configuration["CloudflareR2:AccountId"]))
+builder.Services.AddScoped<IArtworkWatermarkService, ArtworkWatermarkService>();
+var r2AccountId = builder.Configuration["CloudflareR2:AccountId"];
+var r2Domain = builder.Configuration["CloudflareR2:PublicDomain"];
+if (string.IsNullOrWhiteSpace(r2AccountId) || r2Domain?.Contains("pub-xxxx") == true || r2AccountId.StartsWith("REPLACE", StringComparison.OrdinalIgnoreCase))
 {
     builder.Services.AddScoped<IStorageService, LocalFileStorageService>();
 }
 else
 {
     builder.Services.AddScoped<IStorageService, CloudflareR2StorageService>();
+
 }
+builder.Services.AddScoped<ITradeSlotService, TradeSlotService>();
 
 
 builder.Services.Configure<ArtworkAiOptions>(builder.Configuration.GetSection("ArtworkAi"));
@@ -544,6 +557,10 @@ if (!isDocumentGeneration)
             "commission-cancellation-lifecycle",
             job => job.RunAsync(CancellationToken.None),
             Cron.Minutely);
+        recurringJobManager.AddOrUpdate<MilestoneAutoAcceptJob>(
+            "milestone-auto-accept",
+            job => job.RunAsync(CancellationToken.None),
+            Cron.Minutely);
     }
     catch (Exception ex)
     {
@@ -590,17 +607,28 @@ app.Use(async (context, next) =>
         return;
     }
 
-    var privateKey = Uri.UnescapeDataString(remaining.Value?.TrimStart('/') ?? string.Empty);
+    var rawKey = remaining.Value?.TrimStart('/') ?? string.Empty;
+    var unescapedKey = Uri.UnescapeDataString(rawKey);
     var signingKey = ArtCommission.Infrastructure.ExternalServices.R2.LocalPresignedUrlSigner
         .GetSigningKey(context.RequestServices.GetRequiredService<IConfiguration>());
-    if (!ArtCommission.Infrastructure.ExternalServices.R2.LocalPresignedUrlSigner.IsValid(
-            privateKey,
-            context.Request.Query["expires"],
-            context.Request.Query["signature"],
-            signingKey))
+    var expires = context.Request.Query["expires"];
+    var signature = context.Request.Query["signature"];
+    var isValid = ArtCommission.Infrastructure.ExternalServices.R2.LocalPresignedUrlSigner.IsValid(
+            rawKey, expires, signature, signingKey)
+        || ArtCommission.Infrastructure.ExternalServices.R2.LocalPresignedUrlSigner.IsValid(
+            unescapedKey, expires, signature, signingKey);
+
+    if (!isValid)
     {
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
         return;
+    }
+
+    var fileName = Path.GetFileName(unescapedKey);
+    if (!string.IsNullOrEmpty(fileName))
+    {
+        context.Response.Headers["Content-Disposition"] = $"attachment; filename=\"{Uri.EscapeDataString(fileName)}\"";
+        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     }
 
     await next();

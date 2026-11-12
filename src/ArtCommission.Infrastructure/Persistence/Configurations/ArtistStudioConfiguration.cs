@@ -41,6 +41,8 @@ public class ArtworkConfiguration : IEntityTypeConfiguration<Artwork>
             .HasForeignKey(x => x.CreatorProfileId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        builder.HasIndex(x => x.CategoryId);
+        builder.HasOne(x => x.Category).WithMany(x => x.Artworks).HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.SetNull);
         builder.Property(x => x.Title).HasMaxLength(200).IsRequired();
         builder.Property(x => x.ImageUrl).HasMaxLength(500).IsRequired();
         builder.Property(x => x.ThumbnailUrl).HasMaxLength(500);
@@ -66,6 +68,23 @@ public class ArtworkConfiguration : IEntityTypeConfiguration<Artwork>
 
         builder.Ignore(x => x.AutoWatermarkEnabled);
         builder.Ignore(x => x.AutoTaggingEnabled);
+    }
+}
+
+public class ArtworkCategoryConfiguration : IEntityTypeConfiguration<ArtworkCategory>
+{
+    public void Configure(EntityTypeBuilder<ArtworkCategory> builder)
+    {
+        builder.ToTable("ArtworkCategories");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Name).HasMaxLength(100).IsRequired();
+        builder.Property(x => x.Slug).HasMaxLength(120).IsRequired();
+        builder.Property(x => x.Description).HasMaxLength(500);
+        builder.Property(x => x.DisplayOrder).HasDefaultValue(0);
+        builder.Property(x => x.IsActive).HasDefaultValue(true);
+        builder.HasIndex(x => x.Name).IsUnique();
+        builder.HasIndex(x => x.Slug).IsUnique();
+        builder.HasIndex(x => x.DisplayOrder);
     }
 }
 
@@ -199,6 +218,11 @@ public class CreatorReviewConfiguration : IEntityTypeConfiguration<CreatorReview
         builder.ToTable("CreatorReviews");
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Comment).HasMaxLength(1000);
+        builder.Property(x => x.Source).HasMaxLength(32);
+        // Một người mua chỉ được đánh giá người bán MỘT lần cho mỗi phiên đấu giá.
+        builder.HasIndex(x => new { x.AuctionId, x.ReviewerUserId })
+            .IsUnique()
+            .HasFilter("[AuctionId] IS NOT NULL AND [IsDeleted] = 0");
         builder.HasOne(x => x.CreatorProfile)
             .WithMany()
             .HasForeignKey(x => x.CreatorProfileId)
@@ -211,5 +235,41 @@ public class CreatorTermsConfiguration : IEntityTypeConfiguration<CreatorTerms>
     public void Configure(EntityTypeBuilder<CreatorTerms> builder)
     {
         builder.Property(x => x.CommercialLicenseMultiplier).HasPrecision(18, 2);
+    }
+}
+
+public class ArtworkWatermarkReceiptConfiguration : IEntityTypeConfiguration<ArtworkWatermarkReceipt>
+{
+    public void Configure(EntityTypeBuilder<ArtworkWatermarkReceipt> builder)
+    {
+        builder.ToTable("ArtworkWatermarkReceipts");
+        builder.HasKey(x => x.Id);
+
+        builder.Property(x => x.ReceiptToken).HasMaxLength(64).IsRequired();
+        builder.HasIndex(x => x.ReceiptToken).IsUnique();
+
+        builder.HasIndex(x => x.ArtworkId);
+        builder.HasIndex(x => x.CommissionId);
+        builder.HasIndex(x => x.FileSha256);
+        builder.HasIndex(x => x.VisualHash);
+        builder.HasIndex(x => x.ViewerUserId);
+        builder.HasIndex(x => x.CreatedAt);
+
+        builder.Property(x => x.FileSha256).HasMaxLength(128);
+        builder.Property(x => x.FileName).HasMaxLength(256);
+        builder.Property(x => x.IpAddress).HasMaxLength(64).IsRequired();
+        builder.Property(x => x.ViewerEmail).HasMaxLength(256);
+        builder.Property(x => x.ViewerName).HasMaxLength(256);
+        builder.Property(x => x.UserAgent).HasMaxLength(500);
+        builder.Property(x => x.SessionId).HasMaxLength(128);
+        builder.Property(x => x.WatermarkType).HasMaxLength(50).HasDefaultValue("DwtForensic");
+        builder.Property(x => x.Status).HasMaxLength(50).HasDefaultValue("Active");
+        builder.Property(x => x.Notes).HasMaxLength(1000);
+
+        builder.HasOne(x => x.Artwork)
+            .WithMany()
+            .HasForeignKey(x => x.ArtworkId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

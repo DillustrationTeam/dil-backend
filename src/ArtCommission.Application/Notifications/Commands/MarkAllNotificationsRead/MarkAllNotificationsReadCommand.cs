@@ -28,14 +28,24 @@ public class MarkAllNotificationsReadCommandHandler
     {
         var now = DateTimeOffset.UtcNow;
 
-        var updated = await _db.Notifications
+        var unreadNotifications = await _db.Notifications
             .Where(n => n.UserId == request.UserId && !n.IsRead && !n.IsDeleted)
-            .ExecuteUpdateAsync(
-                s => s.SetProperty(n => n.IsRead, true)
-                      .SetProperty(n => n.ReadAt, now)
-                      .SetProperty(n => n.UpdatedAt, now),
-                cancellationToken);
+            .ToListAsync(cancellationToken);
 
-        return (true, updated);
+        if (unreadNotifications.Count == 0)
+        {
+            return (true, 0);
+        }
+
+        foreach (var n in unreadNotifications)
+        {
+            n.IsRead = true;
+            n.ReadAt = now;
+            n.UpdatedAt = now;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return (true, unreadNotifications.Count);
     }
 }

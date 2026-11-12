@@ -1,10 +1,14 @@
+﻿using System.Security.Cryptography;
+using ArtCommission.API.Helpers;
 using ArtCommission.Application.ArtistStudio.Moderation;
 using ArtCommission.Application.ArtistStudio.Moderation.Commands;
 using ArtCommission.Application.ArtistStudio.Moderation.DTOs;
 using ArtCommission.Application.ArtistStudio.Moderation.Queries;
+using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace ArtCommission.API.Controllers;
 
@@ -107,6 +111,33 @@ public class AdminModerationController : ApiControllerBase
     }
 
     /// <summary>
+    /// Admin / Moderator chỉnh sửa lại Danh mục lớn và Tag con của tác phẩm trước hoặc sau khi duyệt.
+    /// </summary>
+    [HttpPut("{artworkId:guid}/metadata")]
+    [ProducesResponseType(typeof(ArtworkInspectionDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> UpdateArtworkMetadata(
+        Guid artworkId,
+        [FromBody] UpdateModerationArtworkMetadataRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var (success, data, errors) = await Mediator.Send(
+            new UpdateModerationArtworkMetadataCommand(artworkId, CurrentUserId, request.CategoryId, request.Tags),
+            cancellationToken);
+
+        return success && data is not null
+            ? OkEnvelope(data)
+            : BadRequestEnvelope(errors);
+    }
+
+    /// <summary>
     /// Yêu cầu quét lại AI cho tác phẩm (SCR-20 / UC28).
     /// Đưa tác phẩm vào hàng đợi quét nền của Hangfire để cập nhật các chỉ số NSFW và AI generation.
     /// </summary>
@@ -134,5 +165,79 @@ public class AdminModerationController : ApiControllerBase
         scanQueue.Enqueue(artworkId);
 
         return OkEnvelope(new { message = "Yêu cầu quét lại AI đã được đưa vào hàng đợi xử lý." });
+    }
+
+    /// <summary>
+    /// Kiểm tra trùng lặp tác phẩm (SHA-256, mã DWT thuỷ vân và dấu vân tay thị giác dHash) phục vụ duyệt tranh (SCR-20).
+    /// </summary>
+    [HttpGet("{artworkId:guid}/duplicates")]
+    [ProducesResponseType(typeof(ArtworkDuplicateCheckResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> CheckArtworkDuplicates(
+        Guid artworkId,
+        [FromServices] IApplicationDbContext db,
+        [FromServices] IArtworkWatermarkService watermarkService,
+        [FromServices] IHttpClientFactory httpClientFactory,
+        [FromServices] IWebHostEnvironment env,
+        [FromServices] IConfiguration config,
+        CancellationToken cancellationToken)
+    {
+        var artwork = await db.Artworks
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == artworkId && !a.IsDeleted, cancellationToken);
+
+        if (artwork is null)
+        {
+            return NotFoundEnvelope("Không tìm thấy tác phẩm kiểm duyệt.");
+        }
+
+        var existingReceipt = await db.ArtworkWatermarkReceipts
+            .AsNoTracking()
+            .Where(r => r.ArtworkId == artworkId && r.WatermarkType == "DwtPublish")
+            .OrderByDescending(r => r.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        long? fallbackVisual = null;
+        string? fallbackSha = null;
+        long? fallbackDwt = null;
+
+        if (existingReceipt?.VisualHash is null || string.IsNullOrWhiteSpace(existingReceipt.FileSha256))
+        {
+            var srcUrl = !string.IsNullOrWhiteSpace(artwork.WatermarkedUrl) ? artwork.WatermarkedUrl : artwork.ImageUrl;
+            await using var stream = await ArtworkSourceStreamHelper.LoadSourceImageStreamAsync(
+                srcUrl, httpClientFactory, env, config, cancellationToken);
+            if (stream is not null)
+            {
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms, cancellationToken);
+                ms.Position = 0;
+                fallbackSha = Convert.ToHexString(await SHA256.HashDataAsync(ms, cancellationToken)).ToLowerInvariant();
+                ms.Position = 0;
+                fallbackVisual = await watermarkService.ComputeVisualHashAsync(ms, trimBorders: false, cancellationToken);
+                ms.Position = 0;
+                try
+                {
+                    var dwt = await watermarkService.ExtractInvisibleWatermarkAsync(ms, cancellationToken);
+                    if (dwt.HasValue && dwt.Value != 0)
+                    {
+                        fallbackDwt = (long)dwt.Value;
+                    }
+                }
+                catch
+                {
+                    // Ảnh không đọc được DWT pixel
+                }
+            }
+        }
+
+        var result = await Mediator.Send(
+            new CheckArtworkDuplicatesQuery(artworkId, fallbackVisual, fallbackSha, fallbackDwt),
+            cancellationToken);
+
+        return result is null
+            ? NotFoundEnvelope("Không tìm thấy tác phẩm kiểm duyệt.")
+            : OkEnvelope(result);
     }
 }

@@ -1,4 +1,4 @@
-using ArtCommission.Application.ArtistStudio.DTOs;
+﻿using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Common.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +20,7 @@ public class GetArtworkByIdQueryHandler : IRequestHandler<GetArtworkByIdQuery, (
     {
         var artwork = await _db.Set<ArtCommission.Domain.Entities.ArtistStudio.Artwork>()
             .AsNoTracking()
+            .Include(x => x.Category)
             .Include(x => x.ArtworkTags)
             .ThenInclude(x => x.Tag)
             .FirstOrDefaultAsync(x => x.Id == request.ArtworkId && !x.IsDeleted && !x.CreatorProfile!.IsDeleted
@@ -35,14 +36,19 @@ public class GetArtworkByIdQueryHandler : IRequestHandler<GetArtworkByIdQuery, (
             artwork.CreatorProfileId,
             artwork.Title,
             artwork.Description,
-            artwork.ImageUrl,
-            artwork.ThumbnailUrl,
+            artwork.WatermarkedUrl ?? artwork.ImageUrl,
+            artwork.WatermarkedUrl ?? artwork.ThumbnailUrl ?? artwork.ImageUrl,
             artwork.IsAiGenerated,
             artwork.AiDetectionScore,
             artwork.ModerationStatus,
             artwork.ViewCount,
             artwork.CreatedAt,
             artwork.ArtworkTags.Select(x => x.Tag != null ? x.Tag.Name : string.Empty).Where(x => !string.IsNullOrWhiteSpace(x)).ToList()
-        ), Array.Empty<string>());
+        )
+        {
+            Style = artwork.Style,
+            CategoryId = artwork.CategoryId,
+            CategoryName = artwork.Category?.Name ?? artwork.Style
+        }, Array.Empty<string>());
     }
 }

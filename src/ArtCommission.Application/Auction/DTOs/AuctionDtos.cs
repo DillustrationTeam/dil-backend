@@ -24,7 +24,9 @@ public sealed record AuctionArtworkDto(
 
 public sealed record AuctionSellerDto(
     Guid UserId,
-    string? FullName
+    string? FullName,
+    /// <summary>Mã hồ sơ Creator — dùng để mở trang profile công khai. Null nếu người bán chưa có hồ sơ.</summary>
+    Guid? CreatorProfileId = null
 );
 
 public sealed record AuctionParticipantDto(
@@ -42,7 +44,6 @@ public sealed record AuctionDto(
     Guid SellerId,
     string AuctionType,
     decimal StartPrice,
-    decimal? ReservePrice,
     decimal BidStep,
     decimal? BuyNowPrice,
     decimal CurrentPrice,
@@ -74,7 +75,9 @@ public sealed record AuctionListItemDto(
     string AuctionStatus,
     int WatchCount,
     bool HasPhysicalCopy = false,
-    string? PhysicalDescription = null
+    string? PhysicalDescription = null,
+    /// <summary>GiÃ¡ chá»‘t cuá»‘i cÃ¹ng â€” null khi phiÃªn chÆ°a settle.</summary>
+    decimal? FinalPrice = null
 );
 
 /// <summary>Chi tiết phiên kèm lịch sử bid gần nhất (GET /auctions/{id}).</summary>
@@ -84,7 +87,6 @@ public sealed record AuctionDetailDto(
     AuctionSellerDto? Seller,
     string AuctionType,
     decimal StartPrice,
-    decimal? ReservePrice,
     decimal? BuyNowPrice,
     decimal BidStep,
     decimal CurrentPrice,
@@ -105,7 +107,9 @@ public sealed record AuctionDetailDto(
     bool? RequiresPhysicalDelivery = null,
     DateTimeOffset? PhysicalChoiceDeadline = null,
     AuctionDeliveryDto? Delivery = null,
-    IReadOnlyList<AuctionReceiptDto>? Receipts = null
+    IReadOnlyList<AuctionReceiptDto>? Receipts = null,
+    /// <summary>GiÃ¡ chá»‘t cuá»‘i cÃ¹ng â€” null khi phiÃªn chÆ°a settle.</summary>
+    decimal? FinalPrice = null
 );
 
 /// <summary>Thông tin giao nhận tranh vật lý của phiên.</summary>
@@ -128,7 +132,46 @@ public sealed record AuctionDeliveryDto(
     DateTimeOffset? DeliveredAt,
     DateTimeOffset? ConfirmedAt,
     string? DisputeReason,
-    string? DisputeEvidenceUrl
+    string? DisputeEvidenceUrl,
+    /// <summary>
+    /// Má»‘c há»‡ thá»‘ng tá»± Ä‘á»™ng xÃ¡c nháº­n Ä‘Ã£ nháº­n hÃ ng (shippedAt + 48h). Null khi chÆ°a gá»­i hÃ ng
+    /// hoáº·c Ä‘Æ¡n Ä‘Ã£ káº¿t thÃºc. NgÆ°á»i mua khÃ´ng báº¥m xÃ¡c nháº­n thÃ¬ má»‘c nÃ y sáº½ tá»± hoÃ n táº¥t Ä‘Æ¡n.
+    /// </summary>
+    DateTimeOffset? AutoConfirmAt = null,
+    /// <summary>Khiếu nại được gửi sau khi ký quỹ đã giải ngân (không còn quỹ để đóng băng/hoàn).</summary>
+    bool IsPostPayoutDispute = false,
+    /// <summary>Kết quả phân xử: release | refund | paid-out. Null khi chưa xử lý.</summary>
+    string? DisputeResolution = null,
+    DateTimeOffset? DisputeResolvedAt = null,
+    string? DisputeResolvedNote = null,
+    /// <summary>Người mua được phép đánh giá người bán cho phiên này.</summary>
+    bool CanRateSeller = false,
+    /// <summary>Người mua đã đánh giá người bán cho phiên này rồi.</summary>
+    bool HasRatedSeller = false
+);
+
+/// <summary>Dữ liệu tóm tắt cho màn hình Quản lý giao nhận tranh vật lý (User & Admin).</summary>
+public sealed record PhysicalDeliveryListItemDto(
+    Guid AuctionId,
+    Guid ArtworkId,
+    string ArtworkTitle,
+    string? ArtworkImageUrl,
+    string? ArtworkStyle,
+    Guid SellerId,
+    string SellerName,
+    Guid? WinnerId,
+    string? WinnerName,
+    string AuctionStatus,
+    decimal CurrentPrice,
+    decimal? FinalPrice,
+    bool HasPhysicalCopy,
+    string? PhysicalDescription,
+    DateTimeOffset? PhysicalChoiceDeadline,
+    bool? RequiresPhysicalDelivery,
+    AuctionDeliveryDto? Delivery,
+    string EscrowStatus,
+    /// <summary>Hồ sơ nghệ sĩ của người bán — dùng cho form đánh giá người bán sau khiếu nại.</summary>
+    Guid? SellerCreatorProfileId = null
 );
 
 /// <summary>Biên lai liên quan đến giao dịch đấu giá (Ký quỹ, Vận chuyển, Quyết toán, Giao hàng).</summary>
@@ -253,7 +296,7 @@ public sealed record BuyNowResultDto(
 );
 
 /// <summary>
-/// Chứng nhận quyền sở hữu số 1-of-1 cho tác phẩm thắng đấu giá.
+/// Chứng nhận quyền sở hữu số cho tác phẩm thắng đấu giá.
 /// </summary>
 public sealed record AuctionCertificateDto(
     string CertificateNumber,
@@ -324,7 +367,8 @@ public sealed record ChatRoomDto(
     Guid? CommissionId,
     DateTimeOffset? LastMessageAt,
     bool IsLocked,
-    IReadOnlyList<ChatRoomMemberDto> Members
+    IReadOnlyList<ChatRoomMemberDto> Members,
+    Guid? ArtTradeId = null
 );
 
 public sealed record ChatReadReceiptDto(
@@ -446,7 +490,7 @@ public sealed record RevenueSnapshotDto(
 );
 
 // =====================================================================
-// Provenance, 1-of-1 Collection & Commercial Rights (VIP Winner Perks)
+// Provenance, Collection & Commercial Rights (VIP Winner Perks)
 // =====================================================================
 
 public sealed record MyCollectionItemDto(
@@ -462,7 +506,7 @@ public sealed record MyCollectionItemDto(
     decimal? FinalPrice,
     string? CertificateNumber,
     bool HasMasterFile,
-    string ExclusiveBadge = "Exclusive 1-of-1 Owner"
+    string ExclusiveBadge = "Exclusive Owner"
 );
 
 public sealed record ArtworkProvenanceHistoryItemDto(

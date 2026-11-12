@@ -106,7 +106,7 @@ for (var i = 0; i < normal.Milestones.Length; i++)
 var approved = await service.GetCommissionByIdAsync(normal.Id, clientId);
 Equal(0m, approved!.EscrowHeldAmount, "escrow exhausted");
 Equal(EscrowStatus.Released.ToString(), approved.EscrowStatus, "escrow released");
-await service.DeliverFinalWorkAsync(normal.Id, Upload(), "application/zip", "final.zip", creatorUserId);
+await service.DeliverFinalWorkAsync(normal.Id, new MemoryStream([0x50, 0x4B, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), "application/zip", "final.zip", creatorUserId);
 await service.CompleteCommissionAsync(normal.Id, clientId);
 await Rejected(() => service.CompleteCommissionAsync(normal.Id, clientId), "duplicate complete");
 await service.CreateReviewAsync(normal.Id, new CreateReviewRequest { Rating = 5 }, clientId);
@@ -158,7 +158,16 @@ sealed class FakeWatermarkService : IWatermarkService
 
 sealed class FakeStorageService : IStorageService
 {
+    private readonly Dictionary<string, byte[]> _private = [];
     public Task<string> UploadPublicAsync(Stream stream, string key, string contentType, CancellationToken ct = default) => Task.FromResult(key);
-    public Task<string> UploadPrivateAsync(Stream stream, string key, string contentType, CancellationToken ct = default) => Task.FromResult(key);
+    public Task<string> UploadPrivateAsync(Stream stream, string key, string contentType, CancellationToken ct = default)
+    {
+        using var ms = new MemoryStream();
+        stream.CopyTo(ms);
+        _private[key] = ms.ToArray();
+        return Task.FromResult(key);
+    }
+    public Task<Stream?> OpenPrivateReadAsync(string privateKey, CancellationToken ct = default)
+        => Task.FromResult<Stream?>(_private.TryGetValue(privateKey, out var bytes) ? new MemoryStream(bytes) : null);
     public string GeneratePresignedDownloadUrl(string privateKey, TimeSpan expiry) => $"https://example.test/{privateKey}";
 }

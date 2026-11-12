@@ -9,7 +9,9 @@ using Microsoft.EntityFrameworkCore;
 namespace ArtCommission.Application.Auction.Queries.GetAuctionCertificate;
 
 public record GetAuctionCertificateQuery(
-    Guid AuctionId
+    Guid AuctionId,
+    Guid? CurrentUserId = null,
+    bool IsAdmin = false
 ) : IRequest<(bool Success, AuctionCertificateDto? Data, int StatusCode, string[] Errors)>;
 
 public class GetAuctionCertificateQueryHandler
@@ -40,7 +42,14 @@ public class GetAuctionCertificateQueryHandler
             return (false, null, 404, ["Không tìm thấy phiên đấu giá."]);
         }
 
-        if (auction.Status != AuctionStatus.Settled || !auction.WinnerId.HasValue)
+        // Chứng nhận sở hữu hình thành ngay khi phiên chốt có người thắng, KHÔNG phụ thuộc
+        // vào việc tiền ký quỹ đã giải ngân hay bưu phẩm đã tới. Người thắng phiên có bản vật lý
+        // vẫn phải xem/tải được chứng nhận trong lúc chờ bưu cục giao tranh.
+        if (!auction.WinnerId.HasValue || auction.Status is not (
+                AuctionStatus.Settled
+                or AuctionStatus.AwaitingPhysical
+                or AuctionStatus.InTransit
+                or AuctionStatus.Completed))
         {
             return (false, null, 400, ["Phiên đấu giá chưa được chốt hoặc chưa có người thắng hợp lệ."]);
         }
@@ -52,6 +61,17 @@ public class GetAuctionCertificateQueryHandler
         if (artwork is null)
         {
             return (false, null, 404, ["Không tìm thấy thông tin tác phẩm."]);
+        }
+
+        // Chá»©ng nháº­n chá»©a danh tÃ­nh ngÆ°á»i mua (há» tÃªn, userId), giÃ¡ chá»‘t vÃ  chá»¯ kÃ½ sá»‘.
+        // Chá»‰ ngÆ°á»i tháº¯ng, ngÆ°á»i bÃ¡n hoáº·c Ban quáº£n trá»‹ Ä‘Æ°á»£c Ä‘á»c â€” khÃ´ng Ä‘á»ƒ lá»™ cho ngÆ°á»i láº¡.
+        var isParticipant = request.CurrentUserId.HasValue
+                            && (request.CurrentUserId.Value == auction.WinnerId
+                                || request.CurrentUserId.Value == auction.SellerId);
+        if (!request.IsAdmin && !isParticipant)
+        {
+            return (false, null, 403,
+                ["Chá»‰ ngÆ°á»i tháº¯ng, ngÆ°á»i bÃ¡n hoáº·c Ban quáº£n trá»‹ má»›i xem Ä‘Æ°á»£c chá»©ng nháº­n nÃ y."]);
         }
 
         var ownership = await _db.ArtworkOwnerships
@@ -96,7 +116,7 @@ public class GetAuctionCertificateQueryHandler
             IssuedAt: issuedAt,
             VerificationCode: verificationCode,
             DigitalSignature: signatureHash,
-            LicenseType: "1-of-1 Exclusive Ownership & Commercial Rights"
+            LicenseType: "Exclusive Ownership & Commercial Rights"
         );
 
         return (true, certificate, 200, []);

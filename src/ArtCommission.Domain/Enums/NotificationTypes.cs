@@ -64,7 +64,34 @@ public enum NotificationType
     EscrowStatusChanged,
 
     /// <summary>Tranh chấp của đơn đặt vẽ được mở hoặc phân xử.</summary>
-    DisputeStatusChanged
+    DisputeStatusChanged,
+
+    /// <summary>Lời mời trao đổi tranh mới (ArtTrade).</summary>
+    ArtTradeProposed,
+
+    /// <summary>Đối tác đã chấp nhận đề nghị trao đổi tranh.</summary>
+    ArtTradeAccepted,
+
+    /// <summary>Đối tác đã từ chối đề nghị trao đổi tranh.</summary>
+    ArtTradeDeclined,
+
+    /// <summary>Đề nghị trao đổi tranh đã bị hủy.</summary>
+    ArtTradeCancelled,
+
+    /// <summary>Đối tác đã nộp tranh trao đổi (bản xem trước watermark).</summary>
+    ArtTradeArtworkSubmitted,
+
+    /// <summary>Giao dịch trao đổi tranh đã hoàn tất thành công.</summary>
+    ArtTradeCompleted,
+
+    /// <summary>Khiếu nại tranh chấp trao đổi tranh được tạo.</summary>
+    TradeDisputeCreated,
+
+    /// <summary>Khiếu nại tranh chấp trao đổi tranh đã được Admin phân xử.</summary>
+    TradeDisputeResolved,
+
+    /// <summary>Admin đã phản hồi báo cáo sự cố / hỗ trợ của người dùng.</summary>
+    BugReportReplied
 }
 
 public static class NotificationTypeNames
@@ -86,6 +113,15 @@ public static class NotificationTypeNames
     public const string CommissionStatusChanged = nameof(NotificationType.CommissionStatusChanged);
     public const string EscrowStatusChanged = nameof(NotificationType.EscrowStatusChanged);
     public const string DisputeStatusChanged = nameof(NotificationType.DisputeStatusChanged);
+    public const string ArtTradeProposed = nameof(NotificationType.ArtTradeProposed);
+    public const string ArtTradeAccepted = nameof(NotificationType.ArtTradeAccepted);
+    public const string ArtTradeDeclined = nameof(NotificationType.ArtTradeDeclined);
+    public const string ArtTradeCancelled = nameof(NotificationType.ArtTradeCancelled);
+    public const string ArtTradeArtworkSubmitted = nameof(NotificationType.ArtTradeArtworkSubmitted);
+    public const string ArtTradeCompleted = nameof(NotificationType.ArtTradeCompleted);
+    public const string TradeDisputeCreated = nameof(NotificationType.TradeDisputeCreated);
+    public const string TradeDisputeResolved = nameof(NotificationType.TradeDisputeResolved);
+    public const string BugReportReplied = nameof(NotificationType.BugReportReplied);
 
     public static readonly string[] All =
     [
@@ -105,7 +141,16 @@ public static class NotificationTypeNames
         InvitationExpired,
         CommissionStatusChanged,
         EscrowStatusChanged,
-        DisputeStatusChanged
+        DisputeStatusChanged,
+        ArtTradeProposed,
+        ArtTradeAccepted,
+        ArtTradeDeclined,
+        ArtTradeCancelled,
+        ArtTradeArtworkSubmitted,
+        ArtTradeCompleted,
+        TradeDisputeCreated,
+        TradeDisputeResolved,
+        BugReportReplied
     ];
 }
 
@@ -157,7 +202,15 @@ public static class NotificationCategoryMap
             NotificationType.AuctionWon,
             NotificationType.DeadlineRiskWarning,
             NotificationType.CommissionStatusChanged,
-            NotificationType.DisputeStatusChanged
+            NotificationType.DisputeStatusChanged,
+            NotificationType.ArtTradeProposed,
+            NotificationType.ArtTradeAccepted,
+            NotificationType.ArtTradeDeclined,
+            NotificationType.ArtTradeCancelled,
+            NotificationType.ArtTradeArtworkSubmitted,
+            NotificationType.ArtTradeCompleted,
+            NotificationType.TradeDisputeCreated,
+            NotificationType.TradeDisputeResolved
         ],
 
         NotificationCategory.System =>
@@ -168,7 +221,8 @@ public static class NotificationCategoryMap
             NotificationType.InvitationAccepted,
             NotificationType.InvitationDeclined,
             NotificationType.InvitationCanceled,
-            NotificationType.InvitationExpired
+            NotificationType.InvitationExpired,
+            NotificationType.BugReportReplied
         ],
 
         NotificationCategory.Promotion => [NotificationType.PromotionAnnouncement],
