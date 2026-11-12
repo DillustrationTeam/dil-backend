@@ -34,7 +34,8 @@ public class DeleteEventCommandHandler
         var platformEvent = await _db.PlatformEvents
             .FirstOrDefaultAsync(e => e.Id == request.EventId && !e.IsDeleted, cancellationToken);
 
-        if (platformEvent == null)
+        if (platformEvent == null
+            || (platformEvent.Status == ArtCommission.Domain.Enums.EventStatus.Draft && platformEvent.CreatedByAdminId != request.AdminId))
         {
             return (false, ["Platform event not found."]);
         }
