@@ -36,6 +36,7 @@ public interface IApplicationDbContext
 {
     // Module Artist Studio
     DbSet<CreatorProfile> CreatorProfiles { get; }
+    DbSet<ArtworkCategory> ArtworkCategories { get; }
     DbSet<Artwork> Artworks { get; }
     DbSet<Tag> Tags { get; }
     DbSet<ArtworkTag> ArtworkTags { get; }

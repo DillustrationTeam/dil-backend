@@ -145,6 +145,9 @@ builder.Services.Configure<InvitationExpirationSettings>(
 builder.Services.AddHostedService<InvitationExpirationWorker>();
 builder.Services.AddHostedService<EventLifecycleWorker>();
 
+// 3d-3. Job nền tự động hoàn tất đơn giao tranh vật lý sau 48h nếu người mua không xác nhận
+builder.Services.AddHostedService<DeliveryAutoConfirmWorker>();
+
 // 3c. Cổng thanh toán payOS
 // Secret lấy từ User Secrets (dev) hoặc biến môi trường PayOS__ClientId / PayOS__ApiKey / PayOS__ChecksumKey.
 builder.Services.Configure<PayOsOptions>(builder.Configuration.GetSection(PayOsOptions.SectionName));

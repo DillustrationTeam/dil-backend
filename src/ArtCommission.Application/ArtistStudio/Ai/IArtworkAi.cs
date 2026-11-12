@@ -1,7 +1,7 @@
 using ArtCommission.Application.ArtistStudio.DTOs;
 namespace ArtCommission.Application.ArtistStudio.Ai;
 
-public record ArtworkMetadataSuggestion(string Title, string Description, IReadOnlyList<string> Tags, string Style);
+public record ArtworkMetadataSuggestion(string Title, string Description, IReadOnlyList<string> Tags, string Style, Guid? CategoryId = null, string? CategoryName = null);
 public interface IArtworkMetadataService
 {
     Task<ArtworkMetadataSuggestion> SuggestAsync(Stream image, CancellationToken ct);

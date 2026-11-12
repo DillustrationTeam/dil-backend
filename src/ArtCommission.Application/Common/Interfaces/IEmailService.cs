@@ -42,4 +42,12 @@ public interface IEmailService
         string? previewImageUrl,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Gửi email phản hồi từ Admin cho người dùng đã gửi báo cáo sự cố / hỗ trợ.</summary>
+    Task SendBugReportReplyEmailAsync(
+        string toEmail,
+        string reportTitle,
+        string replyMessage,
+        string statusLabel,
+        CancellationToken cancellationToken = default);
+
 }

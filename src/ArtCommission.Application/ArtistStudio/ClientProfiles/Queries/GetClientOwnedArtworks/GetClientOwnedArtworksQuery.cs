@@ -21,13 +21,16 @@ public class GetClientOwnedArtworksQueryHandler
 {
     private readonly IApplicationDbContext _db;
     private readonly IStorageService _storageService;
+    private readonly ICommissionService? _commissionService;
 
     public GetClientOwnedArtworksQueryHandler(
         IApplicationDbContext db,
-        IStorageService storageService)
+        IStorageService storageService,
+        ICommissionService? commissionService = null)
     {
         _db = db;
         _storageService = storageService;
+        _commissionService = commissionService;
     }
 
     public async Task<(bool Success, IReadOnlyList<OwnedArtworkDto>? Data, string[] Errors)> Handle(
@@ -122,7 +125,7 @@ public class GetClientOwnedArtworksQueryHandler
                         CertificateNumber: certNumber,
                         HasMasterFile: hasMaster,
                         DownloadUrl: null,
-                        ExclusiveBadge: "Exclusive 1-of-1 Owner"
+                        ExclusiveBadge: "Exclusive Owner"
                     ));
                 }
             }
@@ -174,7 +177,18 @@ public class GetClientOwnedArtworksQueryHandler
                     {
                         try
                         {
-                            downloadUrl = _storageService.GeneratePresignedDownloadUrl(finalMilestone.FinalDeliverableUrl, TimeSpan.FromHours(24));
+                            if (finalMilestone.FinalDeliverableUrl.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (_commissionService is not null)
+                                {
+                                    var finalDownload = await _commissionService.GetFinalDownloadUrlAsync(c.Id, request.UserId, cancellationToken);
+                                    downloadUrl = finalDownload.DownloadUrl;
+                                }
+                            }
+                            else
+                            {
+                                downloadUrl = _storageService.GeneratePresignedDownloadUrl(finalMilestone.FinalDeliverableUrl, TimeSpan.FromHours(24));
+                            }
                         }
                         catch
                         {

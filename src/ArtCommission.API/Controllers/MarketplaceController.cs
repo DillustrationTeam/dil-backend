@@ -30,8 +30,17 @@ public class MarketplaceController : ApiControllerBase
         => OkEnvelope(await Mediator.Send(new GetFollowingFeedQuery(CurrentUserId, take), cancellationToken));
 
     [AllowAnonymous, HttpGet("creators"), ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<IActionResult> Creators(CancellationToken cancellationToken)
-        => OkEnvelope(await Mediator.Send(new GetAvailableCreatorsQuery(), cancellationToken));
+    public async Task<IActionResult> Creators(
+        [FromQuery] Guid? categoryId = null,
+        [FromQuery] string? search = null,
+        [FromQuery] bool? onlyOpenSlots = null,
+        CancellationToken cancellationToken = default)
+        => OkEnvelope(await Mediator.Send(new GetAvailableCreatorsQuery(categoryId, search, onlyOpenSlots), cancellationToken));
+
+    /// <summary>Gợi ý tìm kiếm gồm Danh mục lớn và Tag con phổ biến cho autocomplete.</summary>
+    [AllowAnonymous, HttpGet("search-suggestions"), ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> SearchSuggestions([FromQuery] string? q = null, CancellationToken cancellationToken = default)
+        => OkEnvelope(await Mediator.Send(new GetSearchSuggestionsQuery(q), cancellationToken));
 
     /// <summary>Finds artworks similar to a reference image's supplied style or AI-generated tags.</summary>
     [AllowAnonymous, HttpPost("visual-search"), ProducesResponseType(StatusCodes.Status200OK)]

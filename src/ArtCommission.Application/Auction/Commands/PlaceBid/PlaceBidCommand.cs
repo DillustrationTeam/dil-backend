@@ -136,14 +136,6 @@ public sealed class PlaceBidCommandHandler
                     [$"Giá đặt tối thiểu là {minimumNextBid:N0} VND."], null);
             }
 
-            // Không tiết lộ reserve price. Giữ nguyên quy tắc hiện tại: mức trần phải đủ
-            // điều kiện bán, nhưng lỗi không kèm con số giá sàn bí mật.
-            if (auction.ReservePrice.HasValue && requestedCap < auction.ReservePrice.Value)
-            {
-                return (false, null,
-                    ["Giá đặt chưa đạt mức tối thiểu mà người bán yêu cầu cho phiên này."], null);
-            }
-
             var autoBids = await _db.AuctionAutoBids
                 .Where(x => x.AuctionId == auction.Id && !x.IsDeleted)
                 .ToListAsync(cancellationToken);
@@ -236,11 +228,6 @@ public sealed class PlaceBidCommandHandler
                     ? oldLeading.Amount
                     : runnerUp.MaxAmount + auction.BidStep;
                 clearingPrice = Math.Min(winner.MaxAmount, Math.Max(minimumNextBid, proxyPrice));
-            }
-
-            if (auction.ReservePrice.HasValue && winner.MaxAmount >= auction.ReservePrice.Value)
-            {
-                clearingPrice = Math.Max(clearingPrice, auction.ReservePrice.Value);
             }
 
             clearingPrice = decimal.Round(clearingPrice, 2, MidpointRounding.AwayFromZero);

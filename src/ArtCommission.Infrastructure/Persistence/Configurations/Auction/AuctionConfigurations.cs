@@ -39,7 +39,6 @@ public class AuctionConfiguration : IEntityTypeConfiguration<AuctionEntity>
 
         // Tiền: luôn decimal, precision cố định để không mất phần lẻ khi làm tròn.
         builder.Property(a => a.StartPrice).HasPrecision(18, 2);
-        builder.Property(a => a.ReservePrice).HasPrecision(18, 2);
         builder.Property(a => a.BidStep).HasPrecision(18, 2);
         builder.Property(a => a.BuyNowPrice).HasPrecision(18, 2);
         builder.Property(a => a.CurrentPrice).HasPrecision(18, 2);

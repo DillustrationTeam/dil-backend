@@ -104,7 +104,7 @@ public sealed class GetMyCollectionQueryHandler
                 FinalPrice: auction?.FinalPrice,
                 CertificateNumber: certNumber,
                 HasMasterFile: hasMaster,
-                ExclusiveBadge: "Exclusive 1-of-1 Owner"
+                ExclusiveBadge: "Exclusive Owner"
             ));
         }
 

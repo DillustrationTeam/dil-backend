@@ -32,6 +32,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
 
     // Module Artist Studio
     public DbSet<CreatorProfile> CreatorProfiles => Set<CreatorProfile>();
+    public DbSet<ArtworkCategory> ArtworkCategories => Set<ArtworkCategory>();
     public DbSet<Artwork> Artworks => Set<Artwork>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<ArtworkTag> ArtworkTags => Set<ArtworkTag>();

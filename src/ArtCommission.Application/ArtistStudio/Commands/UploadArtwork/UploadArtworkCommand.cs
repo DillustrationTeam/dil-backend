@@ -15,7 +15,7 @@ public record UploadArtworkCommand(
     string? ThumbnailUrl,
     bool IsAiGenerated = false,
     decimal? AiDetectionScore = null,
-    IReadOnlyList<string>? Tags = null
+    IReadOnlyList<string>? Tags = null, Guid? CategoryId = null
 ) : IRequest<(bool Success, ArtworkDto? Data, string[] Errors)>;
 
 public class UploadArtworkCommandValidator : AbstractValidator<UploadArtworkCommand>
@@ -60,6 +60,19 @@ public class UploadArtworkCommandHandler : IRequestHandler<UploadArtworkCommand,
         if (!validation.IsValid)
         {
             return (false, null, validation.Errors.Select(e => e.ErrorMessage).ToArray());
+        }
+
+        ArtCommission.Domain.Entities.ArtistStudio.ArtworkCategory? category = null;
+        if (request.CategoryId.HasValue && request.CategoryId.Value != Guid.Empty)
+        {
+            category = await _db.ArtworkCategories
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == request.CategoryId.Value && !c.IsDeleted && c.IsActive, cancellationToken);
+
+            if (category is null)
+            {
+                return (false, null, new[] { "Danh mục tác phẩm không tồn tại hoặc đã ngừng hoạt động." });
+            }
         }
 
         var profile = await _db.Set<ArtCommission.Domain.Entities.ArtistStudio.CreatorProfile>()
@@ -114,6 +127,8 @@ public class UploadArtworkCommandHandler : IRequestHandler<UploadArtworkCommand,
             ImageUrl = request.ImageUrl,
             ThumbnailUrl = thumbnailUrl,
             WatermarkedUrl = watermarkedUrl,
+            CategoryId = category?.Id,
+            Style = category?.Name,
             IsAiGenerated = request.IsAiGenerated,
             AiDetectionScore = null,
             ModerationStatus = "Pending",
@@ -129,7 +144,7 @@ public class UploadArtworkCommandHandler : IRequestHandler<UploadArtworkCommand,
 
         if (request.Tags is { Count: > 0 })
         {
-            foreach (var tagName in request.Tags.Select(tag => tag.Trim()).Where(tag => tag.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase))
+            foreach (var tagName in request.Tags.Select(tag => tag.Trim().TrimStart('#')).Where(tag => tag.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 var tag = await _db.Set<ArtCommission.Domain.Entities.ArtistStudio.Tag>()
                     .FirstOrDefaultAsync(x => x.Name == tagName, cancellationToken);
@@ -170,7 +185,7 @@ public class UploadArtworkCommandHandler : IRequestHandler<UploadArtworkCommand,
             artwork.ModerationStatus,
             artwork.ViewCount,
             artwork.CreatedAt,
-            (request.Tags ?? Array.Empty<string>()).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
-        ), Array.Empty<string>());
+            (request.Tags ?? Array.Empty<string>()).Select(tag => tag.Trim().TrimStart('#')).Where(tag => tag.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+        ) { Style = artwork.Style, CategoryId = artwork.CategoryId, CategoryName = category?.Name }, Array.Empty<string>());
     }
 }

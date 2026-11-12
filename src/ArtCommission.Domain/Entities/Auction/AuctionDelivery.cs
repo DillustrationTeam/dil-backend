@@ -61,6 +61,26 @@ public class AuctionDelivery : BaseEntity
     /// <summary>Bằng chứng khiếu nại (ảnh/video mở kiện hàng).</summary>
     public string? DisputeEvidenceUrl { get; set; }
 
+    /// <summary>
+    /// Khiếu nại được gửi SAU khi ký quỹ đã giải ngân cho người bán (người mua đã nhận bản điện
+    /// tử nhưng vẫn yêu cầu giao tranh vật lý). Loại khiếu nại này không đóng băng được tiền,
+    /// chỉ ghi nhận để Admin đối soát và để người mua đánh giá người bán.
+    /// </summary>
+    public bool IsPostPayoutDispute { get; set; }
+
+    /// <summary>
+    /// Kết quả phân xử: <c>release</c> (bác khiếu nại), <c>refund</c> (hoàn tiền),
+    /// <c>paid-out</c> (đóng khiếu nại vì tiền đã về ví người bán, không thu hồi được).
+    /// Null khi khiếu nại chưa được xử lý.
+    /// </summary>
+    public string? DisputeResolution { get; set; }
+
+    /// <summary>Thời điểm Admin đóng khiếu nại.</summary>
+    public DateTimeOffset? DisputeResolvedAt { get; set; }
+
+    /// <summary>Ghi chú phân xử của Admin (lưu vào nhật ký đơn giao nhận).</summary>
+    public string? DisputeResolvedNote { get; set; }
+
     // Navigation
     public Auction? Auction { get; set; }
 }
