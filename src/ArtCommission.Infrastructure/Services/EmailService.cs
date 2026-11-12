@@ -245,4 +245,40 @@ public class EmailService : IEmailService
         return SendAsync(toEmail, $"Chứng nhận Bản quyền Số [{certCode}] — Đơn #{orderCode} hoàn thành", html, cancellationToken);
     }
 
+    public Task SendBugReportReplyEmailAsync(
+        string toEmail,
+        string reportTitle,
+        string replyMessage,
+        string statusLabel,
+        CancellationToken cancellationToken = default)
+    {
+        var safeTitle = WebUtility.HtmlEncode(reportTitle);
+        var safeReply = WebUtility.HtmlEncode(replyMessage).Replace("\n", "<br/>");
+        var safeStatus = WebUtility.HtmlEncode(statusLabel);
+
+        var html = $@"
+<!DOCTYPE html>
+<html>
+<body style=""margin: 0; padding: 24px; background-color: #131316; font-family: Arial, sans-serif; color: #E4E1E5;"">
+  <table width=""100%"" style=""max-width: 560px; margin: 0 auto; background-color: #181B29; border-radius: 16px; border: 1px solid rgba(167, 172, 217, 0.25); overflow: hidden;"">
+    <tr>
+      <td style=""padding: 20px 24px; background-color: #1F2335; border-bottom: 1px solid rgba(255, 255, 255, 0.08);"">
+        <span style=""font-size: 11px; color: #A7ACD9; font-weight: bold; text-transform: uppercase;"">DILLUSTRATION • PHẢN HỒI HỖ TRỢ</span>
+        <h2 style=""margin: 6px 0 0 0; font-size: 18px; color: #FFFFFF;"">{safeTitle}</h2>
+      </td>
+    </tr>
+    <tr>
+      <td style=""padding: 22px 24px; font-size: 14px; line-height: 1.6;"">
+        <p style=""margin: 0 0 12px 0; color: #C7C5CF;"">Quản trị viên đã cập nhật trạng thái: <strong style=""color: #A7ACD9;"">{safeStatus}</strong></p>
+        <div style=""background-color: #131316; border-radius: 12px; border: 1px solid rgba(167, 172, 217, 0.2); padding: 14px 16px; color: #E4E1E5;"">
+          {safeReply}
+        </div>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>";
+        return SendAsync(toEmail, $"[DILLUSTRATION] Phản hồi báo cáo: {reportTitle}", html, cancellationToken);
+    }
+
 }
