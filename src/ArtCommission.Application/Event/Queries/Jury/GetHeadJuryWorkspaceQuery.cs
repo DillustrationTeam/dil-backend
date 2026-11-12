@@ -46,8 +46,11 @@ public class GetHeadJuryWorkspaceQueryHandler : IRequestHandler<GetHeadJuryWorks
             .Where(cs => submissionIds.Contains(cs.SubmissionId))
             .ToListAsync(cancellationToken);
 
+        // Only surface scoring-related disputes on the Jury / Head Jury side (moderation reports stay with Admin/Moderator)
         var disputes = await _db.SubmissionDisputes.AsNoTracking()
-            .Where(d => d.EventId == request.EventId && !d.IsDeleted)
+            .Where(d => d.EventId == request.EventId && !d.IsDeleted && d.Category == "ScoreAppeal")
+            .OrderByDescending(d => d.Status == "Pending" || d.Status == "UnderReview")
+            .ThenByDescending(d => d.CreatedAt)
             .ToListAsync(cancellationToken);
 
         int totalSubmissions = submissions.Count;
@@ -141,11 +144,14 @@ public class GetHeadJuryWorkspaceQueryHandler : IRequestHandler<GetHeadJuryWorks
                 ? Math.Round(otherJuryTotals.Average(), 2) 
                 : (sub.Score ?? 0);
 
-            decimal deviation = 0;
-            if (juryAvg > 0 && headScore > 0)
-            {
-                deviation = Math.Round(Math.Abs(headScore - juryAvg) / juryAvg * 100, 1);
-            }
+            var allJuryTotals = subScores
+                .GroupBy(cs => cs.GradedByJuryId)
+                .Select(g => g.Sum(cs => cs.Score))
+                .ToList();
+            decimal deviation = Commands.SubmitJuryScoreCommandHandler.CalculateDeviationPercent(
+                allJuryTotals,
+                headScore,
+                otherJuryTotals);
 
             string code = $"#SUB-{sub.Id.ToString()[..4].ToUpper()}";
             string artworkUrl = sub.Artwork?.ImageUrl ?? sub.Artwork?.ThumbnailUrl ?? sub.Artwork?.WatermarkedUrl ?? "/seedimg/miyu.png";
@@ -164,23 +170,53 @@ public class GetHeadJuryWorkspaceQueryHandler : IRequestHandler<GetHeadJuryWorks
             });
         }
 
-        // Arbitration cases: either from disputes or high deviation submissions (> 25%)
+        // Arbitration cases: auto-generated / score-appeal disputes or high deviation submissions (> 25%)
         var arbitrationCases = new List<ArbitrationCaseDto>();
-        foreach (var d in disputes.Where(d => d.Status != "Resolved" && d.Status != "Rejected"))
+        var deviationBySubId = combinedScores.ToDictionary(c => c.SubmissionId, c => c.DeviationPercent);
+        var coveredSubmissionIds = new HashSet<Guid>();
+
+        foreach (var d in disputes)
         {
-            var relatedSub = submissions.FirstOrDefault(s => s.Id == d.SubmissionId);
+            var relatedSub = d.SubmissionId.HasValue
+                ? submissions.FirstOrDefault(s => s.Id == d.SubmissionId.Value)
+                : null;
+            if (d.SubmissionId.HasValue)
+            {
+                coveredSubmissionIds.Add(d.SubmissionId.Value);
+            }
+            var subDeviation = d.SubmissionId.HasValue && deviationBySubId.TryGetValue(d.SubmissionId.Value, out var dev)
+                ? dev
+                : 0m;
+
             arbitrationCases.Add(new ArbitrationCaseDto
             {
                 Id = d.Id,
-                SubmissionId = d.SubmissionId,
-                Title = relatedSub?.Title ?? "Tác phẩm khiếu nại",
+                SubmissionId = d.SubmissionId ?? Guid.Empty,
+                Title = d.SubmissionTitleSnapshot ?? relatedSub?.Title ?? "Tác phẩm khiếu nại điểm số",
                 Code = relatedSub != null ? $"#SUB-{relatedSub.Id.ToString()[..4].ToUpper()}" : "#DISP",
-                Category = "Illustration",
-                ArtworkImageUrl = relatedSub?.Artwork?.ImageUrl ?? "/seedimg/miyu.png",
-                DeviationPercent = 0,
+                Category = "ScoreAppeal",
+                ArtworkImageUrl = d.ArtworkImageUrlSnapshot ?? relatedSub?.Artwork?.ImageUrl ?? "/seedimg/miyu.png",
+                DeviationPercent = subDeviation,
                 Notes = d.Reason,
                 Status = d.Status,
                 Decision = d.Resolution
+            });
+        }
+
+        foreach (var cs in combinedScores.Where(c => c.DeviationPercent > 25m && !coveredSubmissionIds.Contains(c.SubmissionId)))
+        {
+            arbitrationCases.Add(new ArbitrationCaseDto
+            {
+                Id = cs.SubmissionId,
+                SubmissionId = cs.SubmissionId,
+                Title = cs.Title,
+                Code = cs.Code,
+                Category = "ScoreAppeal",
+                ArtworkImageUrl = cs.ArtworkImageUrl,
+                DeviationPercent = cs.DeviationPercent,
+                Notes = $"[Tự động] Phát hiện chênh lệch điểm chấm {cs.DeviationPercent:0.#}% (> 25%) giữa các giám khảo.",
+                Status = "Pending",
+                Decision = null
             });
         }
 
@@ -200,7 +236,7 @@ public class GetHeadJuryWorkspaceQueryHandler : IRequestHandler<GetHeadJuryWorks
         }
 
         bool allJuryCompleted = totalJuryCount > 0 && completedJuryCount == totalJuryCount;
-        bool disputesResolved = disputes.All(d => d.Status == "Resolved" || d.Status == "Rejected");
+        bool disputesResolved = arbitrationCases.All(c => c.Status == "Resolved" || c.Status == "Rejected");
 
         return new HeadJuryWorkspaceDto
         {
@@ -208,7 +244,7 @@ public class GetHeadJuryWorkspaceQueryHandler : IRequestHandler<GetHeadJuryWorks
             GradedSubmissions = gradedSubmissions,
             CompletedJuryCount = completedJuryCount,
             TotalJuryCount = totalJuryCount,
-            AnomalyFlagsCount = arbitrationCases.Count,
+            AnomalyFlagsCount = arbitrationCases.Count(c => c.Status != "Resolved" && c.Status != "Rejected"),
             OverallProgressPercent = overallProgressPercent,
             JuryProgressList = juryProgressList,
             CombinedScores = combinedScores,

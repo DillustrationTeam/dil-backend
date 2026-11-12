@@ -102,7 +102,7 @@ public class UpdateInvitationStatusCommandHandler
                         }
 
                         var existingJury = await _db.Juries
-                            .FirstOrDefaultAsync(j => j.EventId == invitation.EventId && j.CreatorId == invitation.SentToCreatorId && !j.IsDeleted, cancellationToken);
+                            .FirstOrDefaultAsync(j => j.EventId == invitation.EventId && j.CreatorId == invitation.SentToCreatorId, cancellationToken);
 
                         var hasHeadJury = await _db.Juries
                             .AnyAsync(j => j.EventId == invitation.EventId && j.IsHeadJury && !j.IsDeleted, cancellationToken);
@@ -132,6 +132,13 @@ public class UpdateInvitationStatusCommandHandler
                                 IsDeleted = false
                             };
                             _db.Juries.Add(jury);
+                        }
+                        else if (existingJury.IsDeleted)
+                        {
+                            existingJury.IsDeleted = false;
+                            existingJury.IsHeadJury = isHeadJuryToSet;
+                            existingJury.CreatedAt = now;
+                            existingJury.UpdatedAt = now;
                         }
                         else if (isHeadJuryToSet && !existingJury.IsHeadJury)
                         {

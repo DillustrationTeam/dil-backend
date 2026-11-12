@@ -74,7 +74,8 @@ public class JuryDisputesController : ApiControllerBase
             SubmissionId: submissionId,
             Status: status,
             PageNumber: page,
-            PageSize: pageSize
+            PageSize: pageSize,
+            Category: ScoringDisputeCategory
         );
 
         var (items, totalCount) = await Mediator.Send(query, cancellationToken);
@@ -121,6 +122,12 @@ public class JuryDisputesController : ApiControllerBase
         }
 
         // Kiểm tra giám khảo có thuộc sự kiện này không
+        bool isAdminOrMod = User.IsInRole(UserRoleNames.Administrator) || User.IsInRole(UserRoleNames.Moderator);
+        if (!isAdminOrMod && !IsScoringDispute(result.Category))
+        {
+            return Forbid();
+        }
+
         bool hasAccess = await IsUserJuryOfEventAsync(result.EventId, CurrentUserId, cancellationToken);
         if (!hasAccess)
         {
@@ -169,7 +176,8 @@ public class JuryDisputesController : ApiControllerBase
             Reason: request.Reason,
             Description: request.Description,
             EvidenceUrls: request.EvidenceUrls,
-            Priority: request.Priority
+            Priority: request.Priority,
+            Category: request.Category
         );
 
         var (success, message, disputeId, errors) = await Mediator.Send(command, cancellationToken);
@@ -210,6 +218,12 @@ public class JuryDisputesController : ApiControllerBase
         }
 
         // Chỉ Trưởng ban giám khảo (Head Jury) hoặc Admin/Mod mới có quyền phân xử khiếu nại
+        bool isAdminOrMod = User.IsInRole(UserRoleNames.Administrator) || User.IsInRole(UserRoleNames.Moderator);
+        if (!isAdminOrMod && !IsScoringDispute(dispute.Category))
+        {
+            return Forbid();
+        }
+
         bool isHeadJuryOrAdmin = await IsUserHeadJuryOfEventAsync(dispute.EventId, CurrentUserId, cancellationToken);
         if (!isHeadJuryOrAdmin)
         {
@@ -233,6 +247,11 @@ public class JuryDisputesController : ApiControllerBase
     }
 
     #region Helper Methods
+    private const string ScoringDisputeCategory = "ScoreAppeal";
+
+    private static bool IsScoringDispute(string? category) =>
+        string.Equals(category, ScoringDisputeCategory, StringComparison.OrdinalIgnoreCase);
+
     private async Task<List<Guid>> GetJuryEventIdsAsync(Guid userId, CancellationToken cancellationToken)
     {
         return await _db.Juries

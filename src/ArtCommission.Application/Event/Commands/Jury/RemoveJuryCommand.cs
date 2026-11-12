@@ -69,6 +69,7 @@ public class RemoveJuryCommandHandler
         }
 
         jury.IsDeleted = true;
+        jury.IsHeadJury = false;
         jury.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _db.SaveChangesAsync(cancellationToken);

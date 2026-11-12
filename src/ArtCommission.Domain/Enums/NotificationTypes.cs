@@ -90,6 +90,9 @@ public enum NotificationType
     /// <summary>Khiếu nại tranh chấp trao đổi tranh đã được Admin phân xử.</summary>
     TradeDisputeResolved,
 
+    /// <summary>Khiếu nại bài dự thi sự kiện mới được gửi lên cho Admin/Moderator.</summary>
+    SubmissionDisputeCreated,
+
     /// <summary>Admin đã phản hồi báo cáo sự cố / hỗ trợ của người dùng.</summary>
     BugReportReplied
 }
@@ -121,6 +124,7 @@ public static class NotificationTypeNames
     public const string ArtTradeCompleted = nameof(NotificationType.ArtTradeCompleted);
     public const string TradeDisputeCreated = nameof(NotificationType.TradeDisputeCreated);
     public const string TradeDisputeResolved = nameof(NotificationType.TradeDisputeResolved);
+    public const string SubmissionDisputeCreated = nameof(NotificationType.SubmissionDisputeCreated);
     public const string BugReportReplied = nameof(NotificationType.BugReportReplied);
 
     public static readonly string[] All =
@@ -150,6 +154,7 @@ public static class NotificationTypeNames
         ArtTradeCompleted,
         TradeDisputeCreated,
         TradeDisputeResolved,
+        SubmissionDisputeCreated,
         BugReportReplied
     ];
 }
@@ -222,6 +227,7 @@ public static class NotificationCategoryMap
             NotificationType.InvitationDeclined,
             NotificationType.InvitationCanceled,
             NotificationType.InvitationExpired,
+            NotificationType.SubmissionDisputeCreated,
             NotificationType.BugReportReplied
         ],
 

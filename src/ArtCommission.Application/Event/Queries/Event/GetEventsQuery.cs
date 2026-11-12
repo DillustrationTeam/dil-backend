@@ -15,7 +15,10 @@ public record GetEventsQuery(
     bool? IsFeatured = null,
     string? SortBy = "latest",
     int Page = 1,
-    int PageSize = 10
+    int PageSize = 10,
+    Guid? CurrentUserId = null,
+    bool ExcludeEnded = false,
+    bool IncludeDrafts = false
 ) : IRequest<(IReadOnlyList<EventDto> Items, int TotalCount)>;
 
 public class GetEventsQueryHandler 
@@ -37,18 +40,46 @@ public class GetEventsQueryHandler
         var pageSize = request.PageSize <= 0 ? 10 : Math.Min(request.PageSize, MaxPageSize);
         var now = DateTimeOffset.UtcNow;
 
+        var allowOwnDrafts = request.IncludeDrafts
+            && request.CurrentUserId.HasValue
+            && request.CurrentUserId.Value != Guid.Empty;
+
         var query = _db.PlatformEvents
             .AsNoTracking()
-            .Where(e => !e.IsDeleted);
+            .Where(e => !e.IsDeleted
+                && (e.Status != EventStatus.Draft
+                    || (allowOwnDrafts && e.CreatedByAdminId == request.CurrentUserId!.Value)));
 
         if (request.Status.HasValue)
         {
-            query = query.Where(e => e.Status == request.Status.Value);
+            if (request.Status.Value == EventStatus.Upcoming)
+            {
+                query = query.Where(e => e.Status == EventStatus.Upcoming && e.SubmissionStartAt > now);
+            }
+            else if (request.Status.Value == EventStatus.Open)
+            {
+                query = query.Where(e =>
+                    e.Status == EventStatus.Open
+                    || (e.Status == EventStatus.Upcoming && e.SubmissionStartAt <= now));
+            }
+            else
+            {
+                query = query.Where(e => e.Status == request.Status.Value);
+            }
         }
 
         if (request.IsFeatured.HasValue)
         {
             query = query.Where(e => e.IsFeatured == request.IsFeatured.Value);
+        }
+
+        if (request.ExcludeEnded)
+        {
+            var minDate = DateTimeOffset.MinValue;
+            query = query.Where(e =>
+                e.Status != EventStatus.Draft
+                && e.Status != EventStatus.Ended
+                && (e.ResultAnnouncementAt == minDate || e.ResultAnnouncementAt > now));
         }
 
         var keyword = !string.IsNullOrWhiteSpace(request.Title) 
@@ -94,7 +125,7 @@ public class GetEventsQueryHandler
                 Prize = e.Prize,
                 IsFeatured = e.IsFeatured,
                 MaxVote = e.MaxVote,
-                Status = e.Status,
+                Status = e.Status == EventStatus.Upcoming && e.SubmissionStartAt <= now ? EventStatus.Open : e.Status,
                 SubmissionStartAt = e.SubmissionStartAt,
                 SubmissionEndAt = e.SubmissionEndAt,
                 JudgingStartAt = e.JudgingStartAt,
@@ -107,7 +138,9 @@ public class GetEventsQueryHandler
                 SubmissionCount = e.Submissions.Count,
                 CreatedAt = e.CreatedAt,
                 UpdatedAt = e.UpdatedAt,
-                IsActive = e.Status == EventStatus.Open && e.SubmissionStartAt <= now && e.ResultAnnouncementAt >= now
+                IsActive = (e.Status == EventStatus.Open || e.Status == EventStatus.Upcoming)
+                    && e.SubmissionStartAt <= now
+                    && e.ResultAnnouncementAt >= now
             })
             .ToListAsync(cancellationToken);
 

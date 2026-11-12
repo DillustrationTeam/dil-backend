@@ -52,6 +52,20 @@ using PayOsOptions = ArtCommission.Infrastructure.ExternalServices.PayOs.PayOsOp
 var builder = WebApplication.CreateBuilder(args);
 var isGeneratingOpenApi = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name == "GetDocument.Insider";
 
+// Fallback cổng mặc định 5075 khi chạy trực tiếp binary / `dotnet run --no-launch-profile`
+// (không đọc launchSettings.json), giúp API luôn khớp với NEXT_PUBLIC_API_URL (localhost:5075)
+// thay vì rơi về cổng mặc định 5000 của Kestrel. Giữ nguyên nếu người dùng/host đã chỉ định URL.
+var hasExplicitServerUrls =
+    !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ASPNETCORE_URLS"))
+    || !string.IsNullOrWhiteSpace(builder.Configuration[WebHostDefaults.ServerUrlsKey])
+    || args.Any(a => a.StartsWith("--urls", StringComparison.OrdinalIgnoreCase))
+    || builder.Configuration.GetSection("Kestrel:Endpoints").GetChildren().Any();
+
+if (!isGeneratingOpenApi && !hasExplicitServerUrls)
+{
+    builder.WebHost.UseUrls("http://localhost:5075");
+}
+
 // ---------------------------------------------------------------------------
 // Nạp khoá Gemini từ .env ở thư mục cha của repo Code.
 //
@@ -129,6 +143,7 @@ builder.Services.AddHostedService<PaymentReconciliationWorker>();
 builder.Services.Configure<InvitationExpirationSettings>(
     builder.Configuration.GetSection(InvitationExpirationSettings.SectionName));
 builder.Services.AddHostedService<InvitationExpirationWorker>();
+builder.Services.AddHostedService<EventLifecycleWorker>();
 
 // 3d-3. Job nền tự động hoàn tất đơn giao tranh vật lý sau 48h nếu người mua không xác nhận
 builder.Services.AddHostedService<DeliveryAutoConfirmWorker>();

@@ -5,9 +5,12 @@ namespace ArtCommission.Domain.Entities.Dispute;
 public class SubmissionDispute : BaseEntity
 {
     public Guid EventId { get; set; }
-    public Guid SubmissionId { get; set; }
+    public Guid? SubmissionId { get; set; }
+    public string? SubmissionTitleSnapshot { get; set; }
+    public string? ArtworkImageUrlSnapshot { get; set; }
     public Guid RaisedById { get; set; }
-    public string Priority { get; set; } = "Medium";     // Low, Medium, High
+    public string Category { get; set; } = "Other";    // AiArt, Copyright, VoteFraud, RuleViolation, ScoreAppeal, Other
+    public string Priority { get; set; } = "Low";      // Derived server-side from Category: Low, Medium, High
     public string Reason { get; set; } = string.Empty;
     public string? EvidenceUrls { get; set; }
     public string Status { get; set; } = "Pending";      // Pending, UnderReview, Resolved, Rejected
@@ -17,5 +20,5 @@ public class SubmissionDispute : BaseEntity
 
     // Navigation properties
     public Event.PlatformEvent Event { get; set; } = null!;
-    public Event.EventSubmission Submission { get; set; } = null!;
+    public Event.EventSubmission? Submission { get; set; }
 }

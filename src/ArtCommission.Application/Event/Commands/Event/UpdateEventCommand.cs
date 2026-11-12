@@ -55,7 +55,8 @@ public class UpdateEventCommandHandler
             .Include(e => e.Criteria)
             .FirstOrDefaultAsync(e => e.Id == request.EventId && !e.IsDeleted, cancellationToken);
 
-        if (platformEvent == null)
+        if (platformEvent == null
+            || (platformEvent.Status == EventStatus.Draft && platformEvent.CreatedByAdminId != request.AdminId))
         {
             return (false, null, ["Platform event not found."]);
         }
@@ -103,6 +104,12 @@ public class UpdateEventCommandHandler
             }
         }
 
+        var resolvedStatus = request.Status == EventStatus.Draft
+            ? EventStatus.Draft
+            : (request.Status == EventStatus.Open || request.Status == EventStatus.Upcoming)
+                ? (request.SubmissionStartAt > now ? EventStatus.Upcoming : EventStatus.Open)
+                : request.Status;
+
         platformEvent.Title = request.Title.Trim();
         platformEvent.Description = request.Description.Trim();
         platformEvent.BannerUrl = string.IsNullOrWhiteSpace(request.BannerUrl) ? null : request.BannerUrl.Trim();
@@ -110,7 +117,7 @@ public class UpdateEventCommandHandler
         platformEvent.Prize = string.IsNullOrWhiteSpace(request.Prize) ? null : request.Prize.Trim();
         platformEvent.IsFeatured = request.IsFeatured;
         platformEvent.MaxVote = request.MaxVote > 0 ? request.MaxVote : 1;
-        platformEvent.Status = request.Status;
+        platformEvent.Status = resolvedStatus;
         platformEvent.SubmissionStartAt = request.SubmissionStartAt;
         platformEvent.SubmissionEndAt = request.SubmissionEndAt;
         platformEvent.JudgingStartAt = request.JudgingStartAt;

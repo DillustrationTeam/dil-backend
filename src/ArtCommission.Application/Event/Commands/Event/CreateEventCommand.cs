@@ -57,6 +57,12 @@ public class CreateEventCommandHandler
         }
 
         var now = DateTimeOffset.UtcNow;
+        var resolvedStatus = request.Status == EventStatus.Draft
+            ? EventStatus.Draft
+            : (request.Status == EventStatus.Open || request.Status == EventStatus.Upcoming)
+                ? (request.SubmissionStartAt > now ? EventStatus.Upcoming : EventStatus.Open)
+                : request.Status;
+
         var platformEvent = new PlatformEvent
         {
             Id = Guid.NewGuid(),
@@ -67,7 +73,7 @@ public class CreateEventCommandHandler
             Prize = string.IsNullOrWhiteSpace(request.Prize) ? null : request.Prize.Trim(),
             IsFeatured = request.IsFeatured,
             MaxVote = request.MaxVote > 0 ? request.MaxVote : 1,
-            Status = request.Status,
+            Status = resolvedStatus,
             SubmissionStartAt = request.SubmissionStartAt,
             SubmissionEndAt = request.SubmissionEndAt,
             JudgingStartAt = request.JudgingStartAt,
