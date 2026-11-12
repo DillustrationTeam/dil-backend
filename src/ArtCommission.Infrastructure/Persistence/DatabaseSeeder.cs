@@ -236,6 +236,49 @@ public static class DatabaseSeeder
             await dbContext.SaveChangesAsync();
         }
 
+        // Seed 8 default ArtworkCategories (idempotent)
+        var defaultCategories = new (string Name, string Slug, string Description, int DisplayOrder)[]
+        {
+            ("Anime / Manga", "anime-manga", "Minh họa nhân vật, phong cách anime và manga Nhật Bản", 1),
+            ("Concept Art", "concept-art", "Thiết kế ý tưởng nhân vật, bối cảnh, vũ khí và thế giới game/phim", 2),
+            ("Chibi / Cute", "chibi-cute", "Tranh vẽ nhân vật tỷ lệ nhỏ dễ thương, mascot và sticker", 3),
+            ("Semi-Realistic", "semi-realistic", "Phong cách bán tả thực kết hợp mỹ thuật số hiện đại", 4),
+            ("Realistic / Portrait", "realistic-portrait", "Tranh chân dung và minh họa tả thực chi tiết cao", 5),
+            ("Mecha / Sci-Fi", "mecha-sci-fi", "Robot, cơ khí, phi thuyền và bối cảnh khoa học viễn tưởng", 6),
+            ("Landscape / Background", "landscape-background", "Phong cảnh thiên nhiên, kiến trúc và phông nền môi trường", 7),
+            ("Pixel Art", "pixel-art", "Nghệ thuật điểm ảnh retro, sprite game và hoạt họa pixel", 8)
+        };
+
+        var existingSlugs = await dbContext.ArtworkCategories
+            .Select(c => c.Slug)
+            .ToListAsync();
+
+        var categoriesToAdd = new List<ArtworkCategory>();
+        foreach (var (name, slug, description, displayOrder) in defaultCategories)
+        {
+            if (!existingSlugs.Contains(slug, StringComparer.OrdinalIgnoreCase))
+            {
+                categoriesToAdd.Add(new ArtworkCategory
+                {
+                    Id = Guid.NewGuid(),
+                    Name = name,
+                    Slug = slug,
+                    Description = description,
+                    DisplayOrder = displayOrder,
+                    IsActive = true,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                    IsDeleted = false
+                });
+            }
+        }
+
+        if (categoriesToAdd.Count > 0)
+        {
+            dbContext.ArtworkCategories.AddRange(categoriesToAdd);
+            await dbContext.SaveChangesAsync();
+        }
+
         // Seed 3 artworks for Content & AI Moderation Queue (SCR-20 / UC28)
         if (!await dbContext.Artworks.AnyAsync())
         {
@@ -265,6 +308,10 @@ public static class DatabaseSeeder
                 }
                 await dbContext.SaveChangesAsync();
 
+                var catAnime = await dbContext.ArtworkCategories.FirstOrDefaultAsync(c => c.Slug == "anime-manga");
+                var catSciFi = await dbContext.ArtworkCategories.FirstOrDefaultAsync(c => c.Slug == "mecha-sci-fi");
+                var catConcept = await dbContext.ArtworkCategories.FirstOrDefaultAsync(c => c.Slug == "concept-art");
+
                 var artwork1 = new Artwork
                 {
                     Id = Guid.NewGuid(),
@@ -273,7 +320,8 @@ public static class DatabaseSeeder
                     Description = "Cybernetic neon illustration rendered in high resolution anime aesthetic. Inspected for community guidelines compliance and AI generation check.",
                     ImageUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1280&auto=format&fit=crop",
                     ThumbnailUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=400&auto=format&fit=crop",
-                    Style = "Cyberpunk Anime",
+                    CategoryId = catAnime?.Id,
+                    Style = catAnime?.Name ?? "Cyberpunk Anime",
                     LikeCount = 342,
                     ViewCount = 1280,
                     SafeScore = 0.984m,
@@ -299,7 +347,8 @@ public static class DatabaseSeeder
                     Description = "Futuristic synthetic humanoid awakening in neon chamber.",
                     ImageUrl = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1280&auto=format&fit=crop",
                     ThumbnailUrl = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=400&auto=format&fit=crop",
-                    Style = "Surrealist Concept",
+                    CategoryId = catSciFi?.Id,
+                    Style = catSciFi?.Name ?? "Surrealist Concept",
                     LikeCount = 195,
                     ViewCount = 890,
                     SafeScore = 0.912m,
@@ -324,7 +373,8 @@ public static class DatabaseSeeder
                     Description = "Armored warrior standing before a blood moon eclipse.",
                     ImageUrl = "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?q=80&w=1280&auto=format&fit=crop",
                     ThumbnailUrl = "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?q=80&w=400&auto=format&fit=crop",
-                    Style = "Dark Fantasy",
+                    CategoryId = catConcept?.Id,
+                    Style = catConcept?.Name ?? "Dark Fantasy",
                     LikeCount = 512,
                     ViewCount = 2140,
                     SafeScore = 0.765m,

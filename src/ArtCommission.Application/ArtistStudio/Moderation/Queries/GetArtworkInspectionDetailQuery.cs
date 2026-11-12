@@ -26,6 +26,7 @@ public class GetArtworkInspectionDetailQueryHandler : IRequestHandler<GetArtwork
     {
         var artwork = await _db.Artworks
             .AsNoTracking()
+            .Include(x => x.Category)
             .Include(x => x.CreatorProfile)
                 .ThenInclude(cp => cp!.User)
             .Include(x => x.ArtworkTags)
@@ -61,6 +62,8 @@ public class GetArtworkInspectionDetailQueryHandler : IRequestHandler<GetArtwork
             ThumbnailUrl = artwork.ThumbnailUrl,
             WatermarkedUrl = artwork.WatermarkedUrl,
             Style = artwork.Style,
+            CategoryId = artwork.CategoryId,
+            CategoryName = artwork.Category?.Name ?? artwork.Style,
             LikeCount = artwork.LikeCount,
             Resolution = artwork.Resolution,
             FileSizeBytes = artwork.FileSizeBytes,

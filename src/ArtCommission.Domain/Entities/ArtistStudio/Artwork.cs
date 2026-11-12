@@ -48,6 +48,8 @@ public class Artwork : BaseEntity
     public string? ModerationNote { get; set; }
     public DateTimeOffset? ModeratedAt { get; set; }
 
+    public Guid? CategoryId { get; set; }
+    public ArtworkCategory? Category { get; set; }
     public CreatorProfile? CreatorProfile { get; set; }
     public ICollection<ArtworkTag> ArtworkTags { get; set; } = new List<ArtworkTag>();
 }

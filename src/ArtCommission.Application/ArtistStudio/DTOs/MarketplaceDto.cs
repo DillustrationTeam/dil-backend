@@ -1,6 +1,9 @@
 namespace ArtCommission.Application.ArtistStudio.DTOs;
 
-public record ArtworkSearchRequest(string? Query, string? Style, decimal? MinPrice, decimal? MaxPrice, decimal? MinRating, bool? HasAvailableSlots, string? LicenseType, int Take = 30);
+public record ArtworkSearchRequest(string? Query, string? Style, decimal? MinPrice, decimal? MaxPrice, decimal? MinRating, bool? HasAvailableSlots, string? LicenseType, int Take = 30, Guid? CategoryId = null, string? Category = null, string? Tag = null);
+public record SearchSuggestionCategoryDto(Guid Id, string Name, string Slug);
+public record SearchSuggestionTagDto(Guid Id, string Name, int ArtworkCount);
+public record SearchSuggestionsDto(IReadOnlyList<SearchSuggestionCategoryDto> Categories, IReadOnlyList<SearchSuggestionTagDto> Tags);
 public record VisualSearchRequest(string? ReferenceImageUrl, IReadOnlyList<string>? Tags, string? Style, int Take = 12);
 public record BannerDto(string Id, string Title, string Subtitle, string ImageUrl, string? CtaLabel, string? CtaUrl);
 public record MarketplaceHomeFeedDto(IReadOnlyList<BannerDto> FeaturedBanners, IReadOnlyList<ArtworkDto> RecommendedArtworks, IReadOnlyList<ArtworkDto> FollowingArtworks);
