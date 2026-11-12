@@ -116,7 +116,7 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
         }
 
         var direct = await _db.CreatorReviews.AsNoTracking().Where(x => x.CreatorProfileId == q.CreatorId && !x.IsDeleted)
-            .Select(x => new { x.Id, x.ReviewerUserId, x.Rating, x.Comment, x.CreatedAt })
+            .Select(x => new { x.Id, x.ReviewerUserId, x.Rating, x.Comment, x.CreatedAt, x.Source })
             .ToListAsync(ct);
 
         var directDtos = direct.Select(x => new CreatorReviewDto(
@@ -127,8 +127,11 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
             x.CreatedAt,
             null,
             null,
-            defaultPackageName ?? "Gói Commission",
-            users.GetValueOrDefault(x.ReviewerUserId, "Khách hàng")
+            string.Equals(x.Source, "auction", StringComparison.OrdinalIgnoreCase)
+                ? null
+                : defaultPackageName ?? "Gói Commission",
+            users.GetValueOrDefault(x.ReviewerUserId, "Khách hàng"),
+            x.Source
         ));
 
         var commissions = await _db.Reviews.AsNoTracking()
@@ -166,7 +169,8 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
                 x.ReviewerReply,
                 x.CommissionId,
                 effectivePackageName,
-                users.GetValueOrDefault(x.ReviewerId, "Khách hàng")
+                users.GetValueOrDefault(x.ReviewerId, "Khách hàng"),
+                "commission"
             );
         });
 
@@ -230,15 +234,17 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
         }
 
         var tags = await tagQuery
-            .Select(t => new SearchSuggestionTagDto(
+            .Select(t => new
+            {
                 t.Id,
                 t.Name,
-                t.ArtworkTags.Count(at => at.Artwork != null && !at.Artwork.IsDeleted && at.Artwork.ModerationStatus == "Approved" && !at.Artwork.CreatorProfile!.IsDeleted)
-            ))
+                ArtworkCount = t.ArtworkTags.Count(at => at.Artwork != null && !at.Artwork.IsDeleted && at.Artwork.ModerationStatus == "Approved" && !at.Artwork.CreatorProfile!.IsDeleted)
+            })
             .Where(t => t.ArtworkCount > 0)
             .OrderByDescending(t => t.ArtworkCount)
             .ThenBy(t => t.Name)
             .Take(10)
+            .Select(t => new SearchSuggestionTagDto(t.Id, t.Name, t.ArtworkCount))
             .ToListAsync(ct);
 
         return new SearchSuggestionsDto(categories, tags);
