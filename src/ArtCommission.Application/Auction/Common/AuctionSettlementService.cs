@@ -76,6 +76,7 @@ public class AuctionSettlementService : IAuctionSettlementService
     private readonly IApplicationDbContext _db;
     private readonly IWalletService _walletService;
     private readonly IAuctionMoneyService _moneyService;
+    private readonly IAuctionPenaltyService _penaltyService;
     private readonly INotificationPublisher _notifications;
     private readonly ILogger<AuctionSettlementService> _logger;
 
@@ -83,14 +84,44 @@ public class AuctionSettlementService : IAuctionSettlementService
         IApplicationDbContext db,
         IWalletService walletService,
         IAuctionMoneyService moneyService,
+        IAuctionPenaltyService penaltyService,
         INotificationPublisher notifications,
         ILogger<AuctionSettlementService> logger)
     {
         _db = db;
         _walletService = walletService;
         _moneyService = moneyService;
+        _penaltyService = penaltyService;
         _notifications = notifications;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Platform fee for this session: base percentage from PlatformConfig plus the surcharge
+    /// the seller is serving after confirmed delivery disputes. The result is snapshotted on
+    /// the auction so later config or penalty changes never rewrite settled money.
+    /// </summary>
+    private async Task<(decimal BasePercent, decimal SurchargePercent, decimal EffectivePercent)> ResolveFeeAsync(
+        Domain.Entities.Auction.Auction auction,
+        CancellationToken cancellationToken)
+    {
+        var basePercent = await _walletService.GetDecimalConfigAsync(
+            PlatformConfigKeys.PlatformFeePercent, DefaultPlatformFeePercent, cancellationToken);
+
+        var surcharge = await _penaltyService.GetActiveSurchargeAsync(auction.SellerId, cancellationToken);
+        var effective = basePercent + surcharge;
+
+        auction.FeeSurchargePercent = surcharge > 0m ? surcharge : null;
+        auction.EffectiveFeePercent = effective;
+
+        if (surcharge > 0m)
+        {
+            _logger.LogInformation(
+                "Seller {SellerId} pays a penalty surcharge of {Surcharge}% on auction {AuctionId} (effective fee {Effective}%).",
+                auction.SellerId, surcharge, auction.Id, effective);
+        }
+
+        return (basePercent, surcharge, effective);
     }
 
     public async Task<AuctionFinalizeResult> SettleWithHeldDepositAsync(
@@ -135,11 +166,13 @@ public class AuctionSettlementService : IAuctionSettlementService
             autoBid.UpdatedAt = now;
         }
 
-        var feePercent = await _walletService.GetDecimalConfigAsync(
-            PlatformConfigKeys.PlatformFeePercent, DefaultPlatformFeePercent, cancellationToken);
+        var (baseFeePercent, surchargePercent, feePercent) = await ResolveFeeAsync(auction, cancellationToken);
 
         var feeAmount = Math.Round(finalPrice * feePercent / 100m, 2, MidpointRounding.AwayFromZero);
         var netToSeller = finalPrice - feeAmount;
+        var feeNote = surchargePercent > 0m
+            ? $"Phí nền tảng {baseFeePercent}% + phụ phí {surchargePercent}% trên phiên {auction.Id}"
+            : $"Phí nền tảng {baseFeePercent}% trên phiên {auction.Id}";
 
         var ownershipId = await AssignOwnershipAsync(auction, winningBid.BidderId, now, cancellationToken);
 
@@ -189,7 +222,7 @@ public class AuctionSettlementService : IAuctionSettlementService
                     feeAmount,
                     AuctionRefTypes.Settlement,
                     auction.Id,
-                    $"Phí nền tảng {feePercent}% trên phiên {auction.Id}",
+                    feeNote,
                     cancellationToken);
             }
 
@@ -208,6 +241,9 @@ public class AuctionSettlementService : IAuctionSettlementService
         }
 
         await NotifyWinnerAsync(auction, winningBid.BidderId, finalPrice, cancellationToken);
+
+        // This session is sold: count it against the seller's active surcharge window.
+        await _penaltyService.ConsumeSessionAsync(auction.SellerId, cancellationToken);
 
         return new AuctionFinalizeResult(
             auction.Id,
@@ -272,11 +308,13 @@ public class AuctionSettlementService : IAuctionSettlementService
             $"Thanh toán mua ngay phiên {auction.Id}",
             cancellationToken);
 
-        var feePercent = await _walletService.GetDecimalConfigAsync(
-            PlatformConfigKeys.PlatformFeePercent, DefaultPlatformFeePercent, cancellationToken);
+        var (baseFeePercent, surchargePercent, feePercent) = await ResolveFeeAsync(auction, cancellationToken);
 
         var feeAmount = Math.Round(price * feePercent / 100m, 2, MidpointRounding.AwayFromZero);
         var netToSeller = price - feeAmount;
+        var feeNote = surchargePercent > 0m
+            ? $"Phí nền tảng {baseFeePercent}% + phụ phí {surchargePercent}% trên phiên {auction.Id}"
+            : $"Phí nền tảng {baseFeePercent}% trên phiên {auction.Id}";
 
         if (!auction.HasPhysicalCopy)
         {
@@ -301,7 +339,7 @@ public class AuctionSettlementService : IAuctionSettlementService
                     feeAmount,
                     AuctionRefTypes.Settlement,
                     auction.Id,
-                    $"Phí nền tảng {feePercent}% trên phiên {auction.Id}",
+                    feeNote,
                     cancellationToken);
             }
 
@@ -380,6 +418,9 @@ public class AuctionSettlementService : IAuctionSettlementService
             "Mua ngay phiên {AuctionId}: buyer={BuyerId}, price={Price}, fee={Fee}.",
             auction.Id, buyerId, price, feeAmount);
         await NotifyWinnerAsync(auction, buyerId, price, cancellationToken);
+
+        // Buy-now is a sold session as well: it counts against the surcharge window.
+        await _penaltyService.ConsumeSessionAsync(auction.SellerId, cancellationToken);
 
         return (true, new AuctionFinalizeResult(
             auction.Id, buyerId, price, feeAmount, netToSeller, now, ownershipId, escrow.Id), []);
@@ -525,14 +566,14 @@ public class AuctionSettlementService : IAuctionSettlementService
             return (true, []);
         }
 
-        // KÃ½ quá»¹ Ä‘ang bá»‹ Ä‘Ã³ng bÄƒng do khiáº¿u náº¡i bÆ°u pháº©m: tuyá»‡t Ä‘á»‘i khÃ´ng giáº£i ngÃ¢n.
-        // TrÆ°á»›c Ä‘Ã¢y hÃ m nÃ y chá»‰ cháº·n tráº¡ng thÃ¡i Released nÃªn "confirm" sau khiáº¿u náº¡i váº«n
-        // ghi Ä‘Ã¨ Disputed -> Released vÃ  ngÆ°á»i mua máº¥t tiá»n dÃ¹ tranh há»ng.
-        // allowDisputed = true chá»‰ dÃ¹ng tá»« luá»“ng Admin phÃ¢n xá»­ khiáº¿u náº¡i (bÃ¡c khiáº¿u náº¡i).
+        // Ký quỹ đang bị đóng băng do khiếu nại bưu phẩm: tuyệt đối không giải ngân.
+        // Trước đây hàm này chỉ chặn trạng thái Released nên "confirm" sau khiếu nại vẫn
+        // ghi đè Disputed -> Released và người mua mất tiền dù tranh hỏng.
+        // allowDisputed = true chỉ dùng từ luồng Admin phân xử khiếu nại (bác khiếu nại).
         if (escrow.Status == EscrowStatus.Disputed && !allowDisputed)
         {
             return (false,
-                ["KÃ½ quá»¹ Ä‘ang bá»‹ Ä‘Ã³ng bÄƒng do khiáº¿u náº¡i. Ban quáº£n trá»‹ pháº£i phÃ¢n xá»­ trÆ°á»›c khi giáº£i ngÃ¢n."]);
+                ["Ký quỹ đang bị đóng băng do khiếu nại. Ban quản trị phải phân xử trước khi giải ngân."]);
         }
 
         var feePercent = await _walletService.GetDecimalConfigAsync(

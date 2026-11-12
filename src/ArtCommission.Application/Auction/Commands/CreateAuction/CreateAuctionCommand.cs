@@ -78,17 +78,20 @@ public class CreateAuctionCommandHandler
     private readonly IApplicationDbContext _db;
     private readonly IAuctionRealtimePublisher _realtime;
     private readonly IAuctionLifecycleNotifier _lifecycleNotifier;
+    private readonly IAuctionPenaltyService _penaltyService;
     private readonly ILogger<CreateAuctionCommandHandler> _logger;
 
     public CreateAuctionCommandHandler(
         IApplicationDbContext db,
         IAuctionRealtimePublisher realtime,
         IAuctionLifecycleNotifier lifecycleNotifier,
+        IAuctionPenaltyService penaltyService,
         ILogger<CreateAuctionCommandHandler> logger)
     {
         _db = db;
         _realtime = realtime;
         _lifecycleNotifier = lifecycleNotifier;
+        _penaltyService = penaltyService;
         _logger = logger;
     }
 
@@ -100,6 +103,16 @@ public class CreateAuctionCommandHandler
         if (!validation.IsValid)
         {
             return (false, null, validation.Errors.Select(e => e.ErrorMessage).ToArray(), false);
+        }
+
+        // Confirmed delivery disputes suspend the right to open new sessions (step 2 and 4 for
+        // a few days, step 5 permanently). Running sessions are untouched.
+        var (sellBlocked, sellBlockReason) = await _penaltyService.GetSellBlockAsync(
+            request.UserId, cancellationToken);
+
+        if (sellBlocked)
+        {
+            return (false, null, [sellBlockReason ?? "Tài khoản đang bị tạm dừng tạo phiên đấu giá."], false);
         }
 
         Domain.Entities.ArtistStudio.Artwork artwork;
@@ -146,9 +159,9 @@ public class CreateAuctionCommandHandler
 
                 // Tính cả phiên Ended đang chờ settlement; tranh chỉ được niêm yết lại
                 // sau khi settlement hoàn tất hoặc phiên bị hủy.
-                // PhiÃªn Ended chá»‰ cháº·n khi cÃ²n chá» settlement (cÃ³ bid / cÃ³ ngÆ°á»i tháº¯ng).
-                // PhiÃªn Ended mÃ  KHÃ”NG ai Ä‘áº·t giÃ¡ thÃ¬ tranh chÆ°a bÃ¡n Ä‘Æ°á»£c â€” pháº£i cho niÃªm yáº¿t láº¡i,
-                // náº¿u khÃ´ng tranh bá»‹ khoÃ¡ vÄ©nh viá»…n.
+                // Phiên Ended chỉ chặn khi còn chờ settlement (có bid / có người thắng).
+                // Phiên Ended mà KHÔNG ai đặt giá thì tranh chưa bán được â€” phải cho niêm yết lại,
+                // nếu không tranh bị khoá vĩnh viễn.
                 var hasLiveAuction = await _db.Auctions.AnyAsync(
                     a => a.ArtworkId == request.ArtworkId
                          && !a.IsDeleted

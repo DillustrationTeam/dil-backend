@@ -178,6 +178,16 @@ public class GetAuctionByIdQueryHandler
                             && !hasRatedSeller
                             && request.CurrentUserId == auction.WinnerId;
 
+        // Mức phạt hiện tại của người bán: lấy bậc cao nhất trong các án phạt chưa bị thu hồi.
+        // Thang phạt cộng dồn tới mức 5 nên đây là mức người bán đang đứng, không phải mức của phiên này.
+        var sellerPenaltyLevel = await _db.AuctionPenalties
+            .AsNoTracking()
+            .Where(p => p.SellerId == auction.SellerId
+                        && !p.IsDeleted
+                        && p.Status != PenaltyStatus.Revoked)
+            .Select(p => (int?)p.StrikeLevel)
+            .MaxAsync(cancellationToken) ?? 0;
+
         var detail = new AuctionDetailDto(
             AuctionId: auction.Id,
             Artwork: AuctionMapper.ToArtworkDto(auction.Artwork) is { } artwork
@@ -205,7 +215,8 @@ public class GetAuctionByIdQueryHandler
             PhysicalChoiceDeadline: auction.PhysicalChoiceDeadline,
             Delivery: AuctionMapper.ToDeliveryDto(delivery, canRateSeller, hasRatedSeller),
             Receipts: AuctionMapper.BuildReceipts(auction, escrow, delivery),
-            FinalPrice: auction.FinalPrice);
+            FinalPrice: auction.FinalPrice,
+            SellerPenaltyLevel: sellerPenaltyLevel);
         return (true, detail, recentBids, []);
     }
 }

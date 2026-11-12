@@ -89,6 +89,15 @@ public class BuyNowCommandHandler
             return (false, null, ["Người bán không thể tự mua ngay phiên của mình."]);
         }
 
+        // Buy-now is a ceiling, never a discount: once the leading bid already reached it, the
+        // session must not be bought for less than that bid. Bids at the ceiling settle on the
+        // spot, so this only protects data created before that rule existed.
+        if (auction.CurrentPrice >= auction.BuyNowPrice.Value)
+        {
+            return (false, null,
+                ["Giá đang dẫn đầu đã chạm giá mua ngay. Phiên sẽ chốt theo lượt đặt giá cao nhất."]);
+        }
+
         var (success, result, errors) = await _settlementService.SettleBuyNowAsync(
             auction,
             request.UserId,

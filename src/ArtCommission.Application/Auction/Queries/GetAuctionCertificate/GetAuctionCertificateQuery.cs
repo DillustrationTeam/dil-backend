@@ -63,15 +63,15 @@ public class GetAuctionCertificateQueryHandler
             return (false, null, 404, ["Không tìm thấy thông tin tác phẩm."]);
         }
 
-        // Chá»©ng nháº­n chá»©a danh tÃ­nh ngÆ°á»i mua (há» tÃªn, userId), giÃ¡ chá»‘t vÃ  chá»¯ kÃ½ sá»‘.
-        // Chá»‰ ngÆ°á»i tháº¯ng, ngÆ°á»i bÃ¡n hoáº·c Ban quáº£n trá»‹ Ä‘Æ°á»£c Ä‘á»c â€” khÃ´ng Ä‘á»ƒ lá»™ cho ngÆ°á»i láº¡.
+        // Chứng nhận chứa danh tính người mua (họ tên, userId), giá chốt và chữ ký số.
+        // Chỉ người thắng, người bán hoặc Ban quản trị được đọc â€” không để lộ cho người lạ.
         var isParticipant = request.CurrentUserId.HasValue
                             && (request.CurrentUserId.Value == auction.WinnerId
                                 || request.CurrentUserId.Value == auction.SellerId);
         if (!request.IsAdmin && !isParticipant)
         {
             return (false, null, 403,
-                ["Chá»‰ ngÆ°á»i tháº¯ng, ngÆ°á»i bÃ¡n hoáº·c Ban quáº£n trá»‹ má»›i xem Ä‘Æ°á»£c chá»©ng nháº­n nÃ y."]);
+                ["Chỉ người thắng, người bán hoặc Ban quản trị mới xem được chứng nhận này."]);
         }
 
         var ownership = await _db.ArtworkOwnerships

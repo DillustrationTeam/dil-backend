@@ -76,7 +76,7 @@ public sealed record AuctionListItemDto(
     int WatchCount,
     bool HasPhysicalCopy = false,
     string? PhysicalDescription = null,
-    /// <summary>GiÃ¡ chá»‘t cuá»‘i cÃ¹ng â€” null khi phiÃªn chÆ°a settle.</summary>
+    /// <summary>Giá chốt cuối cùng â€” null khi phiên chưa settle.</summary>
     decimal? FinalPrice = null
 );
 
@@ -108,8 +108,14 @@ public sealed record AuctionDetailDto(
     DateTimeOffset? PhysicalChoiceDeadline = null,
     AuctionDeliveryDto? Delivery = null,
     IReadOnlyList<AuctionReceiptDto>? Receipts = null,
-    /// <summary>GiÃ¡ chá»‘t cuá»‘i cÃ¹ng â€” null khi phiÃªn chÆ°a settle.</summary>
-    decimal? FinalPrice = null
+    /// <summary>Giá chốt cuối cùng â€” null khi phiên chưa settle.</summary>
+    decimal? FinalPrice = null,
+    /// <summary>
+    /// Current step of the seller on the delivery-dispute penalty ladder (0 = no penalty).
+    /// Highest step among penalties that were not revoked, so the ladder keeps accumulating
+    /// until step 5. The seller form shows the ladder and marks this step.
+    /// </summary>
+    int SellerPenaltyLevel = 0
 );
 
 /// <summary>Thông tin giao nhận tranh vật lý của phiên.</summary>
@@ -134,8 +140,8 @@ public sealed record AuctionDeliveryDto(
     string? DisputeReason,
     string? DisputeEvidenceUrl,
     /// <summary>
-    /// Má»‘c há»‡ thá»‘ng tá»± Ä‘á»™ng xÃ¡c nháº­n Ä‘Ã£ nháº­n hÃ ng (shippedAt + 48h). Null khi chÆ°a gá»­i hÃ ng
-    /// hoáº·c Ä‘Æ¡n Ä‘Ã£ káº¿t thÃºc. NgÆ°á»i mua khÃ´ng báº¥m xÃ¡c nháº­n thÃ¬ má»‘c nÃ y sáº½ tá»± hoÃ n táº¥t Ä‘Æ¡n.
+    /// Mốc hệ thống tự động xác nhận đã nhận hàng (shippedAt + 48h). Null khi chưa gửi hàng
+    /// hoặc đơn đã kết thúc. Người mua không bấm xác nhận thì mốc này sẽ tự hoàn tất đơn.
     /// </summary>
     DateTimeOffset? AutoConfirmAt = null,
     /// <summary>Khiếu nại được gửi sau khi ký quỹ đã giải ngân (không còn quỹ để đóng băng/hoàn).</summary>

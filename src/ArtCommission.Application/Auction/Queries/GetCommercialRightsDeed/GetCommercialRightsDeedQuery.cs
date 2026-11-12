@@ -50,15 +50,15 @@ public sealed class GetCommercialRightsDeedQueryHandler
             return (false, null, 400, ["Phiên đấu giá chưa được chốt hoặc chưa có người thắng hợp lệ."]);
         }
 
-        // VÄƒn báº£n bÃ n giao quyá»n thÆ°Æ¡ng máº¡i chá»©a tÃªn, giÃ¡ chá»‘t vÃ  chá»¯ kÃ½ sá»‘ cá»§a hai bÃªn.
-        // Chá»‰ ngÆ°á»i trong cuá»™c (ngÆ°á»i tháº¯ng / ngÆ°á»i bÃ¡n) hoáº·c Admin Ä‘Æ°á»£c Ä‘á»c.
+        // Văn bản bàn giao quyền thương mại chứa tên, giá chốt và chữ ký số của hai bên.
+        // Chỉ người trong cuộc (người thắng / người bán) hoặc Admin được đọc.
         var isParticipant = request.CurrentUserId.HasValue
                             && (request.CurrentUserId.Value == auction.WinnerId
                                 || request.CurrentUserId.Value == auction.SellerId);
         if (!request.IsAdmin && !isParticipant)
         {
             return (false, null, 403,
-                ["Chá»‰ ngÆ°á»i tháº¯ng, ngÆ°á»i bÃ¡n hoáº·c Ban quáº£n trá»‹ má»›i xem Ä‘Æ°á»£c vÄƒn báº£n nÃ y."]);
+                ["Chỉ người thắng, người bán hoặc Ban quản trị mới xem được văn bản này."]);
         }
 
         var artwork = await _db.Artworks

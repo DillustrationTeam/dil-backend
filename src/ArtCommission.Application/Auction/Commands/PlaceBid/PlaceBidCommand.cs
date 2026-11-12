@@ -2,6 +2,7 @@ using ArtCommission.Application.Auction.Common;
 using ArtCommission.Application.Auction.DTOs;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.Notifications.Common;
+using ArtCommission.Application.Payment.Common;
 using ArtCommission.Domain.Entities.Auction;
 using ArtCommission.Domain.Enums;
 using FluentValidation;
@@ -50,6 +51,8 @@ public sealed class PlaceBidCommandHandler
     private readonly INotificationPublisher _notifications;
     private readonly IAuctionRealtimePublisher _realtime;
     private readonly IAuctionLifecycleNotifier _lifecycleNotifier;
+    private readonly IAuctionSettlementService _settlementService;
+    private readonly IWalletService _walletService;
     private readonly ILogger<PlaceBidCommandHandler> _logger;
 
     public PlaceBidCommandHandler(
@@ -58,6 +61,8 @@ public sealed class PlaceBidCommandHandler
         INotificationPublisher notifications,
         IAuctionRealtimePublisher realtime,
         IAuctionLifecycleNotifier lifecycleNotifier,
+        IAuctionSettlementService settlementService,
+        IWalletService walletService,
         ILogger<PlaceBidCommandHandler> logger)
     {
         _db = db;
@@ -65,6 +70,8 @@ public sealed class PlaceBidCommandHandler
         _notifications = notifications;
         _realtime = realtime;
         _lifecycleNotifier = lifecycleNotifier;
+        _settlementService = settlementService;
+        _walletService = walletService;
         _logger = logger;
     }
 
@@ -76,6 +83,55 @@ public sealed class PlaceBidCommandHandler
         if (!validation.IsValid)
         {
             return (false, null, validation.Errors.Select(e => e.ErrorMessage).ToArray(), null);
+        }
+
+        // Buy-now is a hard ceiling, and it is handled BEFORE the bid transaction opens:
+        // touching the ceiling is not a bid, it is an immediate purchase, and the settlement
+        // must commit on its own. Keeping it inside the bid transaction rolled the purchase back.
+        var ceilingProbe = await _db.Auctions.FirstOrDefaultAsync(
+            a => a.Id == request.AuctionId && !a.IsDeleted, cancellationToken);
+
+        if (ceilingProbe is { Status: AuctionStatus.Active, BuyNowPrice: { } ceilingPrice }
+            && ceilingPrice > 0m
+            && ceilingProbe.SellerId != request.UserId)
+        {
+            var ceilingRequest = request.IsAuto ? request.MaxAutoBid!.Value : request.Amount;
+
+            if (ceilingRequest >= ceilingPrice)
+            {
+                var (settled, settleResult, settleErrors) = await _settlementService.SettleBuyNowAsync(
+                    ceilingProbe, request.UserId, ceilingPrice, cancellationToken);
+
+                if (!settled || settleResult is null)
+                {
+                    return (false, null, settleErrors, null);
+                }
+
+                _logger.LogInformation(
+                    "Bid reached the buy-now ceiling of auction {AuctionId}: settled at {Price} for bidder {BidderId}.",
+                    ceilingProbe.Id, ceilingPrice, request.UserId);
+
+                // The purchase already moved money out of the buyer wallet: report the real
+                // balance, an empty snapshot made the UI show a zero balance after a successful buy.
+                var buyerWallet = await _walletService.FindWalletAsync(request.UserId, cancellationToken);
+
+                return (true,
+                    new PlaceBidResultDto(
+                        new BidDto(
+                            BidId: Guid.Empty,
+                            AuctionId: settleResult.AuctionId,
+                            BidderId: request.UserId,
+                            BidderFullName: null,
+                            Bidder: null,
+                            Amount: ceilingPrice,
+                            HoldAmount: 0m,
+                            BidStatus: BidStatus.Leading.ToString(),
+                            HoldStatus: HoldStatus.Released.ToString(),
+                            PlacedAt: settleResult.SettledAt),
+                        new WalletSnapshotDto(buyerWallet?.Balance ?? 0m, buyerWallet?.LockedBalance ?? 0m)),
+                    [],
+                    null);
+            }
         }
 
         try

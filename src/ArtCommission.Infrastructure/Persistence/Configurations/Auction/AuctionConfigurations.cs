@@ -43,6 +43,8 @@ public class AuctionConfiguration : IEntityTypeConfiguration<AuctionEntity>
         builder.Property(a => a.BuyNowPrice).HasPrecision(18, 2);
         builder.Property(a => a.CurrentPrice).HasPrecision(18, 2);
         builder.Property(a => a.FinalPrice).HasPrecision(18, 2);
+        builder.Property(a => a.FeeSurchargePercent).HasPrecision(5, 2);
+        builder.Property(a => a.EffectiveFeePercent).HasPrecision(5, 2);
 
         builder.Property(a => a.BidCount).HasDefaultValue(0);
         builder.Property(a => a.RowVersion).IsRowVersion();

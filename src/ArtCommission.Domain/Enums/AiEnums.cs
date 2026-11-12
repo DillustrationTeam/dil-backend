@@ -13,7 +13,13 @@ public enum AiContextType
     Commission,
 
     /// <summary>Gắn một tranh: tiêu đề, phong cách, trạng thái kiểm duyệt.</summary>
-    Artwork
+    Artwork,
+
+    /// <summary>
+    /// Gắn một phiên đấu giá: trạng thái phiên, giá hiện tại, lượt đặt giá của chính
+    /// người hỏi, đơn giao tranh vật lý và mức phạt người bán đang chịu.
+    /// </summary>
+    Auction
 }
 
 /// <summary>Vai trò của một tin nhắn trong hội thoại AI.</summary>

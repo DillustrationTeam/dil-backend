@@ -411,12 +411,12 @@ public class ConfirmPhysicalDeliveryCommandHandler
             return (true, AuctionMapper.ToDeliveryDto(delivery), []); // Idempotent
         }
 
-        // NgÆ°á»i mua cÃ³ thá»ƒ Ä‘Ã£ nháº­n Ä‘Æ°á»£c tranh dÃ¹ ngÆ°á»i bÃ¡n chÆ°a ká»‹p cáº­p nháº­t váº­n Ä‘Æ¡n,
-        // nÃªn cho xÃ¡c nháº­n tá»« cáº£ AwaitingShipment. Chá»‰ cháº·n khi Ä‘Æ¡n Ä‘Ã£ chá»‘t/huá»·.
+        // Người mua có thể đã nhận được tranh dù người bán chưa kịp cập nhật vận đơn,
+        // nên cho xác nhận từ cả AwaitingShipment. Chỉ chặn khi đơn đã chốt/huỷ.
         if (delivery.Status is not (DeliveryStatus.AwaitingShipment or DeliveryStatus.InTransit))
         {
             return (false, null,
-                ["ÄÆ¡n giao nháº­n Ä‘Ã£ á»Ÿ tráº¡ng thÃ¡i káº¿t thÃºc, khÃ´ng thá»ƒ xÃ¡c nháº­n nháº­n hÃ ng."]);
+                ["Đơn giao nhận đã ở trạng thái kết thúc, không thể xác nhận nhận hàng."]);
         }
 
         var now = DateTimeOffset.UtcNow;
