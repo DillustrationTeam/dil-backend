@@ -1,4 +1,4 @@
-﻿using ArtCommission.Application.Common.Interfaces;
+using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Commission.DTOs;
 using ArtCommission.Application.Commission.Interfaces;
@@ -322,9 +322,23 @@ public class CommissionService : ICommissionService
             {
                 if (request.NegotiatePrice.Value <= 0) throw new ArgumentException("Negotiated price must be positive.");
                 var milestones = await _dbContext.Milestones.Where(m => m.CommissionId == id).OrderBy(m => m.Sequence).ToListAsync(cancellationToken);
-                if (milestones.Count == 0 || milestones[^1].Price + request.NegotiatePrice.Value - commission.TotalPrice <= 0)
+                if (milestones.Count == 0)
                     throw new ArgumentException("Negotiated price cannot produce an invalid milestone.");
-                milestones[^1].Price += request.NegotiatePrice.Value - commission.TotalPrice;
+                var oldMilestoneSum = milestones.Sum(m => m.Price);
+                var newMilestoneSum = oldMilestoneSum + (request.NegotiatePrice.Value - commission.TotalPrice);
+                if (oldMilestoneSum <= 0 || newMilestoneSum < milestones.Count)
+                    throw new ArgumentException("Negotiated price cannot produce an invalid milestone.");
+                var allocated = 0m;
+                for (var i = 0; i < milestones.Count - 1; i++)
+                {
+                    var scaled = Math.Floor(milestones[i].Price * newMilestoneSum / oldMilestoneSum);
+                    if (scaled < 1m) scaled = 1m;
+                    milestones[i].Price = scaled;
+                    allocated += scaled;
+                }
+                milestones[^1].Price = newMilestoneSum - allocated;
+                if (milestones[^1].Price <= 0)
+                    throw new ArgumentException("Negotiated price cannot produce an invalid milestone.");
                 commission.TotalPrice = request.NegotiatePrice.Value;
                 if (commission.VoucherId.HasValue)
                 {
@@ -1295,6 +1309,26 @@ public class CommissionService : ICommissionService
 
         commission.Status = CommissionStatus.Cancelled;
         commission.CancellationRequestStatus ??= "Approved";
+        commission.UpdatedAt = DateTimeOffset.UtcNow;
+
+        var creatorUserId = await CreatorUserIdAsync(commission.CreatorId, cancellationToken);
+        await PublishSafeAsync(
+            commission.ClientId,
+            NotificationType.CommissionStatusChanged,
+            "Đơn đặt vẽ đã bị hủy",
+            $"Đơn “{commission.Title}” đã được hủy và hoàn trả phần ký quỹ Escrow còn lại. Phòng làm việc sẽ chuyển sang chế độ khóa lưu trữ.",
+            commission.Id,
+            $"CommissionCancelled:{commission.Id}:Client",
+            cancellationToken);
+        await PublishSafeAsync(
+            creatorUserId,
+            NotificationType.CommissionStatusChanged,
+            "Đơn đặt vẽ đã bị hủy",
+            $"Đơn “{commission.Title}” đã được hủy và hoàn trả phần ký quỹ Escrow còn lại cho khách hàng. Phòng làm việc sẽ chuyển sang chế độ khóa lưu trữ.",
+            commission.Id,
+            $"CommissionCancelled:{commission.Id}:Creator",
+            cancellationToken);
+
         commission.UpdatedAt = DateTimeOffset.UtcNow;
     }
 

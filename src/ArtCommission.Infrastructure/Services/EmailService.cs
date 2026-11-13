@@ -1,4 +1,6 @@
 using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Net.Mail;
 using ArtCommission.Application.Common.Interfaces;
 using Microsoft.Extensions.Configuration;
@@ -8,6 +10,7 @@ namespace ArtCommission.Infrastructure.Services;
 
 public class EmailService : IEmailService
 {
+    private static readonly HttpClient ResendHttpClient = new() { Timeout = TimeSpan.FromSeconds(10) };
     private readonly ILogger<EmailService> _logger;
     private readonly IConfiguration _configuration;
 
@@ -55,11 +58,39 @@ public class EmailService : IEmailService
 
     private async Task SendAsync(string toEmail, string subject, string htmlBody, CancellationToken cancellationToken)
     {
+        var resendApiKey = _configuration["Email:ResendApiKey"];
+        var senderEmail = _configuration["Email:SenderEmail"];
+        var senderName = _configuration["Email:SenderName"] ?? "Dillustration Platform";
+
+        // Ưu tiên Resend HTTP API (port 443) vì Render Free Tier chặn outbound SMTP (port 25/465/587).
+        if (!string.IsNullOrWhiteSpace(resendApiKey))
+        {
+            var fromAddress = !string.IsNullOrWhiteSpace(senderEmail) && !senderEmail.EndsWith("@gmail.com", StringComparison.OrdinalIgnoreCase)
+                ? $"{senderName} <{senderEmail}>"
+                : $"{senderName} <onboarding@resend.dev>";
+
+            using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.resend.com/emails")
+            {
+                Content = JsonContent.Create(new { from = fromAddress, to = new[] { toEmail }, subject, html = htmlBody })
+            };
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", resendApiKey.Trim());
+
+            try
+            {
+                using var res = await ResendHttpClient.SendAsync(req, cancellationToken);
+                if (res.IsSuccessStatusCode) return;
+                var errBody = await res.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning("Resend API trả lỗi {Status}: {Body}. To={Email}", res.StatusCode, errBody, toEmail);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Gọi Resend API thất bại. To={Email}", toEmail);
+            }
+        }
+
         var smtpHost = _configuration["Email:SmtpHost"];
         var smtpPort = int.TryParse(_configuration["Email:SmtpPort"], out var port) ? port : 587;
-        var senderEmail = _configuration["Email:SenderEmail"];
         var senderPassword = _configuration["Email:SenderPassword"];
-        var senderName = _configuration["Email:SenderName"] ?? "Dillustration Platform";
 
         if (string.IsNullOrWhiteSpace(smtpHost) || string.IsNullOrWhiteSpace(senderEmail) || string.IsNullOrWhiteSpace(senderPassword)
             || senderEmail.StartsWith("REPLACE_WITH", StringComparison.OrdinalIgnoreCase)
@@ -83,10 +114,24 @@ public class EmailService : IEmailService
         using var client = new SmtpClient(smtpHost, smtpPort)
         {
             EnableSsl = true,
+            Timeout = 6000,
             Credentials = new NetworkCredential(senderEmail, senderPassword)
         };
 
-        await client.SendMailAsync(message, cancellationToken);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(TimeSpan.FromSeconds(6));
+
+        try
+        {
+            await client.SendMailAsync(message, cts.Token);
+        }
+        catch (Exception ex)
+        {
+            // Render Free Tier chặn outbound port 587/465 nên SMTP sẽ timeout — không làm treo request đăng ký.
+            _logger.LogWarning(ex,
+                "Không thể gửi email qua SMTP ({Host}:{Port}). Fallback ghi log: To={Email}, Subject={Subject}, Body={Body}",
+                smtpHost, smtpPort, toEmail, subject, htmlBody);
+        }
     }
 
     public Task SendEscrowReceiptEmailAsync(

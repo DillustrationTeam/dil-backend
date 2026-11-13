@@ -617,6 +617,8 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseCors("AllowFrontend");
+
 // Local private files use expiring signed URLs, matching R2 presigned-download behavior.
 app.Use(async (context, next) =>
 {
@@ -673,8 +675,6 @@ if (!string.IsNullOrWhiteSpace(storageOptions.LocalRootPath))
         RequestPath = storageOptions.PublicBasePath
     });
 }
-
-app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
 app.UseAuthorization();
