@@ -155,12 +155,73 @@ public class ArtworkForensicController : ApiControllerBase
     public async Task<IActionResult> TraceReceipt(
         [FromQuery] string? receiptToken,
         [FromQuery] long? numericPayload,
-        [FromQuery] Guid? artworkId,
-        [FromQuery] Guid? commissionId,
+        [FromQuery] string? artworkId,
+        [FromQuery] string? commissionId,
         [FromQuery] string? fileSha256,
         CancellationToken ct)
     {
-        var query = new TraceArtworkForensicQuery(receiptToken, numericPayload, artworkId, commissionId, fileSha256);
+        Guid? parsedArtworkId = null;
+        string? artworkPrefix = null;
+        if (!string.IsNullOrWhiteSpace(artworkId))
+        {
+            var raw = artworkId.Trim();
+            if (Guid.TryParse(raw, out var aId))
+            {
+                parsedArtworkId = aId;
+            }
+            else
+            {
+                var clean = raw.StartsWith("#") ? raw[1..].Trim() : raw;
+                clean = clean.Replace("-", "").ToUpperInvariant();
+                artworkPrefix = clean;
+            }
+        }
+
+        Guid? parsedCommissionId = null;
+        string? commissionPrefix = null;
+        if (!string.IsNullOrWhiteSpace(commissionId))
+        {
+            var raw = commissionId.Trim();
+            if (Guid.TryParse(raw, out var cId))
+            {
+                parsedCommissionId = cId;
+            }
+            else
+            {
+                var clean = raw.StartsWith("#") ? raw[1..].Trim() : raw;
+                if (clean.StartsWith("CMD-", StringComparison.OrdinalIgnoreCase))
+                {
+                    clean = clean[4..].Trim();
+                }
+                clean = clean.Replace("-", "").ToUpperInvariant();
+                commissionPrefix = clean;
+            }
+        }
+
+        // Hỗ trợ tìm kiếm thông minh: nếu receiptToken thực chất là mã đơn (#CMD-...)
+        if (!string.IsNullOrWhiteSpace(receiptToken) && string.IsNullOrWhiteSpace(commissionPrefix) && !parsedCommissionId.HasValue)
+        {
+            var rawToken = receiptToken.Trim();
+            if (rawToken.StartsWith("#CMD-", StringComparison.OrdinalIgnoreCase) || rawToken.StartsWith("CMD-", StringComparison.OrdinalIgnoreCase))
+            {
+                var clean = rawToken.StartsWith("#") ? rawToken[1..].Trim() : rawToken;
+                commissionPrefix = clean[4..].Trim().Replace("-", "").ToUpperInvariant();
+                receiptToken = null;
+            }
+        }
+
+        var isAdmin = User.IsInRole(UserRoleNames.Administrator) || User.IsInRole(UserRoleNames.Moderator);
+        var query = new TraceArtworkForensicQuery(
+            receiptToken,
+            numericPayload,
+            parsedArtworkId,
+            parsedCommissionId,
+            fileSha256,
+            ArtworkPrefix: artworkPrefix,
+            CommissionPrefix: commissionPrefix,
+            RequestingUserId: CurrentUserId,
+            IsAdmin: isAdmin);
+
         var results = await Mediator.Send(query, ct);
         return OkEnvelope(results);
     }
