@@ -205,6 +205,8 @@ public class AuctionSettlementService : IAuctionSettlementService
             // KHÔNG CÓ TRANH VẬT LÝ: Tiền về ví người bán ngay lập tức.
             var sellerWallet = await _walletService.GetOrCreateWalletAsync(auction.SellerId, cancellationToken);
 
+            // Người bán nhận khoản gộp rồi bị trừ phí — ledger ghi đủ cả hai dòng
+            // để công thức đối soát (Deposit + EscrowReceive − PlatformFee ...) vẫn khớp.
             await _walletService.CreditAsync(
                 sellerWallet,
                 WalletTransactionType.EscrowReceive,
@@ -214,17 +216,8 @@ public class AuctionSettlementService : IAuctionSettlementService
                 $"Thu tiền bán đấu giá phiên {auction.Id}",
                 cancellationToken);
 
-            if (feeAmount > 0m)
-            {
-                await _walletService.DebitAsync(
-                    sellerWallet,
-                    WalletTransactionType.PlatformFee,
-                    feeAmount,
-                    AuctionRefTypes.Settlement,
-                    auction.Id,
-                    feeNote,
-                    cancellationToken);
-            }
+            await DebitAuctionFeesAsync(
+                sellerWallet, finalPrice, baseFeePercent, surchargePercent, feeAmount, auction.Id, cancellationToken);
 
             escrow = await UpsertEscrowAsync(
                 auction, winningBid.BidderId, auction.SellerId, finalPrice, feeAmount, now, EscrowStatus.Released, cancellationToken);
@@ -331,17 +324,8 @@ public class AuctionSettlementService : IAuctionSettlementService
                 $"Thu tiền bán đấu giá (mua ngay) phiên {auction.Id}",
                 cancellationToken);
 
-            if (feeAmount > 0m)
-            {
-                await _walletService.DebitAsync(
-                    sellerWallet,
-                    WalletTransactionType.PlatformFee,
-                    feeAmount,
-                    AuctionRefTypes.Settlement,
-                    auction.Id,
-                    feeNote,
-                    cancellationToken);
-            }
+            await DebitAuctionFeesAsync(
+                sellerWallet, price, baseFeePercent, surchargePercent, feeAmount, auction.Id, cancellationToken);
 
             await _db.SaveChangesAsync(cancellationToken);
         }
@@ -442,6 +426,66 @@ public class AuctionSettlementService : IAuctionSettlementService
             PlatformConfigKeys.AuctionPaymentWindowHours, defaultHours, cancellationToken);
 
         return hours <= 0m ? defaultHours : hours;
+    }
+
+    /// <summary>
+    /// Trừ phí của một phiên đã bán, TÁCH THÀNH HAI DÒNG SỔ CÁI:
+    ///   - <c>PlatformFee</c>    : phí nền tảng theo cấu hình (5–15%).
+    ///   - <c>PenaltySurcharge</c>: phần phụ phí do người bán đang bị phạt giao hàng (mức 3/4).
+    ///
+    /// VÌ SAO TÁCH: báo cáo doanh thu cần nói được "trong số phí bị trừ có bao nhiêu là phụ phí
+    /// vi phạm". Trước đây gộp một dòng PlatformFee nên seller chỉ thấy "phí nền tảng" tăng vọt
+    /// mà không hiểu vì sao. Tổng tiền trừ KHÔNG đổi — chỉ chia thành hai dòng.
+    /// </summary>
+    private async Task DebitAuctionFeesAsync(
+        Domain.Entities.Payment.Wallet sellerWallet,
+        decimal grossPrice,
+        decimal baseFeePercent,
+        decimal surchargePercent,
+        decimal feeAmount,
+        Guid auctionId,
+        CancellationToken cancellationToken)
+    {
+        if (feeAmount <= 0m)
+        {
+            return;
+        }
+
+        var surchargeAmount = surchargePercent > 0m
+            ? Math.Round(grossPrice * surchargePercent / 100m, 2, MidpointRounding.AwayFromZero)
+            : 0m;
+
+        // Chặn trường hợp làm tròn/cấu hình lệch khiến phụ phí lớn hơn tổng phí.
+        if (surchargeAmount > feeAmount)
+        {
+            surchargeAmount = feeAmount;
+        }
+
+        var baseAmount = feeAmount - surchargeAmount;
+
+        if (baseAmount > 0m)
+        {
+            await _walletService.DebitAsync(
+                sellerWallet,
+                WalletTransactionType.PlatformFee,
+                baseAmount,
+                AuctionRefTypes.Settlement,
+                auctionId,
+                $"Phí nền tảng {baseFeePercent}% trên phiên {auctionId}",
+                cancellationToken);
+        }
+
+        if (surchargeAmount > 0m)
+        {
+            await _walletService.DebitAsync(
+                sellerWallet,
+                WalletTransactionType.PenaltySurcharge,
+                surchargeAmount,
+                AuctionRefTypes.Settlement,
+                auctionId,
+                $"Phụ phí vi phạm giao hàng {surchargePercent}% trên phiên {auctionId}",
+                cancellationToken);
+        }
     }
 
     /// <summary>
@@ -566,6 +610,16 @@ public class AuctionSettlementService : IAuctionSettlementService
             return (true, []);
         }
 
+        // Ký quỹ đã HOÀN cho người mua thì không được giải ngân nữa: tiền đã ra khỏi sàn
+        // một lần, cộng thêm cho người bán là sàn lỗ kép (vừa hoàn vừa trả). Trước đây
+        // hàm này chỉ chặn Released nên luồng "huỷ phiên do quá hạn 48 giờ" (escrow Refunded)
+        // vẫn bị người thắng gọi accept-digital/decline để ép giải ngân lần hai.
+        if (escrow.Status == EscrowStatus.Refunded)
+        {
+            return (false,
+                ["Ký quỹ của phiên này đã được hoàn cho người mua nên không thể giải ngân cho người bán."]);
+        }
+
         // Ký quỹ đang bị đóng băng do khiếu nại bưu phẩm: tuyệt đối không giải ngân.
         // Trước đây hàm này chỉ chặn trạng thái Released nên "confirm" sau khiếu nại vẫn
         // ghi đè Disputed -> Released và người mua mất tiền dù tranh hỏng.
@@ -574,6 +628,15 @@ public class AuctionSettlementService : IAuctionSettlementService
         {
             return (false,
                 ["Ký quỹ đang bị đóng băng do khiếu nại. Ban quản trị phải phân xử trước khi giải ngân."]);
+        }
+
+        // Chỉ còn Deposited là trạng thái hợp lệ để giải ngân (Released đã xử lý ở trên).
+        // Trạng thái khác (Split, Cancelled, Pending...) là dữ liệu bất thường của phiên:
+        // dừng lại và báo lỗi thay vì cộng tiền mù.
+        if (!allowDisputed && escrow.Status != EscrowStatus.Deposited)
+        {
+            return (false,
+                [$"Ký quỹ đang ở trạng thái {escrow.Status} nên không thể giải ngân cho người bán."]);
         }
 
         var feePercent = await _walletService.GetDecimalConfigAsync(
@@ -606,17 +669,16 @@ public class AuctionSettlementService : IAuctionSettlementService
                 $"Thu tiền bán đấu giá (giao tranh vật lý hoàn tất) phiên {auction.Id}",
                 cancellationToken);
 
-            if (feeAmount > 0m)
-            {
-                await _walletService.DebitAsync(
-                    sellerWallet,
-                    WalletTransactionType.PlatformFee,
-                    feeAmount,
-                    AuctionRefTypes.Settlement,
-                    auction.Id,
-                    $"Phí nền tảng {feePercent}% trên phiên {auction.Id}",
-                    cancellationToken);
-            }
+            // Phí của phiên đã được chốt (snapshot) lúc settle: dùng lại đúng tỉ lệ đã lưu
+            // để phụ phí phạt không bị tính lại theo cấu hình mới.
+            await DebitAuctionFeesAsync(
+                sellerWallet,
+                finalPrice,
+                feePercent,
+                auction.FeeSurchargePercent ?? 0m,
+                feeAmount,
+                auction.Id,
+                cancellationToken);
         }
         else
         {

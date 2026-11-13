@@ -65,7 +65,16 @@ public enum WalletTransactionType
     TipSent,
 
     /// <summary>Tiền tip VÀO số dư khả dụng của Creator.</summary>
-    TipReceived
+    TipReceived,
+
+    /// <summary>
+    /// PHỤ PHÍ DO VI PHẠM GIAO HÀNG (thang phạt 5 mức). Tách khỏi <see cref="PlatformFee"/>
+    /// để báo cáo doanh thu nói được "trong phí bị trừ có bao nhiêu là phụ phí phạt",
+    /// thay vì gộp tất cả thành "phí nền tảng".
+    ///
+    /// Đặt ở CUỐI enum để không đổi giá trị số của các thành viên cũ.
+    /// </summary>
+    PenaltySurcharge
 }
 
 public static class WalletTransactionTypeNames
@@ -81,11 +90,12 @@ public static class WalletTransactionTypeNames
     public const string RefundFromHold = nameof(WalletTransactionType.RefundFromHold);
     public const string Payout = nameof(WalletTransactionType.Payout);
     public const string PlatformFee = nameof(WalletTransactionType.PlatformFee);
+    public const string PenaltySurcharge = nameof(WalletTransactionType.PenaltySurcharge);
     public const string Adjustment = nameof(WalletTransactionType.Adjustment);
 
     public static readonly string[] All =
     [
         Deposit, CommissionEarning, EscrowHold, EscrowRelease, EscrowReceive, TipSent, TipReceived, Refund,
-        RefundFromHold, Payout, PlatformFee, Adjustment
+        RefundFromHold, Payout, PlatformFee, PenaltySurcharge, Adjustment
     ];
 }

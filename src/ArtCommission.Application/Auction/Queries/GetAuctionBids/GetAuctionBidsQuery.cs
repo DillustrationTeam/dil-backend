@@ -15,7 +15,12 @@ namespace ArtCommission.Application.Auction.Queries.GetAuctionBids;
 public record GetAuctionBidsQuery(
     Guid AuctionId,
     string? Cursor = null,
-    int Limit = 20
+    int Limit = 20,
+    /// <summary>
+    /// Người gọi (null khi là khách chưa đăng nhập). Dùng để chỉ trả "số tiền đang giữ"
+    /// cho chính chủ lượt đặt giá — số tiền khoá trong ví người khác không phải dữ liệu công khai.
+    /// </summary>
+    Guid? CurrentUserId = null
 ) : IRequest<(bool Success, IReadOnlyList<BidDto>? Data, object? Meta, string[] Errors)>;
 
 public class GetAuctionBidsQueryHandler
@@ -94,7 +99,9 @@ public class GetAuctionBidsQueryHandler
                     b.BidderId,
                     bidderNames.TryGetValue(b.BidderId, out var bidderName) ? bidderName : null),
                 Amount: b.Amount,
-                HoldAmount: b.HoldAmount,
+                // Số tiền đang giữ chỉ trả cho chính chủ lượt đặt giá. Người ngoài (kể cả
+                // khách chưa đăng nhập) nhận 0 để không suy ra được quy mô ví của người khác.
+                HoldAmount: request.CurrentUserId == b.BidderId ? b.HoldAmount : 0m,
                 BidStatus: b.Status.ToString(),
                 HoldStatus: b.HoldStatus.ToString(),
                 PlacedAt: b.PlacedAt))
@@ -115,7 +122,10 @@ public static class BidCursor
     public static string Encode(DateTimeOffset placedAt, Guid id)
     {
         var payload = string.Join('|',
-            placedAt.ToUnixTimeMilliseconds().ToString(System.Globalization.CultureInfo.InvariantCulture),
+            // Giữ đủ 7 chữ số phần lẻ như datetimeoffset(7) của SQL Server. Cắt xuống mili
+            // giây làm mốc cursor sớm hơn dòng thật ⇒ bid nằm giữa hai mốc bị bỏ sót khi
+            // sang trang (Chính AuctionCursor đã tránh đúng lỗi này).
+            placedAt.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
             id.ToString("N"));
 
         return Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(payload));
@@ -136,8 +146,16 @@ public static class BidCursor
                 return false;
             }
 
-            if (!long.TryParse(parts[0], System.Globalization.NumberStyles.Integer,
-                    System.Globalization.CultureInfo.InvariantCulture, out var ms))
+            // Cursor cũ (bản encode bằng mili giây) vẫn giải mã được để không làm gãy
+            // phiên đang phân trang dở; cursor mới dùng ISO "O" nên nhánh này chỉ là đường lùi.
+            if (long.TryParse(parts[0], System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture, out var legacyMs))
+            {
+                placedAt = DateTimeOffset.FromUnixTimeMilliseconds(legacyMs);
+            }
+            else if (!DateTimeOffset.TryParseExact(parts[0], "O",
+                         System.Globalization.CultureInfo.InvariantCulture,
+                         System.Globalization.DateTimeStyles.None, out placedAt))
             {
                 return false;
             }
@@ -147,7 +165,6 @@ public static class BidCursor
                 return false;
             }
 
-            placedAt = DateTimeOffset.FromUnixTimeMilliseconds(ms);
             id = parsedId;
             return true;
         }

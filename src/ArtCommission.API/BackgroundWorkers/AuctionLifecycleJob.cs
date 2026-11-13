@@ -68,20 +68,42 @@ public sealed class AuctionLifecycleJob
 
         // Quét mọi phiên Ended quá hạn ở mỗi lượt chạy, kể cả phiên đã chuyển trạng
         // thái ở lượt trước nhưng process dừng trước settlement. Settle handler là
-        // idempotent nên Hangfire có thể retry an toàn.
+        // idempotent nên job có thể retry an toàn.
+        // LOẠI phiên 0 lượt đặt giá: settle cho phiên đó chỉ set lại Ended rồi trả false,
+        // nên nếu vẫn quét thì lượt nào cũng gọi lại — transaction + broadcast "đã kết thúc"
+        // lặp vô hạn cho mọi phiên ế. Phiên ế đã ở trạng thái cuối (Ended), không cần chốt.
         var dueSettlementIds = await _db.Auctions.AsNoTracking()
-            .Where(a => !a.IsDeleted && a.Status == AuctionStatus.Ended && a.EndAt <= now)
+            .Where(a => !a.IsDeleted
+                        && a.Status == AuctionStatus.Ended
+                        && a.BidCount > 0
+                        && a.EndAt <= now)
             .Select(a => a.Id).ToListAsync(cancellationToken);
 
         foreach (var auctionId in dueSettlementIds)
         {
-            await _mediator.Send(
-                new SettleAuctionCommand(Guid.Empty, auctionId, IsAdministrator: true, Force: false),
-                cancellationToken);
+            // Bọc từng phiên: một phiên lỗi (xung đột, timeout, dữ liệu hỏng) không được làm
+            // hỏng cả lượt quét — nếu exception thoát ra ngoài, mọi phiên phía sau sẽ không
+            // bao giờ được chốt ở các lượt tiếp theo vì bản ghi lỗi luôn nằm đầu danh sách.
+            try
+            {
+                await _mediator.Send(
+                    new SettleAuctionCommand(Guid.Empty, auctionId, IsAdministrator: true, Force: false),
+                    cancellationToken);
 
-            // SettleAuctionCommand xử lý bid, ví, ownership và ledger trong transaction
-            // riêng; chạy lại sẽ trả kết quả cũ mà không chuyển tiền/bàn giao lần nữa.
-            await BroadcastCurrentStatusAsync(auctionId, cancellationToken);
+                // SettleAuctionCommand xử lý bid, ví, ownership và ledger trong transaction
+                // riêng; chạy lại sẽ trả kết quả cũ mà không chuyển tiền/bàn giao lần nữa.
+                await BroadcastCurrentStatusAsync(auctionId, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Chốt phiên {AuctionId} thất bại trong job lifecycle; bỏ qua để xử lý các phiên còn lại.",
+                    auctionId);
+            }
         }
 
         // Bù trường hợp process dừng sau commit nhưng trước khi ghi thông báo. Dedup key
@@ -154,20 +176,37 @@ public sealed class AuctionLifecycleJob
 
     private async Task PublishMissingLifecycleNotificationsAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
+        // Lọc !IsDeleted cho TOÀN BỘ biểu thức: trước đây nhánh Cancelled nằm ngoài nên phiên
+        // đã xoá mềm vẫn phát thông báo.
         var current = await _db.Auctions.AsNoTracking()
-            .Where(a => a.Status == AuctionStatus.Cancelled
-                || (!a.IsDeleted && (
-                    (a.Status == AuctionStatus.Active && a.StartAt <= now)
-                    || ((a.Status == AuctionStatus.Ended || a.Status == AuctionStatus.Settled) && a.EndAt <= now))))
+            .Where(a => !a.IsDeleted
+                        && ((a.Status == AuctionStatus.Cancelled)
+                            || (a.Status == AuctionStatus.Active && a.StartAt <= now)
+                            || ((a.Status == AuctionStatus.Ended || a.Status == AuctionStatus.Settled) && a.EndAt <= now)))
             .Select(a => new { a.Id, a.SellerId, a.Status, a.StartAt, a.EndAt })
             .ToListAsync(cancellationToken);
 
         foreach (var auction in current)
         {
-            var lifecycleEvent = auction.Status == AuctionStatus.Active
-                ? AuctionLifecycleEvent.Started
-                : AuctionLifecycleEvent.Ended;
-            await _lifecycleNotifier.NotifyParticipantsAsync(auction.Id, lifecycleEvent, cancellationToken: cancellationToken);
+            // Phiên bị huỷ phải báo "đã huỷ", không phải "đã kết thúc" — nếu không người bán
+            // và người theo dõi hiểu sai rằng phiên vẫn chạy tới hết giờ.
+            var lifecycleEvent = auction.Status switch
+            {
+                AuctionStatus.Active => AuctionLifecycleEvent.Started,
+                AuctionStatus.Cancelled => AuctionLifecycleEvent.Cancelled,
+                _ => AuctionLifecycleEvent.Ended
+            };
+
+            try
+            {
+                await _lifecycleNotifier.NotifyParticipantsAsync(auction.Id, lifecycleEvent, cancellationToken: cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Không gửi được thông báo {Event} cho phiên {AuctionId}; bỏ qua để xử lý phiên còn lại.",
+                    lifecycleEvent, auction.Id);
+            }
         }
     }
 }

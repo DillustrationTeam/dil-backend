@@ -289,20 +289,28 @@ public class ResolveDeliveryDisputeCommandHandler
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        // Arbitration money and state are already committed. The penalty step is derived data:
-        // a failure here must be logged, never rolled back onto the buyer's refund.
+        // Phân xử đã commit. Án phạt là dữ liệu dẫn xuất: lỗi ở bước này KHÔNG được rollback
+        // tiền hoàn của người mua, nhưng cũng không được bỏ im lặng — lần bấm lại sẽ bị guard
+        // trạng thái chặn nên án phạt sẽ mất vĩnh viễn. Vì vậy thử lại một lần rồi mới bỏ cuộc,
+        // và ghi log mức Error kèm mã để đối soát thủ công.
         if (buyerWonDispute)
         {
-            try
+            var applied = false;
+            for (var attempt = 1; attempt <= 2 && !applied; attempt++)
             {
-                await _penaltyService.ApplyConfirmedDisputeAsync(
-                    auction, delivery, escrowWasReleased, request.AdminUserId, note, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex,
-                    "Cannot apply the seller penalty ladder for auction {AuctionId} after a confirmed dispute.",
-                    auction.Id);
+                try
+                {
+                    await _penaltyService.ApplyConfirmedDisputeAsync(
+                        auction, delivery, escrowWasReleased, request.AdminUserId, note, cancellationToken);
+                    applied = true;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "Cannot apply the seller penalty ladder for auction {AuctionId} (attempt {Attempt}/2) " +
+                        "after a confirmed dispute. Needs manual follow-up for delivery {DeliveryId}.",
+                        auction.Id, attempt, delivery.Id);
+                }
             }
         }
 

@@ -43,7 +43,12 @@ public sealed class PlaceBidCommandHandler
     : IRequestHandler<PlaceBidCommand, (bool Success, PlaceBidResultDto? Data, string[] Errors, AuctionBidConflictDto? Conflict)>
 {
     private static readonly TimeSpan AntiSnipeWindow = TimeSpan.FromMinutes(3);
-    private static readonly TimeSpan MaxAntiSnipeExtension = TimeSpan.FromHours(2);
+
+    /// <summary>
+    /// Trần thời lượng của một phiên, phải khớp <c>CreateAuctionCommand.MaximumDurationDays</c>.
+    /// Dùng làm mốc chặn trên cho việc gia hạn anti-snipe.
+    /// </summary>
+    private const int MaxAuctionDurationDays = 30;
     private const int MaxLimit = 100;
 
     private readonly IApplicationDbContext _db;
@@ -93,19 +98,30 @@ public sealed class PlaceBidCommandHandler
 
         if (ceilingProbe is { Status: AuctionStatus.Active, BuyNowPrice: { } ceilingPrice }
             && ceilingPrice > 0m
+            && ceilingProbe.EndAt > DateTimeOffset.UtcNow
             && ceilingProbe.SellerId != request.UserId)
         {
             var ceilingRequest = request.IsAuto ? request.MaxAutoBid!.Value : request.Amount;
 
             if (ceilingRequest >= ceilingPrice)
             {
+                // Transaction RIÊNG bao trọn việc chốt phiên: SettleBuyNowAsync ghi ví người
+                // mua, ví người bán, escrow và quyền sở hữu bằng nhiều SaveChanges độc lập.
+                // Không bọc transaction thì lỗi giữa đường để lại trạng thái "tiền đã trừ mà
+                // tranh chưa chuyển chủ". (Vẫn tách khỏi transaction của nhánh bid thường vì
+                // gộp vào đó thì lệnh mua bị rollback.)
+                await using var ceilingTx = await _db.Database.BeginTransactionAsync(cancellationToken);
+
                 var (settled, settleResult, settleErrors) = await _settlementService.SettleBuyNowAsync(
                     ceilingProbe, request.UserId, ceilingPrice, cancellationToken);
 
                 if (!settled || settleResult is null)
                 {
+                    await ceilingTx.RollbackAsync(cancellationToken);
                     return (false, null, settleErrors, null);
                 }
+
+                await ceilingTx.CommitAsync(cancellationToken);
 
                 _logger.LogInformation(
                     "Bid reached the buy-now ceiling of auction {AuctionId}: settled at {Price} for bidder {BidderId}.",
@@ -349,9 +365,14 @@ public sealed class PlaceBidCommandHandler
             auction.BidCount += leaderChanged && winner.BidderId != request.UserId ? 2 : 1;
             auction.UpdatedAt = now;
 
-            // Giới hạn chống gia hạn vô tận: thời gian kết thúc không được vượt quá StartAt + MaxDuration + MaxAntiSnipeExtension
-            var maxAllowedEndAt = auction.StartAt.AddDays(7).Add(MaxAntiSnipeExtension);
-            var extended = auction.EndAt > now 
+            // Chống gia hạn vô tận: mỗi lượt sát giờ chỉ cộng thêm 1 cửa sổ, và tổng thời gian
+            // không được vượt quá trần thời lượng của phiên (StartAt + 30 ngày, cùng hằng số
+            // với CreateAuctionCommand).
+            //
+            // Trước đây mốc neo là StartAt + 7 ngày: phiên dài hơn 7 ngày KHÔNG BAO GIỜ được
+            // gia hạn (mất bảo vệ đặt giá phút chót), còn phiên ngắn có thể bị kéo tới ~7 ngày.
+            var maxAllowedEndAt = auction.StartAt.AddDays(MaxAuctionDurationDays);
+            var extended = auction.EndAt > now
                 && auction.EndAt - now <= AntiSnipeWindow
                 && auction.EndAt.Add(AntiSnipeWindow) <= maxAllowedEndAt;
             if (extended)
@@ -389,7 +410,9 @@ public sealed class PlaceBidCommandHandler
                 await _realtime.PublishBidPlacedAsync(
                     auction.Id, result, auction.CurrentPrice,
                     auction.BidCount == 0 ? auction.StartPrice : auction.CurrentPrice + auction.BidStep,
-                    auction.EndAt, cancellationToken);
+                    auction.EndAt, cancellationToken,
+                    auctionStatus: auction.Status.ToString(),
+                    leadingBidderId: auction.Status == AuctionStatus.Active ? winner.BidderId : null);
                 if (extended)
                 {
                     await _realtime.PublishAuctionExtendedAsync(

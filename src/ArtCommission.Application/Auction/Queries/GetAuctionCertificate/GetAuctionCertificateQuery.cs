@@ -93,6 +93,19 @@ public class GetAuctionCertificateQueryHandler
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == auction.WinnerId.Value, cancellationToken);
 
+        // TÁC GIẢ của chứng nhận là hoạ sĩ sáng tác, KHÔNG phải người bán. Khi tranh được bán
+        // lại (resale), người bán chỉ là chủ sở hữu trước đó — trước đây ghi nhầm người bán
+        // thành tác giả nên chứng nhận của tranh bán lại in sai tên hoạ sĩ.
+        var creatorUserId = await _db.CreatorProfiles
+            .AsNoTracking()
+            .Where(p => p.Id == artwork.CreatorProfileId && !p.IsDeleted)
+            .Select(p => (Guid?)p.UserId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var creator = creatorUserId.HasValue
+            ? await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == creatorUserId.Value, cancellationToken)
+            : null;
+
         var issuedAt = ownership.AcquiredAt;
         var certNumber = $"DIL-CERT-{issuedAt:yyyyMMdd}-{auction.Id.ToString()[..8].ToUpperInvariant()}";
         var verificationCode = $"VERIFY-{ownership.Id.ToString()[..12].ToUpperInvariant()}";
@@ -108,8 +121,8 @@ public class GetAuctionCertificateQueryHandler
             ArtworkTitle: artwork.Title,
             ArtworkImageUrl: artwork.WatermarkedUrl ?? artwork.ImageUrl,
             Style: artwork.Style,
-            CreatorId: auction.SellerId,
-            CreatorName: seller?.FullName ?? "Unknown Artist",
+            CreatorId: creatorUserId ?? auction.SellerId,
+            CreatorName: creator?.FullName ?? seller?.FullName ?? "Unknown Artist",
             OwnerId: auction.WinnerId.Value,
             OwnerName: winner?.FullName ?? "Anonymous Collector",
             FinalPrice: auction.FinalPrice ?? 0m,

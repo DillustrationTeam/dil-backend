@@ -96,6 +96,25 @@ public class RequestPhysicalDeliveryCommandHandler
         var delivery = await _db.Set<AuctionDelivery>()
             .FirstOrDefaultAsync(d => d.AuctionId == auction.Id && !d.IsDeleted, cancellationToken);
 
+        // Đơn đã đi qua bước chọn hình thức (đang giao / đang khiếu nại / đã xử lý) thì
+        // KHÔNG được ghi đè ngược về "chờ gửi hàng". Trước đây hàm này ép trạng thái về
+        // AwaitingShipment vô điều kiện nên người mua có thể "rã đông" một đơn đang khiếu
+        // nại, xoá dấu đóng băng ký quỹ và thay địa chỉ sau khi người bán đã gửi hàng.
+        if (delivery is not null && delivery.Status != DeliveryStatus.AwaitingShipment)
+        {
+            return (false, null,
+                [$"Đơn giao nhận đang ở trạng thái {delivery.Status} nên không nhập lại thông tin nhận hàng được."]);
+        }
+
+        if (auction.Status is AuctionStatus.Disputed
+            or AuctionStatus.Cancelled
+            or AuctionStatus.Expired
+            or AuctionStatus.InTransit)
+        {
+            return (false, null,
+                [$"Phiên đang ở trạng thái {AuctionMapper.DescribeStatus(auction.Status)} nên không nhận yêu cầu giao tranh vật lý."]);
+        }
+
         if (delivery is null)
         {
             delivery = new AuctionDelivery
@@ -194,7 +213,37 @@ public class DeclinePhysicalDeliveryCommandHandler
             return (false, ["Chỉ người thắng phiên mới có quyền chọn hình thức nhận tranh."]);
         }
 
+        // Phiên đã khép lại (huỷ / quá hạn / đã hoàn tất) thì không còn gì để chọn.
+        // Thiếu guard này thì trên phiên ĐÃ HOÀN TIỀN cho người mua, winner vẫn bấm
+        // "chỉ nhận file số" được và hàm giải ngân cộng tiền cho người bán lần thứ hai.
+        if (auction.Status is AuctionStatus.Cancelled
+            or AuctionStatus.Expired
+            or AuctionStatus.Completed
+            or AuctionStatus.Settled)
+        {
+            return (false,
+                [$"Phiên đã ở trạng thái {AuctionMapper.DescribeStatus(auction.Status)} nên không chọn lại hình thức nhận được nữa."]);
+        }
+
         var now = DateTimeOffset.UtcNow;
+
+        var delivery = await _db.Set<AuctionDelivery>()
+            .FirstOrDefaultAsync(d => d.AuctionId == auction.Id && !d.IsDeleted, cancellationToken);
+
+        // Người bán đã gửi hàng rồi thì "bỏ tranh thật" không còn nghĩa: hàng đang trên
+        // đường, giải ngân lúc này là tước mất quyền khiếu nại bồi hoàn của người mua.
+        if (delivery?.Status is DeliveryStatus.InTransit)
+        {
+            return (false,
+                ["Người bán đã gửi hàng. Hãy nhận hàng hoặc gửi khiếu nại nếu bưu phẩm có vấn đề."]);
+        }
+
+        if (delivery?.Status is DeliveryStatus.Disputed or DeliveryStatus.Resolved or DeliveryStatus.Cancelled)
+        {
+            return (false,
+                [$"Đơn giao nhận đang ở trạng thái {delivery.Status} nên không thể chuyển sang nhận file số."]);
+        }
+
         auction.RequiresPhysicalDelivery = false;
         auction.UpdatedAt = now;
 
@@ -205,7 +254,9 @@ public class DeclinePhysicalDeliveryCommandHandler
             return (false, errors);
         }
 
-        auction.Status = AuctionStatus.Settled;
+        // KHÔNG set lại Status ở đây: ReleaseEscrowToSellerAsync đã đặt Completed (đúng
+        // trạng thái kết thúc giao dịch). Trước đây gán đè thành Settled khiến phiên đi
+        // ngược trạng thái và người mua mất quyền đánh giá người bán.
         await _db.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(

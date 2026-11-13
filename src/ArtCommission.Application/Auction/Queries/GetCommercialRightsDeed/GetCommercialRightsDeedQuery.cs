@@ -84,6 +84,19 @@ public sealed class GetCommercialRightsDeedQueryHandler
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == auction.WinnerId.Value, cancellationToken);
 
+        // Văn bản ghi TÁC GIẢ là hoạ sĩ sáng tác, không phải người bán: khi tranh được bán lại,
+        // người bán chỉ là chủ sở hữu trước đó. Trước đây dùng auction.SellerId nên văn bản của
+        // tranh resale ghi sai tác giả.
+        var creatorUserId = await _db.CreatorProfiles
+            .AsNoTracking()
+            .Where(p => p.Id == artwork.CreatorProfileId && !p.IsDeleted)
+            .Select(p => (Guid?)p.UserId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var creator = creatorUserId.HasValue
+            ? await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == creatorUserId.Value, cancellationToken)
+            : null;
+
         // SettledAt có thể null khi phiên đang chờ giao tranh vật lý — lấy mốc chuyển quyền sở hữu
         // hoặc thời điểm cập nhật cuối cùng làm ngày cấp văn bản.
         var issuedAt = ownership?.AcquiredAt
@@ -112,8 +125,8 @@ public sealed class GetCommercialRightsDeedQueryHandler
             CertificateNumber: certNumber,
             VerificationCode: verificationCode,
             DigitalSignature: signatureHash,
-            CreatorId: auction.SellerId,
-            CreatorName: seller?.FullName ?? "Dillustration Artist",
+            CreatorId: creatorUserId ?? auction.SellerId,
+            CreatorName: creator?.FullName ?? seller?.FullName ?? "Dillustration Artist",
             OwnerId: auction.WinnerId.Value,
             OwnerName: winner?.FullName ?? "Exclusive Collector",
             FinalPrice: auction.FinalPrice ?? 0m,

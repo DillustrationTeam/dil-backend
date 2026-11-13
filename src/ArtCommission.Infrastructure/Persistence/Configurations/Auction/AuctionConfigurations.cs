@@ -143,9 +143,13 @@ public class BidConfiguration : IEntityTypeConfiguration<Bid>
         // BẤT BIẾN TIỀN: mỗi phiên tối đa MỘT bid đang dẫn đầu.
         // Ép ở tầng DB vì nếu chỉ kiểm tra trong handler thì 2 request đồng thời
         // vẫn có thể cùng vượt qua kiểm tra và tạo 2 bid Leading ⇒ giữ tiền 2 người.
+        //
+        // Điều kiện lọc PHẢI gồm IsDeleted = 0: nếu một bid Leading bị xoá mềm mà vẫn nằm
+        // trong index, mọi lượt Leading mới của phiên sẽ bị chặn bởi lỗi trùng khoá 2601
+        // (người dùng nhận 500) dù dòng cũ đã bị ẩn.
         builder.HasIndex(b => b.AuctionId)
             .IsUnique()
-            .HasFilter("[Status] = 'Leading'")
+            .HasFilter("[Status] = 'Leading' AND [IsDeleted] = 0")
             .HasDatabaseName("UX_Bids_OneLeadingPerAuction");
 
         // Cursor phân trang lịch sử bid theo placed_at.
@@ -154,6 +158,12 @@ public class BidConfiguration : IEntityTypeConfiguration<Bid>
 
         builder.HasIndex(b => b.BidderId)
             .HasDatabaseName("IX_Bids_BidderId");
+
+        // Màn "Đấu giá của tôi" lấy lượt đặt giá MỚI NHẤT của một người trong từng phiên.
+        // Thiếu index này, SQL Server đọc toàn bộ bid của user rồi mới nhóm/sắp xếp — tài khoản
+        // đặt giá nhiều sẽ chậm dần theo số lượt.
+        builder.HasIndex(b => new { b.BidderId, b.AuctionId, b.PlacedAt })
+            .HasDatabaseName("IX_Bids_Bidder_Auction_PlacedAt");
     }
 }
 

@@ -115,7 +115,13 @@ public sealed record AuctionDetailDto(
     /// Highest step among penalties that were not revoked, so the ladder keeps accumulating
     /// until step 5. The seller form shows the ladder and marks this step.
     /// </summary>
-    int SellerPenaltyLevel = 0
+    int SellerPenaltyLevel = 0,
+    /// <summary>
+    /// Giá trần đặt giá tự động của CHÍNH người đang xem (null nếu chưa đăng ký).
+    /// Trước đây FE giữ giá trị này trong RAM nên F5 là mất banner "Auto-bid đang hoạt động"
+    /// dù backend vẫn đang tự nâng giá theo trần đó.
+    /// </summary>
+    decimal? MyAutoBidMax = null
 );
 
 /// <summary>Thông tin giao nhận tranh vật lý của phiên.</summary>
@@ -464,7 +470,19 @@ public sealed record RevenueSummaryDto(
     decimal FeeAmount,
     decimal NetAmount,
     int CompletedOrderCount,
-    decimal AverageOrderValue
+    decimal AverageOrderValue,
+    /// <summary>
+    /// Trong <paramref name="FeeAmount"/>, bao nhiêu là PHỤ PHÍ do vi phạm giao hàng
+    /// (thang phạt 5 mức). Tách ra để người bán hiểu vì sao phí bị trừ nhiều hơn mức 5–15%.
+    /// </summary>
+    decimal PenaltyFeeAmount = 0m,
+    /// <summary>
+    /// Tiền người bán ĐANG được sàn giữ trong ký quỹ (chờ giao hàng / đang khiếu nại).
+    /// Đây KHÔNG phải doanh thu — chỉ để người bán biết tiền của mình đang ở đâu.
+    /// </summary>
+    decimal EscrowHeldAmount = 0m,
+    /// <summary>Phần ký quỹ đang bị đóng băng do khiếu nại (nằm trong <paramref name="EscrowHeldAmount"/>).</summary>
+    decimal EscrowDisputedAmount = 0m
 );
 
 public sealed record RevenueTimeseriesPointDto(
@@ -492,7 +510,11 @@ public sealed record RevenueSnapshotDto(
     decimal NetAmount,
     int CompletedOrderCount,
     DateTimeOffset? RebuiltAt,
-    int RebuildCount
+    int RebuildCount,
+    /// <summary>Phần doanh thu gộp đến từ đơn đặt vẽ trong kỳ (đã lưu sẵn ở bảng snapshot).</summary>
+    decimal CommissionGrossAmount = 0m,
+    /// <summary>Phần doanh thu gộp đến từ phiên đấu giá trong kỳ.</summary>
+    decimal AuctionGrossAmount = 0m
 );
 
 // =====================================================================

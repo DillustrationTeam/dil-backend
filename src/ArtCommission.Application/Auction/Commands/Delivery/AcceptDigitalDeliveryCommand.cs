@@ -91,6 +91,21 @@ public class AcceptDigitalDeliveryCommandHandler
                 ["Đơn đang khiếu nại, không thể chuyển sang nhận tranh điện tử. Vui lòng chờ Admin xử lý."]);
         }
 
+        // Phiên/đơn đã khép lại thì không chuyển đổi hình thức nhận nữa. Thiếu guard này
+        // thì sau khi phiên bị huỷ và tiền đã hoàn cho người mua, winner vẫn gọi được và
+        // ép giải ngân cho người bán (trước đây hàm giải ngân không chặn trạng thái Refunded).
+        if (auction.Status is AuctionStatus.Cancelled or AuctionStatus.Expired)
+        {
+            return (false, null,
+                [$"Phiên đã ở trạng thái {AuctionMapper.DescribeStatus(auction.Status)} nên không chọn lại hình thức nhận được nữa."]);
+        }
+
+        if (delivery?.Status is DeliveryStatus.Cancelled or DeliveryStatus.Resolved)
+        {
+            return (false, null,
+                [$"Đơn giao nhận đang ở trạng thái {delivery.Status} nên không chuyển sang nhận tranh điện tử được."]);
+        }
+
         var now = DateTimeOffset.UtcNow;
 
         // KHÔNG huỷ đơn vận chuyển. Bưu phẩm vẫn đang trên đường giao tới người mua —

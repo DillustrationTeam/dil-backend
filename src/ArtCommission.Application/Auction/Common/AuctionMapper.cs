@@ -132,8 +132,22 @@ public static class AuctionMapper
         var receipts = new List<AuctionReceiptDto>();
         var shortId = auction.Id.ToString()[..8].ToUpperInvariant();
 
+        // Biên lai ký quỹ: câu mô tả phải theo TRẠNG THÁI HIỆN TẠI của ký quỹ. Trước đây luôn
+        // ghi "đang tạm giữ" kể cả khi tiền đã chuyển cho người bán hoặc đã hoàn cho người mua.
         if (escrow is not null && auction.WinnerId.HasValue)
         {
+            var depositNote = escrow.Status switch
+            {
+                EscrowStatus.Released =>
+                    $"Khoản {escrow.Amount:N0} VND của phiên {auction.Id} đã được quyết toán: chuyển cho người bán {escrow.ReleasedAmount:N0} VND sau khi trừ phí nền tảng {escrow.FeeAmount:N0} VND.",
+                EscrowStatus.Refunded =>
+                    $"Khoản {escrow.Amount:N0} VND của phiên {auction.Id} đã được hoàn cho người mua.",
+                EscrowStatus.Disputed =>
+                    $"Khoản {escrow.Amount:N0} VND của phiên {auction.Id} đang bị đóng băng để chờ phân xử khiếu nại.",
+                _ =>
+                    $"Sàn Dillustration đang tạm giữ {escrow.Amount:N0} VND của phiên {auction.Id}. Đây là khoản giữ hộ, chưa chuyển cho người bán và chưa bị trừ phí nền tảng."
+            };
+
             receipts.Add(new AuctionReceiptDto(
                 ReceiptType: "EscrowDeposit",
                 ReceiptNumber: $"REC-ESC-{shortId}",
@@ -145,14 +159,47 @@ public static class AuctionMapper
                 NetAmount: null,
                 Title: "Biên lai Tạm giữ Tiền Ký quỹ Đấu giá",
                 ProofImageUrl: null,
-                Description: $"Sàn Dillustration đang tạm giữ {escrow.Amount:N0} VND của phiên {auction.Id}. " +
-                             "Đây là khoản giữ hộ, chưa chuyển cho người bán và chưa bị trừ phí nền tảng.",
+                Description: depositNote,
                 PayerId: escrow.PayerId,
                 PayeeId: escrow.PayeeId));
         }
 
-        if (delivery is not null && !string.IsNullOrWhiteSpace(delivery.ShippingReceiptUrl))
+        // Biên lai HOÀN TIỀN: trước đây không sinh, nên người mua đã được hoàn tiền chỉ thấy
+        // đúng một biên nhận "đang tạm giữ" — vừa sai trạng thái vừa thiếu chứng từ.
+        if (escrow is not null && escrow.Status == EscrowStatus.Refunded && escrow.RefundedAmount > 0m)
         {
+            receipts.Add(new AuctionReceiptDto(
+                ReceiptType: "EscrowRefund",
+                ReceiptNumber: $"REC-RFD-{shortId}",
+                IssuedAt: escrow.RefundedAt ?? escrow.UpdatedAt ?? escrow.CreatedAt,
+                Amount: escrow.RefundedAmount,
+                FeeAmount: null,
+                NetAmount: escrow.RefundedAmount,
+                Title: "Biên lai Hoàn tiền Ký quỹ",
+                ProofImageUrl: null,
+                Description: $"Đã hoàn {escrow.RefundedAmount:N0} VND về ví người mua cho phiên {auction.Id}.",
+                PayerId: escrow.PayeeId,
+                PayeeId: escrow.PayerId));
+        }
+
+        // Phiếu gửi bưu cục: sinh khi đơn ĐÃ được gửi và có BẤT KỲ bằng chứng nào (ảnh biên lai,
+        // ảnh kiện hàng hoặc link tra cứu). Trước đây chỉ xét ảnh biên lai, nên người bán gửi
+        // bằng link tra cứu/ảnh kiện hàng (đều hợp lệ theo API) thì không có biên nhận nào.
+        var hasShippingEvidence = delivery is not null
+                                  && (!string.IsNullOrWhiteSpace(delivery.ShippingReceiptUrl)
+                                      || !string.IsNullOrWhiteSpace(delivery.PackageImageUrl)
+                                      || !string.IsNullOrWhiteSpace(delivery.TrackingUrl));
+
+        if (hasShippingEvidence && delivery is not null)
+        {
+            var proofImage = !string.IsNullOrWhiteSpace(delivery.ShippingReceiptUrl)
+                ? delivery.ShippingReceiptUrl
+                : delivery.PackageImageUrl;
+
+            var evidenceNote = !string.IsNullOrWhiteSpace(delivery.TrackingUrl)
+                ? $" Link tra cứu: {delivery.TrackingUrl}."
+                : string.Empty;
+
             receipts.Add(new AuctionReceiptDto(
                 ReceiptType: "CarrierShipping",
                 ReceiptNumber: $"SHIP-{(string.IsNullOrWhiteSpace(delivery.TrackingCode) ? shortId : delivery.TrackingCode)}",
@@ -161,8 +208,8 @@ public static class AuctionMapper
                 FeeAmount: null,
                 NetAmount: null,
                 Title: $"Phiếu gửi bưu cục ({delivery.CarrierName ?? "Vận chuyển"})",
-                ProofImageUrl: delivery.ShippingReceiptUrl,
-                Description: $"Mã vận đơn: {delivery.TrackingCode}. Kiện hàng đã bàn giao cho bưu cục vận chuyển.",
+                ProofImageUrl: proofImage,
+                Description: $"Mã vận đơn: {delivery.TrackingCode}. Kiện hàng đã bàn giao cho bưu cục vận chuyển.{evidenceNote}",
                 PayerId: auction.SellerId,
                 PayeeId: delivery.RecipientId));
         }
@@ -189,7 +236,10 @@ public static class AuctionMapper
                 ReceiptType: "SettlementPayout",
                 ReceiptNumber: $"REC-SET-{shortId}",
                 IssuedAt: escrow.ReleasedAt.Value,
-                Amount: escrow.Amount,
+                // Số tiền của biên nhận quyết toán là số TIỀN NGƯỜI BÁN THỰC NHẬN (net), không
+                // phải giá chốt. Trước đây để Amount = escrow.Amount nên biên nhận ký quỹ và
+                // biên nhận quyết toán cùng bằng giá chốt — cộng lại thành gấp đôi giá trị.
+                Amount: escrow.ReleasedAmount,
                 FeeAmount: escrow.FeeAmount,
                 NetAmount: escrow.ReleasedAmount,
                 Title: "Biên lai Quyết toán Giao dịch Hoàn tất",

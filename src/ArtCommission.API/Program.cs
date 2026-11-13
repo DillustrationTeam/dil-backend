@@ -152,6 +152,11 @@ builder.Services.Configure<PhysicalChoiceExpirySettings>(
     builder.Configuration.GetSection("PhysicalChoiceExpiry"));
 builder.Services.AddHostedService<PhysicalChoiceExpiryWorker>();
 
+// 3d-4. Job nền huỷ đơn giao tranh vật lý khi NGƯỜI BÁN không gửi hàng trong hạn
+builder.Services.Configure<ShipmentOverdueSettings>(
+    builder.Configuration.GetSection("PhysicalShipment"));
+builder.Services.AddHostedService<ShipmentOverdueWorker>();
+
 // 3c. Cổng thanh toán payOS
 // Secret lấy từ User Secrets (dev) hoặc biến môi trường PayOS__ClientId / PayOS__ApiKey / PayOS__ChecksumKey.
 builder.Services.Configure<PayOsOptions>(builder.Configuration.GetSection(PayOsOptions.SectionName));

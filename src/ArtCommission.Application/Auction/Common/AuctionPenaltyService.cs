@@ -106,13 +106,18 @@ public class AuctionPenaltyService : IAuctionPenaltyService
             return already;
         }
 
-        var previousCount = await _db.AuctionPenalties
-            .CountAsync(p => p.SellerId == auction.SellerId
-                             && !p.IsDeleted
-                             && p.Status != PenaltyStatus.Revoked,
-                cancellationToken);
+        // Bậc mới tính từ BẬC CAO NHẤT đã có, không phải từ số lượng án phạt. Trước đây dùng
+        // Count() nên khi có án phạt bị thu hồi (hoặc dữ liệu nhập tay), bậc mới có thể thấp
+        // hơn bậc seller đang chịu — lịch sử phạt đi lùi và mức phạt hiển thị sai.
+        var highestStep = await _db.AuctionPenalties
+            .Where(p => p.SellerId == auction.SellerId
+                        && !p.IsDeleted
+                        && p.Status != PenaltyStatus.Revoked)
+            .Select(p => (int?)p.StrikeLevel)
+            .MaxAsync(cancellationToken) ?? 0;
 
-        var step = Math.Min(MaxStep, previousCount + 1 + (escrowReleased ? EscrowReleasedJump : 0));
+        var step = Math.Min(MaxStep,
+            Math.Max(1, highestStep + 1 + (escrowReleased ? EscrowReleasedJump : 0)));
 
         var surchargePercent = await _walletService.GetDecimalConfigAsync(
             PlatformConfigKeys.AuctionPenaltySurchargePercent, DefaultSurchargePercent, cancellationToken);

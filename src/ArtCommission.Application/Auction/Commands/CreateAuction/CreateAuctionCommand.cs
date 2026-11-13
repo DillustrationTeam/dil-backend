@@ -58,6 +58,13 @@ public class CreateAuctionCommandValidator : AbstractValidator<CreateAuctionComm
             .GreaterThan(x => x.StartAt)
             .WithMessage("Thời điểm kết thúc phải sau thời điểm bắt đầu.");
 
+        // Chặn phiên "hẹn giờ" bị tạo với thời điểm bắt đầu trong quá khứ. FE cũ đổ giờ UTC
+        // vào ô datetime-local nên mặc định lệch 7 giờ, sinh ra phiên bắt đầu từ hôm qua và
+        // chạy ngay lập tức. Cho phép lệch 1 giờ để bù đồng hồ máy khách không đúng.
+        RuleFor(x => x.StartAt)
+            .Must(startAt => startAt >= DateTimeOffset.UtcNow.AddHours(-1))
+            .WithMessage("Thời điểm bắt đầu không được ở quá khứ quá 1 giờ.");
+
         RuleFor(x => x.EndAt)
             .Must(endAt => endAt > DateTimeOffset.UtcNow)
             .WithMessage("Thời điểm kết thúc phải nằm trong tương lai.");
@@ -157,6 +164,15 @@ public class CreateAuctionCommandHandler
                     return (false, null, ["Bạn không phải chủ sở hữu hiện tại của tranh này."], false);
                 }
 
+                // Tranh phải đã qua kiểm duyệt mới được lên sàn. Trước đây thiếu chặn này nên
+                // tranh vừa upload (Pending) hoặc đã bị từ chối vẫn mở được phiên và hiện công
+                // khai ở trang chi tiết phiên — lách được quy trình kiểm duyệt của Marketplace.
+                if (!string.Equals(artwork.ModerationStatus, "Approved", StringComparison.OrdinalIgnoreCase))
+                {
+                    return (false, null,
+                        ["Tranh chưa được kiểm duyệt (hoặc đã bị từ chối) nên chưa thể mở phiên đấu giá."], false);
+                }
+
                 // Tính cả phiên Ended đang chờ settlement; tranh chỉ được niêm yết lại
                 // sau khi settlement hoàn tất hoặc phiên bị hủy.
                 // Phiên Ended chỉ chặn khi còn chờ settlement (có bid / có người thắng).
@@ -168,7 +184,13 @@ public class CreateAuctionCommandHandler
                          && (a.Status == AuctionStatus.Scheduled
                              || a.Status == AuctionStatus.Active
                              || (a.Status == AuctionStatus.Ended
-                                 && (a.BidCount > 0 || a.WinnerId != null))),
+                                 && (a.BidCount > 0 || a.WinnerId != null))
+                             // Trạng thái sau chốt: ký quỹ chưa đóng, hàng có thể đang giao,
+                             // quyền sở hữu đã sang người thắng ⇒ tranh CHƯA được niêm yết lại.
+                             || a.Status == AuctionStatus.AwaitingPhysical
+                             || a.Status == AuctionStatus.InTransit
+                             || a.Status == AuctionStatus.Disputed
+                             || a.Status == AuctionStatus.Completed),
                     cancellationToken);
 
                 if (hasLiveAuction)

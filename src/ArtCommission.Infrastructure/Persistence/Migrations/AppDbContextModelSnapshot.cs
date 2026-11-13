@@ -1716,13 +1716,16 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.HasIndex("AuctionId")
                         .IsUnique()
                         .HasDatabaseName("UX_Bids_OneLeadingPerAuction")
-                        .HasFilter("[Status] = 'Leading'");
+                        .HasFilter("[Status] = 'Leading' AND [IsDeleted] = 0");
 
                     b.HasIndex("BidderId")
                         .HasDatabaseName("IX_Bids_BidderId");
 
                     b.HasIndex("AuctionId", "PlacedAt")
                         .HasDatabaseName("IX_Bids_Auction_PlacedAt");
+
+                    b.HasIndex("BidderId", "AuctionId", "PlacedAt")
+                        .HasDatabaseName("IX_Bids_Bidder_Auction_PlacedAt");
 
                     b.ToTable("Bids", (string)null);
                 });

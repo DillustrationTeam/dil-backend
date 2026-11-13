@@ -219,8 +219,10 @@ public class AuctionsController : ApiControllerBase
         [FromQuery] int recentBids,
         CancellationToken cancellationToken)
     {
+        var isAdmin = User.IsInRole("Administrator") || User.IsInRole("Admin");
+
         var (success, data, recentBidList, errors) = await Mediator.Send(
-            new GetAuctionByIdQuery(auctionId, CurrentUserId, recentBids),
+            new GetAuctionByIdQuery(auctionId, CurrentUserId, recentBids, isAdmin),
             cancellationToken);
 
         if (!success)
@@ -390,7 +392,7 @@ public class AuctionsController : ApiControllerBase
         CancellationToken cancellationToken)
     {
         var (success, data, meta, errors) = await Mediator.Send(
-            new GetAuctionBidsQuery(auctionId, cursor, limit), cancellationToken);
+            new GetAuctionBidsQuery(auctionId, cursor, limit, CurrentUserId), cancellationToken);
 
         return success ? OkEnvelope(data, meta) : BadRequestEnvelope(errors);
     }
