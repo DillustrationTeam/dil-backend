@@ -64,12 +64,28 @@ public class DeleteAuctionCommandHandler
             return (false, ["Chỉ người bán hoặc quản trị viên mới được huỷ phiên này."]);
         }
 
-        // Đã chốt thì không huỷ: quyền sở hữu đã chuyển, huỷ ở đây sẽ tạo trạng thái
-        // mâu thuẫn (auction Cancelled nhưng tranh đã thuộc người khác).
-        if (auction.Status is AuctionStatus.Settled or AuctionStatus.Cancelled)
+        // Đã BÁN (dù qua đặt giá hay qua Mua ngay) thì không huỷ: quyền sở hữu đã chuyển,
+        // tiền đã vào ký quỹ, huỷ ở đây tạo trạng thái mâu thuẫn.
+        // Trước đây chỉ chặn Settled/Cancelled + BidCount > 0, nên phiên bán bằng MUA NGAY
+        // (BidCount luôn = 0) đang ở AwaitingPhysical / InTransit / Completed vẫn bị người bán
+        // huỷ được — tranh đã sang tên người mua mà phiên thành "đã huỷ".
+        if (auction.Status is AuctionStatus.Settled
+            or AuctionStatus.Cancelled
+            or AuctionStatus.AwaitingPhysical
+            or AuctionStatus.InTransit
+            or AuctionStatus.Disputed
+            or AuctionStatus.Completed
+            or AuctionStatus.Expired)
         {
             return (false,
                 [$"Không huỷ được phiên đang ở trạng thái {AuctionMapper.DescribeStatus(auction.Status)}."]);
+        }
+
+        // Chốt theo dữ liệu tiền/người thắng, không chỉ theo trạng thái: nếu vì lý do nào đó
+        // trạng thái bị đặt lại nhưng phiên đã có người thắng hoặc đã chốt giá thì vẫn chặn.
+        if (auction.WinnerId is not null || auction.SettledAt is not null || auction.FinalPrice is not null)
+        {
+            return (false, ["Phiên đã có người thắng nên không huỷ được."]);
         }
 
         if (auction.BidCount > 0)
@@ -90,7 +106,7 @@ public class DeleteAuctionCommandHandler
         await _db.SaveChangesAsync(cancellationToken);
 
         await _lifecycleNotifier.NotifyParticipantsAsync(
-            auction.Id, AuctionLifecycleEvent.Ended, cancellationToken: cancellationToken);
+            auction.Id, AuctionLifecycleEvent.Cancelled, cancellationToken: cancellationToken);
         try
         {
             await _realtime.PublishAuctionStatusChangedAsync(

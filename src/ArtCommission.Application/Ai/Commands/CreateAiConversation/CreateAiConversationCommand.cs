@@ -29,7 +29,7 @@ public class CreateAiConversationCommandValidator : AbstractValidator<CreateAiCo
         RuleFor(x => x.ContextType)
             .Must(BeValidContextType)
             .When(x => !string.IsNullOrWhiteSpace(x.ContextType))
-            .WithMessage("Loại ngữ cảnh không hợp lệ (General / Commission / Artwork).");
+            .WithMessage("Loại ngữ cảnh không hợp lệ (General / Commission / Artwork / Auction).");
 
         // Ngữ cảnh cụ thể bắt buộc phải kèm contextId, nếu không phiên sẽ trỏ vào hư không.
         RuleFor(x => x.ContextId)
@@ -105,6 +105,43 @@ public class CreateAiConversationCommandHandler
             if (!isClient && !isCreator)
             {
                 return (false, null, ["Bạn không phải thành viên của đơn đặt vẽ này."]);
+            }
+        }
+
+        // Ngữ cảnh Auction: phiên đấu giá là thông tin công khai, NHƯNG ngữ cảnh còn kèm
+        // tiền cọc của chính người hỏi và mức phạt của người bán, nên phải chặn người ngoài
+        // gắn ngữ cảnh để dò dữ liệu riêng.
+        if (contextType == AiContextType.Auction && request.ContextId.HasValue)
+        {
+            var auction = await _db.Auctions
+                .AsNoTracking()
+                .Where(a => a.Id == request.ContextId.Value && !a.IsDeleted)
+                .Select(a => new { a.SellerId, a.WinnerId })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (auction is null)
+            {
+                return (false, null, ["Không tìm thấy phiên đấu giá."]);
+            }
+
+            var isSeller = auction.SellerId == request.UserId;
+            var isWinner = auction.WinnerId == request.UserId;
+            var isBidder = await _db.Bids
+                .AsNoTracking()
+                .AnyAsync(
+                    b => b.AuctionId == request.ContextId.Value && b.BidderId == request.UserId && !b.IsDeleted,
+                    cancellationToken);
+            var isWatcher = await _db.AuctionWatches
+                .AsNoTracking()
+                .AnyAsync(
+                    w => w.AuctionId == request.ContextId.Value && w.UserId == request.UserId && !w.IsDeleted,
+                    cancellationToken);
+
+            // Người xem ngoài vẫn hỏi được về phiên (thông tin công khai), nhưng ngữ cảnh
+            // riêng sẽ bị hạ xuống General để prompt không chứa dữ liệu của người khác.
+            if (!isSeller && !isWinner && !isBidder && !isWatcher)
+            {
+                contextType = AiContextType.General;
             }
         }
 

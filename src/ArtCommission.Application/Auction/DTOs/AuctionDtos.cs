@@ -76,7 +76,7 @@ public sealed record AuctionListItemDto(
     int WatchCount,
     bool HasPhysicalCopy = false,
     string? PhysicalDescription = null,
-    /// <summary>GiÃ¡ chá»‘t cuá»‘i cÃ¹ng â€” null khi phiÃªn chÆ°a settle.</summary>
+    /// <summary>Giá chốt cuối cùng â€” null khi phiên chưa settle.</summary>
     decimal? FinalPrice = null
 );
 
@@ -108,8 +108,20 @@ public sealed record AuctionDetailDto(
     DateTimeOffset? PhysicalChoiceDeadline = null,
     AuctionDeliveryDto? Delivery = null,
     IReadOnlyList<AuctionReceiptDto>? Receipts = null,
-    /// <summary>GiÃ¡ chá»‘t cuá»‘i cÃ¹ng â€” null khi phiÃªn chÆ°a settle.</summary>
-    decimal? FinalPrice = null
+    /// <summary>Giá chốt cuối cùng â€” null khi phiên chưa settle.</summary>
+    decimal? FinalPrice = null,
+    /// <summary>
+    /// Current step of the seller on the delivery-dispute penalty ladder (0 = no penalty).
+    /// Highest step among penalties that were not revoked, so the ladder keeps accumulating
+    /// until step 5. The seller form shows the ladder and marks this step.
+    /// </summary>
+    int SellerPenaltyLevel = 0,
+    /// <summary>
+    /// Giá trần đặt giá tự động của CHÍNH người đang xem (null nếu chưa đăng ký).
+    /// Trước đây FE giữ giá trị này trong RAM nên F5 là mất banner "Auto-bid đang hoạt động"
+    /// dù backend vẫn đang tự nâng giá theo trần đó.
+    /// </summary>
+    decimal? MyAutoBidMax = null
 );
 
 /// <summary>Thông tin giao nhận tranh vật lý của phiên.</summary>
@@ -134,8 +146,8 @@ public sealed record AuctionDeliveryDto(
     string? DisputeReason,
     string? DisputeEvidenceUrl,
     /// <summary>
-    /// Má»‘c há»‡ thá»‘ng tá»± Ä‘á»™ng xÃ¡c nháº­n Ä‘Ã£ nháº­n hÃ ng (shippedAt + 48h). Null khi chÆ°a gá»­i hÃ ng
-    /// hoáº·c Ä‘Æ¡n Ä‘Ã£ káº¿t thÃºc. NgÆ°á»i mua khÃ´ng báº¥m xÃ¡c nháº­n thÃ¬ má»‘c nÃ y sáº½ tá»± hoÃ n táº¥t Ä‘Æ¡n.
+    /// Mốc hệ thống tự động xác nhận đã nhận hàng (shippedAt + 48h). Null khi chưa gửi hàng
+    /// hoặc đơn đã kết thúc. Người mua không bấm xác nhận thì mốc này sẽ tự hoàn tất đơn.
     /// </summary>
     DateTimeOffset? AutoConfirmAt = null,
     /// <summary>Khiếu nại được gửi sau khi ký quỹ đã giải ngân (không còn quỹ để đóng băng/hoàn).</summary>
@@ -458,7 +470,19 @@ public sealed record RevenueSummaryDto(
     decimal FeeAmount,
     decimal NetAmount,
     int CompletedOrderCount,
-    decimal AverageOrderValue
+    decimal AverageOrderValue,
+    /// <summary>
+    /// Trong <paramref name="FeeAmount"/>, bao nhiêu là PHỤ PHÍ do vi phạm giao hàng
+    /// (thang phạt 5 mức). Tách ra để người bán hiểu vì sao phí bị trừ nhiều hơn mức 5–15%.
+    /// </summary>
+    decimal PenaltyFeeAmount = 0m,
+    /// <summary>
+    /// Tiền người bán ĐANG được sàn giữ trong ký quỹ (chờ giao hàng / đang khiếu nại).
+    /// Đây KHÔNG phải doanh thu — chỉ để người bán biết tiền của mình đang ở đâu.
+    /// </summary>
+    decimal EscrowHeldAmount = 0m,
+    /// <summary>Phần ký quỹ đang bị đóng băng do khiếu nại (nằm trong <paramref name="EscrowHeldAmount"/>).</summary>
+    decimal EscrowDisputedAmount = 0m
 );
 
 public sealed record RevenueTimeseriesPointDto(
@@ -486,7 +510,11 @@ public sealed record RevenueSnapshotDto(
     decimal NetAmount,
     int CompletedOrderCount,
     DateTimeOffset? RebuiltAt,
-    int RebuildCount
+    int RebuildCount,
+    /// <summary>Phần doanh thu gộp đến từ đơn đặt vẽ trong kỳ (đã lưu sẵn ở bảng snapshot).</summary>
+    decimal CommissionGrossAmount = 0m,
+    /// <summary>Phần doanh thu gộp đến từ phiên đấu giá trong kỳ.</summary>
+    decimal AuctionGrossAmount = 0m
 );
 
 // =====================================================================

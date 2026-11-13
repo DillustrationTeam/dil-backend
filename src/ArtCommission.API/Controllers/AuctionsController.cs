@@ -219,8 +219,10 @@ public class AuctionsController : ApiControllerBase
         [FromQuery] int recentBids,
         CancellationToken cancellationToken)
     {
+        var isAdmin = User.IsInRole("Administrator") || User.IsInRole("Admin");
+
         var (success, data, recentBidList, errors) = await Mediator.Send(
-            new GetAuctionByIdQuery(auctionId, CurrentUserId, recentBids),
+            new GetAuctionByIdQuery(auctionId, CurrentUserId, recentBids, isAdmin),
             cancellationToken);
 
         if (!success)
@@ -390,7 +392,7 @@ public class AuctionsController : ApiControllerBase
         CancellationToken cancellationToken)
     {
         var (success, data, meta, errors) = await Mediator.Send(
-            new GetAuctionBidsQuery(auctionId, cursor, limit), cancellationToken);
+            new GetAuctionBidsQuery(auctionId, cursor, limit, CurrentUserId), cancellationToken);
 
         return success ? OkEnvelope(data, meta) : BadRequestEnvelope(errors);
     }
@@ -608,7 +610,7 @@ public class AuctionsController : ApiControllerBase
                     type = "https://httpstatuses.com/403",
                     title = "Forbidden",
                     status = 403,
-                    detail = errors.FirstOrDefault() ?? "Báº¡n khÃ´ng cÃ³ quyá»n xem chá»©ng nháº­n nÃ y.",
+                    detail = errors.FirstOrDefault() ?? "Bạn không có quyền xem chứng nhận này.",
                     traceId = HttpContext.TraceIdentifier
                 }
             }),
@@ -1061,7 +1063,7 @@ public class AuctionsController : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetReceipts(Guid auctionId, CancellationToken cancellationToken)
     {
-        // BiÃªn lai chá»©a sá»‘ tiá»n vÃ  thÃ´ng tin hai bÃªn: chá»‰ ngÆ°á»i trong cuá»™c hoáº·c Admin.
+        // Biên lai chứa số tiền và thông tin hai bên: chỉ người trong cuộc hoặc Admin.
         if (CurrentUserId == Guid.Empty)
         {
             return UnauthorizedEnvelope();
@@ -1075,7 +1077,7 @@ public class AuctionsController : ApiControllerBase
             return NotFoundEnvelope(errors);
         }
 
-        // NgÆ°á»i ngoÃ i nháº­n 403 thay vÃ¬ 200 + máº£ng rá»—ng: biÃªn lai lÃ  dá»¯ liá»‡u tÃ i chÃ­nh.
+        // Người ngoài nhận 403 thay vì 200 + mảng rỗng: biên lai là dữ liệu tài chính.
         var isAdmin = User.IsInRole("Administrator") || User.IsInRole("Admin");
         var isParticipant = data.WinnerId == CurrentUserId || data.Seller?.UserId == CurrentUserId;
         if (!isAdmin && !isParticipant)
@@ -1089,7 +1091,7 @@ public class AuctionsController : ApiControllerBase
                     type = "https://httpstatuses.com/403",
                     title = "Forbidden",
                     status = 403,
-                    detail = "Chá»‰ ngÆ°á»i tháº¯ng, ngÆ°á»i bÃ¡n hoáº·c Ban quáº£n trá»‹ má»›i xem Ä‘Æ°á»£c biÃªn lai cá»§a phiÃªn nÃ y.",
+                    detail = "Chỉ người thắng, người bán hoặc Ban quản trị mới xem được biên lai của phiên này.",
                     traceId = HttpContext.TraceIdentifier
                 }
             });

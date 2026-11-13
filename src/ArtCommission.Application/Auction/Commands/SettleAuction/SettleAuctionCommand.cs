@@ -86,7 +86,11 @@ public class SettleAuctionCommandHandler
 
         // ĐÃ CHỐT: trả lại kết quả cũ. Đây là chốt chặn idempotent quan trọng nhất —
         // job nền và Admin có thể cùng gọi settle cho một phiên.
-        if (auction.Status == AuctionStatus.Settled && auction.SettledAt.HasValue)
+        // Dùng SettledAt/WinnerId thay vì chỉ Status == Settled: phiên có bản vật lý sau khi
+        // chốt nằm ở AwaitingPhysical / InTransit / Disputed / Completed, nên nếu chỉ so
+        // Status thì mọi lần gọi lại vẫn chạy hết thân hàm (hoàn cọc loser, phát thông báo,
+        // broadcast) dù tiền đã chốt từ trước.
+        if (auction.SettledAt.HasValue && auction.WinnerId.HasValue)
         {
             return await BuildIdempotentResponseAsync(auction, cancellationToken);
         }

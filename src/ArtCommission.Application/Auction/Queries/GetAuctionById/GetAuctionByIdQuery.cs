@@ -18,7 +18,12 @@ namespace ArtCommission.Application.Auction.Queries.GetAuctionById;
 public record GetAuctionByIdQuery(
     Guid AuctionId,
     Guid? CurrentUserId,
-    int RecentBidCount = 20
+    int RecentBidCount = 20,
+    /// <summary>
+    /// Người gọi là quản trị viên. Endpoint chi tiết phiên mở cho cả khách chưa đăng nhập,
+    /// nên cờ này quyết định có trả khối giao nhận/biên lai (dữ liệu riêng) hay không.
+    /// </summary>
+    bool IsAdmin = false
 ) : IRequest<(bool Success, AuctionDetailDto? Data, IReadOnlyList<BidDto>? RecentBids, string[] Errors)>;
 
 public class GetAuctionByIdQueryHandler
@@ -178,6 +183,42 @@ public class GetAuctionByIdQueryHandler
                             && !hasRatedSeller
                             && request.CurrentUserId == auction.WinnerId;
 
+        // Mức phạt hiện tại của người bán: lấy bậc cao nhất trong các án phạt chưa bị thu hồi.
+        // Thang phạt cộng dồn tới mức 5 nên đây là mức người bán đang đứng, không phải mức của phiên này.
+        // CHỈ trả cho chính người bán hoặc quản trị viên — đây là dữ liệu uy tín nội bộ của
+        // người bán, không phải thông tin công khai của phiên.
+        var canSeeSellerPenalty = request.IsAdmin || request.CurrentUserId == auction.SellerId;
+        var sellerPenaltyLevel = !canSeeSellerPenalty
+            ? 0
+            : await _db.AuctionPenalties
+                .AsNoTracking()
+                .Where(p => p.SellerId == auction.SellerId
+                            && !p.IsDeleted
+                            && p.Status != PenaltyStatus.Revoked)
+                .Select(p => (int?)p.StrikeLevel)
+                .MaxAsync(cancellationToken) ?? 0;
+
+        // Trần auto-bid của chính người xem: cần để banner "Auto-bid đang hoạt động" sống
+        // qua lần tải lại trang (trước đây chỉ nằm trong RAM của tab đang mở).
+        decimal? myAutoBidMax = null;
+        if (request.CurrentUserId is { } autoBidViewer && autoBidViewer != Guid.Empty)
+        {
+            myAutoBidMax = await _db.AuctionAutoBids
+                .AsNoTracking()
+                .Where(x => x.AuctionId == auction.Id && x.BidderId == autoBidViewer && !x.IsDeleted)
+                .Select(x => (decimal?)x.MaxAmount)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        // KHỐI DỮ LIỆU RIÊNG: đơn giao nhận (tên, số điện thoại, địa chỉ người nhận, mã vận
+        // đơn) và biên lai (số tiền ký quỹ, người trả/người nhận tiền). Endpoint chi tiết
+        // phiên mở cho cả khách chưa đăng nhập, nên chỉ người trong cuộc hoặc quản trị viên
+        // mới được nhận; người ngoài nhận null thay vì dữ liệu của người khác.
+        var canSeePrivateFulfilment =
+            request.IsAdmin
+            || (request.CurrentUserId is { } viewer && viewer != Guid.Empty
+                && (viewer == auction.SellerId || viewer == auction.WinnerId));
+
         var detail = new AuctionDetailDto(
             AuctionId: auction.Id,
             Artwork: AuctionMapper.ToArtworkDto(auction.Artwork) is { } artwork
@@ -203,9 +244,15 @@ public class GetAuctionByIdQueryHandler
             PhysicalDescription: auction.PhysicalDescription,
             RequiresPhysicalDelivery: auction.RequiresPhysicalDelivery,
             PhysicalChoiceDeadline: auction.PhysicalChoiceDeadline,
-            Delivery: AuctionMapper.ToDeliveryDto(delivery, canRateSeller, hasRatedSeller),
-            Receipts: AuctionMapper.BuildReceipts(auction, escrow, delivery),
-            FinalPrice: auction.FinalPrice);
+            Delivery: canSeePrivateFulfilment
+                ? AuctionMapper.ToDeliveryDto(delivery, canRateSeller, hasRatedSeller)
+                : null,
+            Receipts: canSeePrivateFulfilment
+                ? AuctionMapper.BuildReceipts(auction, escrow, delivery)
+                : null,
+            FinalPrice: auction.FinalPrice,
+            SellerPenaltyLevel: sellerPenaltyLevel,
+            MyAutoBidMax: myAutoBidMax);
         return (true, detail, recentBids, []);
     }
 }

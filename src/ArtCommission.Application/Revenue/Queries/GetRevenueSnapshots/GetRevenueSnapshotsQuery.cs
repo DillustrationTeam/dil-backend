@@ -101,7 +101,9 @@ public class GetRevenueSnapshotsQueryHandler
                 s.NetAmount,
                 s.CompletedOrderCount,
                 s.RebuiltAt,
-                s.RebuildCount))
+                s.RebuildCount,
+                s.CommissionGrossAmount ?? 0m,
+                s.AuctionGrossAmount ?? 0m))
             .ToListAsync(cancellationToken);
 
         var hasMore = rows.Count > limit;

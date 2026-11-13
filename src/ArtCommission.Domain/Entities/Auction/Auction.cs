@@ -75,6 +75,16 @@ public class Auction : BaseEntity
     /// </summary>
     public string? CancelReason { get; set; }
 
+    /// <summary>
+    /// Extra percentage points added on top of the platform fee for this session because the
+    /// seller was serving a confirmed-dispute penalty when the session was settled.
+    /// Snapshot written at settlement so later config changes never rewrite history.
+    /// </summary>
+    public decimal? FeeSurchargePercent { get; set; }
+
+    /// <summary>Platform fee percentage actually charged on this session (base + surcharge).</summary>
+    public decimal? EffectiveFeePercent { get; set; }
+
     // Navigation
     public Artwork? Artwork { get; set; }
     public AuctionDelivery? Delivery { get; set; }

@@ -148,6 +148,15 @@ builder.Services.AddHostedService<EventLifecycleWorker>();
 // 3d-3. Job nền tự động hoàn tất đơn giao tranh vật lý sau 48h nếu người mua không xác nhận
 builder.Services.AddHostedService<DeliveryAutoConfirmWorker>();
 
+builder.Services.Configure<PhysicalChoiceExpirySettings>(
+    builder.Configuration.GetSection("PhysicalChoiceExpiry"));
+builder.Services.AddHostedService<PhysicalChoiceExpiryWorker>();
+
+// 3d-4. Job nền huỷ đơn giao tranh vật lý khi NGƯỜI BÁN không gửi hàng trong hạn
+builder.Services.Configure<ShipmentOverdueSettings>(
+    builder.Configuration.GetSection("PhysicalShipment"));
+builder.Services.AddHostedService<ShipmentOverdueWorker>();
+
 // 3c. Cổng thanh toán payOS
 // Secret lấy từ User Secrets (dev) hoặc biến môi trường PayOS__ClientId / PayOS__ApiKey / PayOS__ChecksumKey.
 builder.Services.Configure<PayOsOptions>(builder.Configuration.GetSection(PayOsOptions.SectionName));
@@ -198,6 +207,7 @@ builder.Services.AddScoped<IVoucherCheckService, VoucherCheckService>();
 // 3g. UC32–UC35 — Auction: cọc đấu giá + chốt phiên (dùng chung IWalletService)
 builder.Services.AddScoped<IAuctionMoneyService, AuctionMoneyService>();
 builder.Services.AddScoped<IAuctionSettlementService, AuctionSettlementService>();
+ builder.Services.AddScoped<IAuctionPenaltyService, AuctionPenaltyService>();
 builder.Services.AddScoped<IAuctionRealtimePublisher, AuctionRealtimePublisher>();
 builder.Services.AddScoped<IAuctionLifecycleNotifier, AuctionLifecycleNotifier>();
 

@@ -149,6 +149,10 @@ public class AiContextBuilder : IAiContextBuilder
                 await AppendArtworkContextAsync(builder, userId, contextId.Value, cancellationToken);
                 break;
 
+            case AiContextType.Auction:
+                await AppendAuctionContextAsync(builder, userId, contextId.Value, cancellationToken);
+                break;
+
             default:
                 break;
         }
@@ -275,6 +279,268 @@ public class AiContextBuilder : IAiContextBuilder
         {
             builder.AppendLine($"- Trạng thái kiểm duyệt: {artwork.ModerationStatus}");
             builder.AppendLine($"- Có huy hiệu xác thực vẽ tay: {(artwork.IsAiGenerated ? "chưa" : "đang xét")}");
+        }
+    }
+
+    /// <summary>
+    /// Ngữ cảnh một phiên đấu giá.
+    ///
+    /// LUẬT RIÊNG CỦA PHẦN NÀY:
+    ///   - Thông tin công khai (giá, trạng thái, thời gian, trạng thái bưu phẩm) đưa cho mọi
+    ///     người xem phiên, vì ai vào trang phiên cũng thấy.
+    ///   - Dữ liệu riêng chỉ đưa khi đúng chủ: tiền cọc của chính người hỏi, mức phạt + tình
+    ///     trạng bán của người bán (chỉ người bán), địa chỉ người nhận (chỉ người mua và
+    ///     người bán của phiên đó).
+    ///   - Mức phạt của người bán KHÔNG đưa cho người mua: đó là dữ liệu nội bộ của người bán.
+    /// </summary>
+    private async Task AppendAuctionContextAsync(
+        StringBuilder builder,
+        Guid userId,
+        Guid auctionId,
+        CancellationToken cancellationToken)
+    {
+        var auction = await _db.Auctions
+            .AsNoTracking()
+            .Where(a => a.Id == auctionId && !a.IsDeleted)
+            .Select(a => new
+            {
+                a.Id,
+                a.ArtworkId,
+                a.SellerId,
+                a.Status,
+                a.StartPrice,
+                a.BidStep,
+                a.BuyNowPrice,
+                a.CurrentPrice,
+                a.BidCount,
+                a.StartAt,
+                a.EndAt,
+                a.WinnerId,
+                a.FinalPrice,
+                a.SettledAt,
+                a.HasPhysicalCopy,
+                a.PhysicalChoiceDeadline,
+                a.RequiresPhysicalDelivery,
+                a.EffectiveFeePercent,
+                a.FeeSurchargePercent
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (auction is null)
+        {
+            builder.AppendLine();
+            builder.AppendLine("NGỮ CẢNH: Người dùng có nhắc một phiên đấu giá nhưng không tìm thấy phiên này.");
+            return;
+        }
+
+        var artworkTitle = await _db.Artworks
+            .AsNoTracking()
+            .Where(a => a.Id == auction.ArtworkId)
+            .Select(a => a.Title)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var isSeller = auction.SellerId == userId;
+        var isWinner = auction.WinnerId == userId;
+
+        var ownBids = await _db.Bids
+            .AsNoTracking()
+            .Where(b => b.AuctionId == auctionId && b.BidderId == userId && !b.IsDeleted)
+            .OrderByDescending(b => b.Amount)
+            .Select(b => new { b.Amount, b.HoldAmount, b.Status, b.HoldStatus })
+            .ToListAsync(cancellationToken);
+
+        var isBidder = ownBids.Count > 0;
+        var isWatcher = await _db.AuctionWatches
+            .AsNoTracking()
+            .AnyAsync(w => w.AuctionId == auctionId && w.UserId == userId && !w.IsDeleted, cancellationToken);
+
+        builder.AppendLine();
+        builder.AppendLine("NGỮ CẢNH — PHIÊN ĐẤU GIÁ:");
+        builder.AppendLine($"- Mã phiên: {auction.Id}");
+        builder.AppendLine($"- Tác phẩm: {artworkTitle ?? "chưa rõ"}");
+        builder.AppendLine($"- Trạng thái phiên: {auction.Status}");
+        builder.AppendLine($"- Giá khởi điểm: {auction.StartPrice:N0} VND | bước giá: {auction.BidStep:N0} VND");
+        builder.AppendLine($"- Giá hiện tại: {auction.CurrentPrice:N0} VND | số lượt đặt giá: {auction.BidCount}");
+        builder.AppendLine(auction.BuyNowPrice.HasValue
+            ? $"- Giá mua ngay: {auction.BuyNowPrice.Value:N0} VND"
+            : "- Phiên không đặt giá mua ngay.");
+        builder.AppendLine($"- Thời gian: bắt đầu {auction.StartAt:yyyy-MM-dd HH:mm}, kết thúc {auction.EndAt:yyyy-MM-dd HH:mm} (UTC)");
+        builder.AppendLine($"- Có bản vật lý: {(auction.HasPhysicalCopy ? "có" : "không")}");
+
+        if (auction.FinalPrice.HasValue)
+        {
+            builder.AppendLine($"- Giá chốt: {auction.FinalPrice.Value:N0} VND (lúc {auction.SettledAt:yyyy-MM-dd HH:mm} UTC)");
+        }
+
+        if (auction.EffectiveFeePercent.HasValue)
+        {
+            builder.AppendLine(auction.FeeSurchargePercent.HasValue
+                ? $"- Phí của phiên này (đã chốt): tổng {auction.EffectiveFeePercent.Value:0.##}% — trong đó có phụ phí do người bán đang bị phạt giao hàng {auction.FeeSurchargePercent.Value:0.##}%."
+                : $"- Phí của phiên này (đã chốt): {auction.EffectiveFeePercent.Value:0.##}%.");
+        }
+        else if (auction.FinalPrice.HasValue)
+        {
+            // Phiên đã chốt nhưng không có snapshot phí ⇒ chốt trước khi có tính năng phụ phí.
+            // Nói rõ để bot không gán phụ phí hiện tại vào phiên đã chốt này.
+            builder.AppendLine(
+                "- Phí của phiên này đã chốt TRƯỚC khi có phụ phí phạt giao hàng, nên phí của phiên này KHÔNG gồm phụ phí.");
+        }
+        else
+        {
+            builder.AppendLine(
+                "- Phiên này CHƯA chốt: phụ phí (nếu người bán đang bị phạt) sẽ được tính tại thời điểm chốt phiên.");
+        }
+
+        if (auction.PhysicalChoiceDeadline.HasValue && auction.RequiresPhysicalDelivery is null
+            && auction.Status == AuctionStatus.AwaitingPhysical)
+        {
+            var conLai = auction.PhysicalChoiceDeadline.Value - DateTimeOffset.UtcNow;
+            builder.AppendLine(
+                $"- Hạn chọn hình thức nhận tranh: {auction.PhysicalChoiceDeadline:yyyy-MM-dd HH:mm} UTC " +
+                $"(còn {(conLai > TimeSpan.Zero ? $"{conLai.TotalHours:0.#} giờ" : "đã quá hạn")}).");
+        }
+
+        builder.AppendLine($"- Vai trò của người hỏi trong phiên: " +
+            (isSeller ? "người bán"
+                : isWinner ? "người thắng"
+                : isBidder ? "người đã từng đặt giá"
+                : isWatcher ? "người đang theo dõi"
+                : "người xem bên ngoài"));
+
+        if (!isSeller && !isWinner && !isBidder)
+        {
+            builder.AppendLine(
+                "  (Người hỏi không phải người bán, không phải người thắng và chưa từng đặt giá: " +
+                "chỉ được nói thông tin công khai ở trên, không suy đoán về người tham gia khác.)");
+        }
+
+        // Tiền cọc của CHÍNH người hỏi.
+        if (ownBids.Count > 0)
+        {
+            var top = ownBids[0];
+            var heldBid = ownBids.FirstOrDefault(b => b.HoldStatus == HoldStatus.Held);
+            builder.AppendLine(
+                $"- Lượt đặt giá cao nhất của người hỏi: {top.Amount:N0} VND, trạng thái {top.Status}, tiền giữ {top.HoldStatus}.");
+            if (heldBid is not null)
+            {
+                builder.AppendLine($"- Số tiền đang bị giữ trong ví cho phiên này: {heldBid.HoldAmount:N0} VND.");
+            }
+        }
+
+        // Đơn giao tranh vật lý.
+        var delivery = await _db.Set<ArtCommission.Domain.Entities.Auction.AuctionDelivery>()
+            .AsNoTracking()
+            .Where(d => d.AuctionId == auctionId && !d.IsDeleted)
+            .Select(d => new
+            {
+                d.Status,
+                d.CarrierName,
+                d.TrackingCode,
+                d.ShippedAt,
+                d.DeliveredAt,
+                d.ConfirmedAt,
+                d.DisputeReason,
+                d.DisputeResolution,
+                d.IsPostPayoutDispute,
+                d.RecipientName,
+                d.RecipientPhone,
+                d.ShippingAddress
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (delivery is not null)
+        {
+            builder.AppendLine($"- Đơn giao hàng: trạng thái {delivery.Status}");
+            if (!string.IsNullOrWhiteSpace(delivery.CarrierName) || !string.IsNullOrWhiteSpace(delivery.TrackingCode))
+            {
+                builder.AppendLine($"  + Đơn vị vận chuyển: {delivery.CarrierName ?? "chưa ghi"} | mã vận đơn: {delivery.TrackingCode ?? "chưa ghi"}");
+            }
+
+            if (delivery.ShippedAt.HasValue)
+            {
+                var autoConfirm = delivery.ShippedAt.Value.AddHours(48);
+                builder.AppendLine(
+                    $"  + Đã gửi hàng lúc {delivery.ShippedAt:yyyy-MM-dd HH:mm} UTC; mốc tự động xác nhận đã nhận là {autoConfirm:yyyy-MM-dd HH:mm} UTC.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(delivery.DisputeReason))
+            {
+                builder.AppendLine($"  + Khiếu nại của người mua: {delivery.DisputeReason}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(delivery.DisputeResolution))
+            {
+                builder.AppendLine($"  + Kết quả phân xử: {delivery.DisputeResolution}");
+            }
+
+            if (delivery.IsPostPayoutDispute)
+            {
+                builder.AppendLine("  + Lưu ý: khiếu nại này được gửi SAU khi tiền đã chuyển cho người bán.");
+            }
+
+            // Địa chỉ người nhận chỉ cho người mua và người bán của phiên.
+            if ((isWinner || isSeller) && !string.IsNullOrWhiteSpace(delivery.ShippingAddress))
+            {
+                builder.AppendLine(
+                    $"  + Người nhận: {delivery.RecipientName} | {delivery.RecipientPhone} | {delivery.ShippingAddress}");
+            }
+        }
+
+        // Ký quỹ: số tiền của phiên, không phải số dư ví.
+        var escrow = await _db.EscrowTransactions
+            .AsNoTracking()
+            .Where(e => e.AuctionId == auctionId && !e.IsDeleted)
+            .Select(e => new { e.Status, e.Amount, e.FeeAmount, e.ReleasedAmount, e.RefundedAmount })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (escrow is not null)
+        {
+            builder.AppendLine(
+                $"- Tiền của phiên đang ở sàn: trạng thái {escrow.Status}, số tiền {escrow.Amount:N0} VND, " +
+                $"phí {escrow.FeeAmount:N0} VND, đã chuyển cho người bán {escrow.ReleasedAmount:N0} VND, đã hoàn {escrow.RefundedAmount:N0} VND.");
+        }
+
+        // Mức phạt và tình trạng bán: CHỈ của người bán, chỉ nói cho chính người bán.
+        if (isSeller)
+        {
+            var penalties = await _db.AuctionPenalties
+                .AsNoTracking()
+                .Where(p => p.SellerId == userId && !p.IsDeleted && p.Status != PenaltyStatus.Revoked)
+                .Select(p => new { p.StrikeLevel, p.Status, p.SurchargePercent, p.SessionsTotal, p.SessionsUsed, p.BanUntil })
+                .ToListAsync(cancellationToken);
+
+            var level = penalties.Count == 0 ? 0 : penalties.Max(p => p.StrikeLevel);
+            builder.AppendLine($"- Mức phạt giao hàng hiện tại của người hỏi (với vai trò người bán): {level}/5.");
+
+            var surcharge = penalties
+                .Where(p => p.Status == PenaltyStatus.Active && p.SurchargePercent.HasValue)
+                .Select(p => p.SurchargePercent!.Value)
+                .DefaultIfEmpty(0m)
+                .Max();
+            if (surcharge > 0m)
+            {
+                builder.AppendLine($"  + Phụ phí đang cộng vào phí bán: +{surcharge:0.##} điểm phần trăm.");
+                foreach (var p in penalties.Where(p => p.Status == PenaltyStatus.Active && p.SessionsTotal > 0))
+                {
+                    builder.AppendLine(
+                        $"  + Còn {Math.Max(0, p.SessionsTotal - p.SessionsUsed)}/{p.SessionsTotal} phiên bán phải chịu phụ phí.");
+                }
+            }
+
+            var banUntil = penalties
+                .Where(p => p.BanUntil.HasValue && p.BanUntil.Value > DateTimeOffset.UtcNow)
+                .Select(p => p.BanUntil!.Value)
+                .DefaultIfEmpty(DateTimeOffset.MinValue)
+                .Max();
+            if (banUntil > DateTimeOffset.UtcNow)
+            {
+                builder.AppendLine($"  + Đang bị tạm khoá đăng bán tới {banUntil:yyyy-MM-dd HH:mm} UTC.");
+            }
+
+            if (level >= 5)
+            {
+                builder.AppendLine("  + Mức 5: quyền đăng bán tranh đã bị khoá vĩnh viễn.");
+            }
         }
     }
 }

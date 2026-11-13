@@ -2,6 +2,7 @@ using ArtCommission.Application.Auction.Common;
 using ArtCommission.Application.Auction.DTOs;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.Notifications.Common;
+using ArtCommission.Application.Payment.Common;
 using ArtCommission.Domain.Entities.Auction;
 using ArtCommission.Domain.Enums;
 using FluentValidation;
@@ -42,7 +43,12 @@ public sealed class PlaceBidCommandHandler
     : IRequestHandler<PlaceBidCommand, (bool Success, PlaceBidResultDto? Data, string[] Errors, AuctionBidConflictDto? Conflict)>
 {
     private static readonly TimeSpan AntiSnipeWindow = TimeSpan.FromMinutes(3);
-    private static readonly TimeSpan MaxAntiSnipeExtension = TimeSpan.FromHours(2);
+
+    /// <summary>
+    /// Trần thời lượng của một phiên, phải khớp <c>CreateAuctionCommand.MaximumDurationDays</c>.
+    /// Dùng làm mốc chặn trên cho việc gia hạn anti-snipe.
+    /// </summary>
+    private const int MaxAuctionDurationDays = 30;
     private const int MaxLimit = 100;
 
     private readonly IApplicationDbContext _db;
@@ -50,6 +56,8 @@ public sealed class PlaceBidCommandHandler
     private readonly INotificationPublisher _notifications;
     private readonly IAuctionRealtimePublisher _realtime;
     private readonly IAuctionLifecycleNotifier _lifecycleNotifier;
+    private readonly IAuctionSettlementService _settlementService;
+    private readonly IWalletService _walletService;
     private readonly ILogger<PlaceBidCommandHandler> _logger;
 
     public PlaceBidCommandHandler(
@@ -58,6 +66,8 @@ public sealed class PlaceBidCommandHandler
         INotificationPublisher notifications,
         IAuctionRealtimePublisher realtime,
         IAuctionLifecycleNotifier lifecycleNotifier,
+        IAuctionSettlementService settlementService,
+        IWalletService walletService,
         ILogger<PlaceBidCommandHandler> logger)
     {
         _db = db;
@@ -65,6 +75,8 @@ public sealed class PlaceBidCommandHandler
         _notifications = notifications;
         _realtime = realtime;
         _lifecycleNotifier = lifecycleNotifier;
+        _settlementService = settlementService;
+        _walletService = walletService;
         _logger = logger;
     }
 
@@ -76,6 +88,66 @@ public sealed class PlaceBidCommandHandler
         if (!validation.IsValid)
         {
             return (false, null, validation.Errors.Select(e => e.ErrorMessage).ToArray(), null);
+        }
+
+        // Buy-now is a hard ceiling, and it is handled BEFORE the bid transaction opens:
+        // touching the ceiling is not a bid, it is an immediate purchase, and the settlement
+        // must commit on its own. Keeping it inside the bid transaction rolled the purchase back.
+        var ceilingProbe = await _db.Auctions.FirstOrDefaultAsync(
+            a => a.Id == request.AuctionId && !a.IsDeleted, cancellationToken);
+
+        if (ceilingProbe is { Status: AuctionStatus.Active, BuyNowPrice: { } ceilingPrice }
+            && ceilingPrice > 0m
+            && ceilingProbe.EndAt > DateTimeOffset.UtcNow
+            && ceilingProbe.SellerId != request.UserId)
+        {
+            var ceilingRequest = request.IsAuto ? request.MaxAutoBid!.Value : request.Amount;
+
+            if (ceilingRequest >= ceilingPrice)
+            {
+                // Transaction RIÊNG bao trọn việc chốt phiên: SettleBuyNowAsync ghi ví người
+                // mua, ví người bán, escrow và quyền sở hữu bằng nhiều SaveChanges độc lập.
+                // Không bọc transaction thì lỗi giữa đường để lại trạng thái "tiền đã trừ mà
+                // tranh chưa chuyển chủ". (Vẫn tách khỏi transaction của nhánh bid thường vì
+                // gộp vào đó thì lệnh mua bị rollback.)
+                await using var ceilingTx = await _db.Database.BeginTransactionAsync(cancellationToken);
+
+                var (settled, settleResult, settleErrors) = await _settlementService.SettleBuyNowAsync(
+                    ceilingProbe, request.UserId, ceilingPrice, cancellationToken);
+
+                if (!settled || settleResult is null)
+                {
+                    await ceilingTx.RollbackAsync(cancellationToken);
+                    return (false, null, settleErrors, null);
+                }
+
+                await ceilingTx.CommitAsync(cancellationToken);
+
+                _logger.LogInformation(
+                    "Bid reached the buy-now ceiling of auction {AuctionId}: settled at {Price} for bidder {BidderId}.",
+                    ceilingProbe.Id, ceilingPrice, request.UserId);
+
+                // The purchase already moved money out of the buyer wallet: report the real
+                // balance, an empty snapshot made the UI show a zero balance after a successful buy.
+                var buyerWallet = await _walletService.FindWalletAsync(request.UserId, cancellationToken);
+
+                return (true,
+                    new PlaceBidResultDto(
+                        new BidDto(
+                            BidId: Guid.Empty,
+                            AuctionId: settleResult.AuctionId,
+                            BidderId: request.UserId,
+                            BidderFullName: null,
+                            Bidder: null,
+                            Amount: ceilingPrice,
+                            HoldAmount: 0m,
+                            BidStatus: BidStatus.Leading.ToString(),
+                            HoldStatus: HoldStatus.Released.ToString(),
+                            PlacedAt: settleResult.SettledAt),
+                        new WalletSnapshotDto(buyerWallet?.Balance ?? 0m, buyerWallet?.LockedBalance ?? 0m)),
+                    [],
+                    null);
+            }
         }
 
         try
@@ -293,9 +365,14 @@ public sealed class PlaceBidCommandHandler
             auction.BidCount += leaderChanged && winner.BidderId != request.UserId ? 2 : 1;
             auction.UpdatedAt = now;
 
-            // Giới hạn chống gia hạn vô tận: thời gian kết thúc không được vượt quá StartAt + MaxDuration + MaxAntiSnipeExtension
-            var maxAllowedEndAt = auction.StartAt.AddDays(7).Add(MaxAntiSnipeExtension);
-            var extended = auction.EndAt > now 
+            // Chống gia hạn vô tận: mỗi lượt sát giờ chỉ cộng thêm 1 cửa sổ, và tổng thời gian
+            // không được vượt quá trần thời lượng của phiên (StartAt + 30 ngày, cùng hằng số
+            // với CreateAuctionCommand).
+            //
+            // Trước đây mốc neo là StartAt + 7 ngày: phiên dài hơn 7 ngày KHÔNG BAO GIỜ được
+            // gia hạn (mất bảo vệ đặt giá phút chót), còn phiên ngắn có thể bị kéo tới ~7 ngày.
+            var maxAllowedEndAt = auction.StartAt.AddDays(MaxAuctionDurationDays);
+            var extended = auction.EndAt > now
                 && auction.EndAt - now <= AntiSnipeWindow
                 && auction.EndAt.Add(AntiSnipeWindow) <= maxAllowedEndAt;
             if (extended)
@@ -333,7 +410,9 @@ public sealed class PlaceBidCommandHandler
                 await _realtime.PublishBidPlacedAsync(
                     auction.Id, result, auction.CurrentPrice,
                     auction.BidCount == 0 ? auction.StartPrice : auction.CurrentPrice + auction.BidStep,
-                    auction.EndAt, cancellationToken);
+                    auction.EndAt, cancellationToken,
+                    auctionStatus: auction.Status.ToString(),
+                    leadingBidderId: auction.Status == AuctionStatus.Active ? winner.BidderId : null);
                 if (extended)
                 {
                     await _realtime.PublishAuctionExtendedAsync(

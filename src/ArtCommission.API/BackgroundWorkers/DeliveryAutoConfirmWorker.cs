@@ -91,6 +91,13 @@ public class DeliveryAutoConfirmWorker : BackgroundService
                             && d.Status == DeliveryStatus.InTransit
                             && d.ShippedAt != null
                             && d.ShippedAt <= threshold)
+                // Lọc NGAY trong query: chỉ lấy đơn thuộc phiên còn sống và đã có người thắng.
+                // Trước đây điều kiện này nằm sau Take(batch) nên đơn "chết" (phiên bị xoá mềm
+                // hoặc không có winner) luôn chiếm đầu hàng đợi; tích đủ batch là mọi đơn mới
+                // không bao giờ được tự xác nhận, ký quỹ treo vĩnh viễn.
+                .Where(d => db.Auctions.Any(a => a.Id == d.AuctionId
+                                                 && !a.IsDeleted
+                                                 && a.WinnerId != null))
                 .OrderBy(d => d.ShippedAt)
                 .Take(Math.Max(1, options.BatchSize))
                 .Select(d => new { d.AuctionId })
@@ -102,38 +109,56 @@ public class DeliveryAutoConfirmWorker : BackgroundService
             }
 
             var confirmed = 0;
+            var failed = 0;
             foreach (var row in dueDeliveries)
             {
-                var auction = await db.Auctions
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(a => a.Id == row.AuctionId && !a.IsDeleted, cancellationToken);
-
-                if (auction?.WinnerId is null)
+                // Bọc từng bản ghi: một đơn lỗi không được làm chết cả batch, nếu không các
+                // đơn phía sau sẽ không bao giờ được xử lý.
+                try
                 {
-                    continue;
+                    var auction = await db.Auctions
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(a => a.Id == row.AuctionId && !a.IsDeleted, cancellationToken);
+
+                    if (auction?.WinnerId is null)
+                    {
+                        continue;
+                    }
+
+                    var (success, _, errors) = await mediator.Send(
+                        new ConfirmPhysicalDeliveryCommand(auction.WinnerId.Value, auction.Id),
+                        cancellationToken);
+
+                    if (success)
+                    {
+                        confirmed++;
+                    }
+                    else
+                    {
+                        failed++;
+                        _logger.LogWarning(
+                            "Tự động xác nhận phiên {AuctionId} thất bại: {Errors}",
+                            auction.Id, string.Join("; ", errors));
+                    }
                 }
-
-                var (success, _, errors) = await mediator.Send(
-                    new ConfirmPhysicalDeliveryCommand(auction.WinnerId.Value, auction.Id),
-                    cancellationToken);
-
-                if (success)
+                catch (OperationCanceledException)
                 {
-                    confirmed++;
+                    throw;
                 }
-                else
+                catch (Exception ex)
                 {
-                    _logger.LogWarning(
-                        "Tự động xác nhận phiên {AuctionId} thất bại: {Errors}",
-                        auction.Id, string.Join("; ", errors));
+                    failed++;
+                    _logger.LogError(ex,
+                        "Lỗi khi tự động xác nhận phiên {AuctionId}; bỏ qua để xử lý các đơn còn lại.",
+                        row.AuctionId);
                 }
             }
 
-            if (confirmed > 0)
+            if (confirmed > 0 || failed > 0)
             {
                 _logger.LogInformation(
-                    "Job tự động xác nhận giao hàng: đã hoàn tất {Count} đơn quá {Hours} giờ.",
-                    confirmed, AuctionDeliveryRules.AutoConfirmHours);
+                    "Job tự động xác nhận giao hàng: hoàn tất {Count} đơn quá {Hours} giờ, lỗi {Failed}.",
+                    confirmed, AuctionDeliveryRules.AutoConfirmHours, failed);
             }
         }
         catch (OperationCanceledException)

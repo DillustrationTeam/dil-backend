@@ -49,6 +49,7 @@ public class ResolveDeliveryDisputeCommandHandler
     private readonly IApplicationDbContext _db;
     private readonly IAuctionSettlementService _settlementService;
     private readonly IWalletService _walletService;
+    private readonly IAuctionPenaltyService _penaltyService;
     private readonly INotificationPublisher _notifications;
     private readonly ILogger<ResolveDeliveryDisputeCommandHandler> _logger;
 
@@ -56,12 +57,14 @@ public class ResolveDeliveryDisputeCommandHandler
         IApplicationDbContext db,
         IAuctionSettlementService settlementService,
         IWalletService walletService,
+        IAuctionPenaltyService penaltyService,
         INotificationPublisher notifications,
         ILogger<ResolveDeliveryDisputeCommandHandler> logger)
     {
         _db = db;
         _settlementService = settlementService;
         _walletService = walletService;
+        _penaltyService = penaltyService;
         _notifications = notifications;
         _logger = logger;
     }
@@ -109,6 +112,12 @@ public class ResolveDeliveryDisputeCommandHandler
 
         var now = DateTimeOffset.UtcNow;
         var note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim();
+
+        // Remember what the admin actually decided: a refund on an already released escrow is
+        // downgraded to "close" below, but the buyer still won the dispute and the seller still
+        // earns a penalty step.
+        var buyerWonDispute = decision == RefundDecision;
+        var escrowWasReleased = escrow.Status == EscrowStatus.Released;
 
         // Tiền đã về ví người bán thì không đòi lại được — hạ "refund" xuống "close" thay vì trả
         // lỗi, để Admin vẫn đóng được khiếu nại và hai bên đều nhận thông báo rõ ràng.
@@ -279,6 +288,31 @@ public class ResolveDeliveryDisputeCommandHandler
 
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+
+        // Phân xử đã commit. Án phạt là dữ liệu dẫn xuất: lỗi ở bước này KHÔNG được rollback
+        // tiền hoàn của người mua, nhưng cũng không được bỏ im lặng — lần bấm lại sẽ bị guard
+        // trạng thái chặn nên án phạt sẽ mất vĩnh viễn. Vì vậy thử lại một lần rồi mới bỏ cuộc,
+        // và ghi log mức Error kèm mã để đối soát thủ công.
+        if (buyerWonDispute)
+        {
+            var applied = false;
+            for (var attempt = 1; attempt <= 2 && !applied; attempt++)
+            {
+                try
+                {
+                    await _penaltyService.ApplyConfirmedDisputeAsync(
+                        auction, delivery, escrowWasReleased, request.AdminUserId, note, cancellationToken);
+                    applied = true;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "Cannot apply the seller penalty ladder for auction {AuctionId} (attempt {Attempt}/2) " +
+                        "after a confirmed dispute. Needs manual follow-up for delivery {DeliveryId}.",
+                        auction.Id, attempt, delivery.Id);
+                }
+            }
+        }
 
         _logger.LogWarning(
             "Admin {AdminId} phân xử khiếu nại phiên {AuctionId}: {Decision}. Ghi chú: {Note}",
