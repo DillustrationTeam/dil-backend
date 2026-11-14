@@ -161,7 +161,8 @@ public sealed record ArtTradeSummaryDto(
     bool HasConfirmed,
     bool PartnerHasConfirmed,
     DateTimeOffset? SubmissionDeadlineAt,
-    DateTimeOffset CreatedAt
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? ReceiverAcceptedAt = null
 )
 {
     public static ArtTradeSummaryDto FromEntity(ArtTradeEntity trade, Guid currentUserId)
@@ -198,7 +199,8 @@ public sealed record ArtTradeSummaryDto(
             HasConfirmed: hasConfirmed,
             PartnerHasConfirmed: partnerHasConfirmed,
             SubmissionDeadlineAt: trade.SubmissionDeadlineAt,
-            CreatedAt: trade.CreatedAt
+            CreatedAt: trade.CreatedAt,
+            ReceiverAcceptedAt: trade.ReceiverAcceptedAt
         );
     }
 }

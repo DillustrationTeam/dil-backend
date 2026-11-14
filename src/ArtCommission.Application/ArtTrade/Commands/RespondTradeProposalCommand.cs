@@ -79,12 +79,22 @@ public class RespondTradeProposalCommandHandler : IRequestHandler<RespondTradePr
             return (false, null, [$"Giao dịch đang ở trạng thái {trade.Status}, không thể phản hồi."]);
         }
 
+        var now = DateTimeOffset.UtcNow;
+
         if (request.Accept && trade.ReceiverAcceptedAt.HasValue)
         {
-            return (false, null, ["Bạn đã chấp nhận đề nghị này, đang chờ đối tác xác nhận."]);
+            if (trade.Status == TradeStatus.Proposed)
+            {
+                trade.Status = TradeStatus.Accepted;
+                if (!trade.SubmissionDeadlineAt.HasValue)
+                {
+                    trade.SubmissionDeadlineAt = now.AddDays(14);
+                }
+                trade.UpdatedAt = now;
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+            return (true, ArtTradeDto.FromEntity(trade), []);
         }
-
-        var now = DateTimeOffset.UtcNow;
 
         if (!request.Accept)
         {
@@ -108,8 +118,12 @@ public class RespondTradeProposalCommandHandler : IRequestHandler<RespondTradePr
                 return (false, null, ["Người gửi lời mời hiện đã kín Slot hoặc bị đóng băng slot, không thể bắt đầu giao dịch."]);
             }
 
-            // Side B chấp nhận nhưng giao dịch chưa bắt đầu: cần Side A xác nhận lại (cả 2 bên cùng accept)
             trade.ReceiverAcceptedAt = now;
+            trade.Status = TradeStatus.Accepted;
+            if (!trade.SubmissionDeadlineAt.HasValue)
+            {
+                trade.SubmissionDeadlineAt = now.AddDays(14);
+            }
             if (!string.IsNullOrWhiteSpace(request.RequestNote))
             {
                 trade.ReceiverResponseNote = request.RequestNote.Trim();
@@ -141,10 +155,10 @@ public class RespondTradeProposalCommandHandler : IRequestHandler<RespondTradePr
                     userId: trade.InitiatorId,
                     notificationType: NotificationType.ArtTradeAccepted,
                     title: "Đối tác đã chấp nhận đề nghị trao đổi",
-                    body: $"Họa sĩ {partnerName} đã chấp nhận \"{trade.Title}\". Hãy xem lại yêu cầu của họ và xác nhận để bắt đầu vẽ.",
+                    body: $"Họa sĩ {partnerName} đã chấp nhận \"{trade.Title}\". Phòng vẽ tranh đã chính thức mở!",
                     refType: "ArtTrade",
                     refId: trade.Id,
-                    dedupKey: $"ArtTradeReceiverAccepted:{trade.Id}:{trade.InitiatorId}",
+                    dedupKey: $"ArtTradeAccepted:{trade.Id}:{trade.InitiatorId}",
                     cancellationToken: cancellationToken
                 );
             }
