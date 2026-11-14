@@ -46,6 +46,9 @@ public class ConfirmTradeProposalCommandHandler : IRequestHandler<ConfirmTradePr
         if (trade.InitiatorId != request.UserId)
             return (false, null, ["Chỉ người gửi đề nghị mới có thể xác nhận bước này."]);
 
+        if (trade.Status == TradeStatus.Accepted)
+            return (true, ArtTradeDto.FromEntity(trade), []);
+
         if (trade.Status != TradeStatus.Proposed)
             return (false, null, [$"Giao dịch đang ở trạng thái {trade.Status}, không thể xác nhận."]);
 

@@ -28,6 +28,26 @@ public class GetMyArtTradesQueryHandler : IRequestHandler<GetMyArtTradesQuery, (
         var page = request.Page < 1 ? 1 : request.Page;
         var pageSize = request.PageSize is < 1 or > 50 ? 10 : request.PageSize;
 
+        // Tự động đồng bộ các kèo đã được Receiver chấp thuận sang Accepted
+        var pendingAccepted = await _db.ArtTrades
+            .Where(t => !t.IsDeleted && t.Status == TradeStatus.Proposed && t.ReceiverAcceptedAt != null && (t.InitiatorId == request.UserId || t.ReceiverId == request.UserId))
+            .ToListAsync(cancellationToken);
+
+        if (pendingAccepted.Count > 0)
+        {
+            var now = DateTimeOffset.UtcNow;
+            foreach (var t in pendingAccepted)
+            {
+                t.Status = TradeStatus.Accepted;
+                if (!t.SubmissionDeadlineAt.HasValue)
+                {
+                    t.SubmissionDeadlineAt = now.AddDays(14);
+                }
+                t.UpdatedAt = now;
+            }
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
         var query = _db.ArtTrades
             .AsNoTracking()
             .Include(t => t.Initiator)
