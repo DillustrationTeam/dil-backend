@@ -1,4 +1,4 @@
-using ArtCommission.Domain.Entities.Commission;
+﻿using ArtCommission.Domain.Entities.Commission;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -32,6 +32,8 @@ public class CommissionConfiguration : IEntityTypeConfiguration<Commission>
 
         builder.Property(c => c.ClientTermsVersion)
             .HasMaxLength(20);
+
+        builder.Property(c => c.ReferenceImagesJson);
 
         builder.Property(c => c.CreatorTermsVersion)
             .HasMaxLength(20);

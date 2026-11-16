@@ -18,6 +18,47 @@ public class CreateCommissionRequestValidator : AbstractValidator<CreateCommissi
             .Must(deadline => !deadline.HasValue || deadline.Value > DateTimeOffset.UtcNow)
             .WithMessage("Hạn hoàn thành phải nằm trong tương lai.");
         RuleFor(x => x.VoucherCode).MaximumLength(50).WithMessage("Mã giảm giá tối đa 50 ký tự.");
+        RuleFor(x => x.ReferenceImages)
+            .Must(urls => urls is null || urls.Count <= 10)
+            .WithMessage("Chỉ được đính kèm tối đa 10 tệp/liên kết tham chiếu.");
+        RuleForEach(x => x.ReferenceImages)
+            .NotEmpty().WithMessage("Đường dẫn tệp tham chiếu không được để trống.")
+            .MaximumLength(2000).WithMessage("Đường dẫn tệp tham chiếu tối đa 2000 ký tự.")
+            .Must(IsSafeHttpUrl).WithMessage("Đường dẫn tệp/ảnh tham chiếu phải là HTTP(S) hợp lệ và an toàn.");
+    }
+
+    public static bool IsSafeHttpUrl(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)) return false;
+        if (uri.Scheme is not "http" and not "https") return false;
+
+        var host = uri.Host.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(host)) return false;
+
+        if (host is "localhost" or "127.0.0.1" or "::1")
+        {
+            return uri.AbsolutePath.StartsWith("/demo-uploads/", StringComparison.OrdinalIgnoreCase)
+                || uri.AbsolutePath.StartsWith("/uploads/", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (host is "0.0.0.0" or "169.254.169.254") return false;
+        if (host.EndsWith(".local") || host.EndsWith(".internal") || host.EndsWith(".lan")) return false;
+
+        if (System.Net.IPAddress.TryParse(host, out var ip))
+        {
+            if (System.Net.IPAddress.IsLoopback(ip)) return false;
+            var bytes = ip.GetAddressBytes();
+            if (bytes.Length == 4)
+            {
+                if (bytes[0] == 10) return false;
+                if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return false;
+                if (bytes[0] == 192 && bytes[1] == 168) return false;
+                if (bytes[0] == 169 && bytes[1] == 254) return false;
+            }
+        }
+
+        return true;
     }
 }
 

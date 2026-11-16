@@ -1,4 +1,4 @@
-using ArtCommission.Application.Common.Interfaces;
+﻿using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Commission.DTOs;
 using ArtCommission.Application.Commission.Interfaces;
@@ -180,6 +180,7 @@ public class CommissionService : ICommissionService
             LicenseType = request.LicenseType,
             LicenseMultiplierApplied = multiplier,
             CreatorTermsSnapshotJson = ArtCommission.Application.ArtistStudio.DTOs.CreatorTermsHelper.SerializeSnapshot(creatorTerms),
+            ReferenceImagesJson = request.ReferenceImages is { Count: > 0 } ? System.Text.Json.JsonSerializer.Serialize(request.ReferenceImages) : null,
             TotalPrice = totalPrice,
             DiscountAmount = discountAmount,
             FinalPrice = finalPrice,
@@ -310,6 +311,7 @@ public class CommissionService : ICommissionService
         {
             await EnsurePackageSlotAvailableAsync(commission.CreatorId, null, commission.PackageId, asArgumentError: false, cancellationToken);
             commission.Status = CommissionStatus.InProgress;
+            await SyncCommissionReferencesToCreatorAssetsAsync(commission, cancellationToken);
         }
         else if (string.Equals(request.Action, "Reject", StringComparison.OrdinalIgnoreCase))
         {
@@ -376,6 +378,7 @@ public class CommissionService : ICommissionService
         if (accept)
         {
             await EnsurePackageSlotAvailableAsync(commission.CreatorId, null, commission.PackageId, asArgumentError: false, cancellationToken);
+            await SyncCommissionReferencesToCreatorAssetsAsync(commission, cancellationToken);
         }
         commission.Status = accept ? CommissionStatus.InProgress : CommissionStatus.Cancelled;
         commission.UpdatedAt = DateTimeOffset.UtcNow;
@@ -1856,8 +1859,77 @@ public class CommissionService : ICommissionService
             CreatorTermsVersion = c.CreatorTermsVersion,
             CurrentWorkroomTermsVersion = CurrentWorkroomTermsVersion,
             CreatorTermsSnapshot = ArtCommission.Application.ArtistStudio.DTOs.CreatorTermsHelper.ParseSnapshot(c.CreatorTermsSnapshotJson),
+            ReferenceImages = ParseReferenceImages(c.ReferenceImagesJson),
             CreatedAt = c.CreatedAt
         };
+    }
+
+        private async Task SyncCommissionReferencesToCreatorAssetsAsync(Commission commission, CancellationToken cancellationToken)
+    {
+        var refUrls = ParseReferenceImages(commission.ReferenceImagesJson);
+        if (refUrls.Count == 0) return;
+
+        var existingUrls = await _dbContext.CreatorAssets
+            .AsNoTracking()
+            .Where(a => a.CreatorProfileId == commission.CreatorId && !a.IsDeleted && a.AssetUrl != null)
+            .Select(a => a.AssetUrl!)
+            .ToListAsync(cancellationToken);
+
+        var existingSet = new HashSet<string>(existingUrls, StringComparer.OrdinalIgnoreCase);
+        var orderCode = commission.Id.ToString("N")[..8].ToUpperInvariant();
+        var titleSnippet = commission.Title.Length > 60 ? commission.Title[..60] : commission.Title;
+
+        for (var i = 0; i < refUrls.Count; i++)
+        {
+            var url = refUrls[i]?.Trim();
+            if (string.IsNullOrWhiteSpace(url) || existingSet.Contains(url)) continue;
+
+            var isPdf = url.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
+                || url.Contains(".pdf?", StringComparison.OrdinalIgnoreCase);
+            var isImage = !isPdf && (
+                url.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+                || url.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
+                || url.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase)
+                || url.EndsWith(".webp", StringComparison.OrdinalIgnoreCase)
+                || url.EndsWith(".gif", StringComparison.OrdinalIgnoreCase)
+                || url.EndsWith(".avif", StringComparison.OrdinalIgnoreCase)
+                || url.Contains("res.cloudinary.com", StringComparison.OrdinalIgnoreCase)
+                || url.Contains("commissions/references", StringComparison.OrdinalIgnoreCase));
+
+            var assetType = "Ref";
+            var name = $"Ref #{i + 1} · {titleSnippet} (#CMD-{orderCode})";
+            if (name.Length > 120) name = name[..120];
+
+            var metadata = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                notes = $"Tài liệu tham khảo từ đơn #CMD-{orderCode}: {commission.Title}",
+                commissionId = commission.Id
+            });
+
+            _dbContext.CreatorAssets.Add(new CreatorAsset
+            {
+                CreatorProfileId = commission.CreatorId,
+                AssetType = assetType,
+                Name = name,
+                AssetUrl = url,
+                MetadataJson = metadata
+            });
+
+            existingSet.Add(url);
+        }
+    }
+
+    private static List<string> ParseReferenceImages(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<string>>(json) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
     }
 
     private static CommissionDetailDto MapToDetailDto(Commission c)
@@ -1900,6 +1972,7 @@ public class CommissionService : ICommissionService
             CreatorTermsVersion = dto.CreatorTermsVersion,
             CurrentWorkroomTermsVersion = dto.CurrentWorkroomTermsVersion,
             CreatorTermsSnapshot = dto.CreatorTermsSnapshot,
+            ReferenceImages = dto.ReferenceImages,
             CreatedAt = dto.CreatedAt,
             Milestones = c.Milestones.Select(MapToMilestoneDto).ToList(),
             Review = c.Reviews.FirstOrDefault() != null ? MapToReviewDto(c.Reviews.First()) : null,

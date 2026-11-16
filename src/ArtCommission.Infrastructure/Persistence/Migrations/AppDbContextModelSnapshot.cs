@@ -2211,6 +2211,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("PackageId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("ReferenceImagesJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Status")
                         .IsConcurrencyToken()
                         .IsRequired()
