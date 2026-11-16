@@ -1453,6 +1453,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
+                    b.Property<string>("DisputeImageUrls")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("DisputeReason")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -1465,6 +1468,10 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("DisputeResolvedNote")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DisputeVideoUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()

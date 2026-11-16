@@ -157,6 +157,11 @@ builder.Services.Configure<ShipmentOverdueSettings>(
     builder.Configuration.GetSection("PhysicalShipment"));
 builder.Services.AddHostedService<ShipmentOverdueWorker>();
 
+// 3d-5. Job nhắc người theo dõi khi phiên đấu giá sắp kết thúc (mặc định trước 15 phút)
+builder.Services.Configure<AuctionEndingSoonSettings>(
+    builder.Configuration.GetSection("AuctionEndingSoon"));
+builder.Services.AddHostedService<AuctionEndingSoonWorker>();
+
 // 3c. Cổng thanh toán payOS
 // Secret lấy từ User Secrets (dev) hoặc biến môi trường PayOS__ClientId / PayOS__ApiKey / PayOS__ChecksumKey.
 builder.Services.Configure<PayOsOptions>(builder.Configuration.GetSection(PayOsOptions.SectionName));
