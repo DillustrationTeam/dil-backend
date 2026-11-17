@@ -36,6 +36,7 @@ public class JuryDisputesController : ApiControllerBase
         [FromQuery] Guid? eventId = null,
         [FromQuery] Guid? submissionId = null,
         [FromQuery] string? status = null,
+        [FromQuery] string? category = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
         CancellationToken cancellationToken = default)
@@ -75,7 +76,7 @@ public class JuryDisputesController : ApiControllerBase
             Status: status,
             PageNumber: page,
             PageSize: pageSize,
-            Category: ScoringDisputeCategory
+            Category: category
         );
 
         var (items, totalCount) = await Mediator.Send(query, cancellationToken);
@@ -123,13 +124,8 @@ public class JuryDisputesController : ApiControllerBase
 
         // Kiểm tra giám khảo có thuộc sự kiện này không
         bool isAdminOrMod = User.IsInRole(UserRoleNames.Administrator) || User.IsInRole(UserRoleNames.Moderator);
-        if (!isAdminOrMod && !IsScoringDispute(result.Category))
-        {
-            return Forbid();
-        }
-
         bool hasAccess = await IsUserJuryOfEventAsync(result.EventId, CurrentUserId, cancellationToken);
-        if (!hasAccess)
+        if (!isAdminOrMod && !hasAccess)
         {
             return Forbid();
         }
@@ -217,13 +213,7 @@ public class JuryDisputesController : ApiControllerBase
             return NotFoundEnvelope("Không tìm thấy vụ khiếu nại bài thi yêu cầu.");
         }
 
-        // Chỉ Trưởng ban giám khảo (Head Jury) hoặc Admin/Mod mới có quyền phân xử khiếu nại
-        bool isAdminOrMod = User.IsInRole(UserRoleNames.Administrator) || User.IsInRole(UserRoleNames.Moderator);
-        if (!isAdminOrMod && !IsScoringDispute(dispute.Category))
-        {
-            return Forbid();
-        }
-
+        // Chỉ Trưởng ban giám khảo (Head Jury) hoặc Admin/Mod mới có quyền phân xử khiếu nại của sự kiện
         bool isHeadJuryOrAdmin = await IsUserHeadJuryOfEventAsync(dispute.EventId, CurrentUserId, cancellationToken);
         if (!isHeadJuryOrAdmin)
         {
