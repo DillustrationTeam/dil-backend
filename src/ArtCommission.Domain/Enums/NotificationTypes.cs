@@ -94,7 +94,10 @@ public enum NotificationType
     SubmissionDisputeCreated,
 
     /// <summary>Admin đã phản hồi báo cáo sự cố / hỗ trợ của người dùng.</summary>
-    BugReportReplied
+    BugReportReplied,
+
+    /// <summary>Có tin nhắn mới trong phòng làm việc (Workroom Chat).</summary>
+    WorkroomMessage
 }
 
 public static class NotificationTypeNames
@@ -126,6 +129,7 @@ public static class NotificationTypeNames
     public const string TradeDisputeResolved = nameof(NotificationType.TradeDisputeResolved);
     public const string SubmissionDisputeCreated = nameof(NotificationType.SubmissionDisputeCreated);
     public const string BugReportReplied = nameof(NotificationType.BugReportReplied);
+    public const string WorkroomMessage = nameof(NotificationType.WorkroomMessage);
 
     public static readonly string[] All =
     [
@@ -155,7 +159,8 @@ public static class NotificationTypeNames
         TradeDisputeCreated,
         TradeDisputeResolved,
         SubmissionDisputeCreated,
-        BugReportReplied
+        BugReportReplied,
+        WorkroomMessage
     ];
 }
 
@@ -215,7 +220,8 @@ public static class NotificationCategoryMap
             NotificationType.ArtTradeArtworkSubmitted,
             NotificationType.ArtTradeCompleted,
             NotificationType.TradeDisputeCreated,
-            NotificationType.TradeDisputeResolved
+            NotificationType.TradeDisputeResolved,
+            NotificationType.WorkroomMessage
         ],
 
         NotificationCategory.System =>

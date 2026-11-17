@@ -261,7 +261,7 @@ public class ChatRoomService : IChatRoomService
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == commissionId && !c.IsDeleted, cancellationToken);
 
-        if (commission is null)
+        if (commission is null || commission.EscrowStatus == EscrowStatus.Pending)
         {
             return null;
         }

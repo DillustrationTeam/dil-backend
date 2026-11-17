@@ -3,6 +3,7 @@ using ArtCommission.Application.Chat.Commands.TranslateMessage;
 using ArtCommission.Application.Chat.Commands.UploadAttachment;
 using ArtCommission.Application.Chat.Queries.GetChatRoom;
 using ArtCommission.Application.Chat.Queries.GetRoomMessages;
+using ArtCommission.Application.Chat.Queries.GetUnreadCounts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -21,6 +22,21 @@ public sealed record TranslateMessageRequest(string TargetLang, bool Force = fal
 [Route("api/v1/chat")]
 public class ChatController : ApiControllerBase
 {
+    /// <summary>Số tin nhắn chưa đọc theo từng phòng Workroom của người dùng hiện tại.</summary>
+    [HttpGet("unread-counts")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetUnreadCounts(CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var result = await Mediator.Send(new GetUnreadCountsQuery(CurrentUserId), cancellationToken);
+        return OkEnvelope(result);
+    }
+
     /// <summary>Lịch sử tin nhắn của phòng, cursor theo sent_at (UC43).</summary>
     /// <remarks>
     /// <c>roomId</c> nhận cả Id phòng chat và Id commission — FE gọi /workroom/{commissionId}.
