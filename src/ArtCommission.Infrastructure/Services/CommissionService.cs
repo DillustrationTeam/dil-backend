@@ -1,4 +1,4 @@
-﻿using ArtCommission.Application.Common.Interfaces;
+using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Commission.DTOs;
 using ArtCommission.Application.Commission.Interfaces;
@@ -316,6 +316,11 @@ public class CommissionService : ICommissionService
         else if (string.Equals(request.Action, "Reject", StringComparison.OrdinalIgnoreCase))
         {
             commission.Status = CommissionStatus.Cancelled;
+            if (!string.IsNullOrWhiteSpace(request.RejectReason))
+            {
+                var trimmedReason = request.RejectReason.Trim();
+                commission.CancellationReason = trimmedReason.Length > 500 ? trimmedReason[..500] : trimmedReason;
+            }
         }
         else if (string.Equals(request.Action, "Negotiate", StringComparison.OrdinalIgnoreCase))
         {
