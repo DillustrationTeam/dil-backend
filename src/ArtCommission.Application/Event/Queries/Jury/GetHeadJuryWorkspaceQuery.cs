@@ -46,9 +46,9 @@ public class GetHeadJuryWorkspaceQueryHandler : IRequestHandler<GetHeadJuryWorks
             .Where(cs => submissionIds.Contains(cs.SubmissionId))
             .ToListAsync(cancellationToken);
 
-        // Only surface scoring-related disputes on the Jury / Head Jury side (moderation reports stay with Admin/Moderator)
+        // Surface all active event disputes on the Jury / Head Jury arbitration panel
         var disputes = await _db.SubmissionDisputes.AsNoTracking()
-            .Where(d => d.EventId == request.EventId && !d.IsDeleted && d.Category == "ScoreAppeal")
+            .Where(d => d.EventId == request.EventId && !d.IsDeleted)
             .OrderByDescending(d => d.Status == "Pending" || d.Status == "UnderReview")
             .ThenByDescending(d => d.CreatedAt)
             .ToListAsync(cancellationToken);
@@ -192,9 +192,9 @@ public class GetHeadJuryWorkspaceQueryHandler : IRequestHandler<GetHeadJuryWorks
             {
                 Id = d.Id,
                 SubmissionId = d.SubmissionId ?? Guid.Empty,
-                Title = d.SubmissionTitleSnapshot ?? relatedSub?.Title ?? "Tác phẩm khiếu nại điểm số",
+                Title = d.SubmissionTitleSnapshot ?? relatedSub?.Title ?? "Tác phẩm khiếu nại",
                 Code = relatedSub != null ? $"#SUB-{relatedSub.Id.ToString()[..4].ToUpper()}" : "#DISP",
-                Category = "ScoreAppeal",
+                Category = d.Category,
                 ArtworkImageUrl = d.ArtworkImageUrlSnapshot ?? relatedSub?.Artwork?.ImageUrl ?? "/seedimg/miyu.png",
                 DeviationPercent = subDeviation,
                 Notes = d.Reason,
