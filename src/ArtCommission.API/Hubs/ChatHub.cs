@@ -27,15 +27,18 @@ public class ChatHub : Hub
 {
     private readonly ISender _mediator;
     private readonly IChatRoomService _chatRoomService;
+    private readonly ICreatorAutoReplyService _autoReplyService;
     private readonly ILogger<ChatHub> _logger;
 
     public ChatHub(
         ISender mediator,
         IChatRoomService chatRoomService,
+        ICreatorAutoReplyService autoReplyService,
         ILogger<ChatHub> logger)
     {
         _mediator = mediator;
         _chatRoomService = chatRoomService;
+        _autoReplyService = autoReplyService;
         _logger = logger;
     }
 
@@ -111,6 +114,25 @@ public class ChatHub : Hub
         // Phát cho CẢ phòng, kể cả người gửi: nhờ vậy mọi client hiển thị tin theo
         // cùng một thứ tự do server quyết định, không phụ thuộc đồng hồ máy khách.
         await Clients.Group(RoomGroup(room)).SendAsync("ReceiveMessage", message, Context.ConnectionAborted);
+
+        try
+        {
+            var autoReply = await _autoReplyService.TryCreateAutoReplyAsync(
+                room,
+                userId,
+                body ?? string.Empty,
+                message.MessageType,
+                Context.ConnectionAborted);
+
+            if (autoReply is not null)
+            {
+                await Clients.Group(RoomGroup(room)).SendAsync("ReceiveMessage", autoReply, Context.ConnectionAborted);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Không thể tạo auto-reply cho phòng {RoomId}.", room);
+        }
     }
 
     /// <summary>

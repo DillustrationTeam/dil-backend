@@ -211,8 +211,9 @@ builder.Services.AddScoped<IAuctionSettlementService, AuctionSettlementService>(
 builder.Services.AddScoped<IAuctionRealtimePublisher, AuctionRealtimePublisher>();
 builder.Services.AddScoped<IAuctionLifecycleNotifier, AuctionLifecycleNotifier>();
 
-// 3h. UC43 — Workroom Chat: phân giải phòng, kiểm quyền thành viên
+// 3h. UC43 — Workroom Chat: phân giải phòng, kiểm quyền thành viên & auto-reply
 builder.Services.AddScoped<IChatRoomService, ChatRoomService>();
+builder.Services.AddScoped<ICreatorAutoReplyService, CreatorAutoReplyService>();
 
 // 3i. Lưu file: chat attachment + link tải file gốc có hạn
 builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection(StorageOptions.SectionName));
