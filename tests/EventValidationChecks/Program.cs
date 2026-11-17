@@ -7,6 +7,7 @@ using ArtCommission.Application.Event.Queries;
 using ArtCommission.Application.Event.Validators;
 using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Domain.Entities.ArtistStudio;
+using ArtCommission.Domain.Entities.Dispute;
 using ArtCommission.Domain.Entities.Event;
 using ArtCommission.Domain.Entities.Identity;
 using ArtCommission.Domain.Enums;
@@ -1117,8 +1118,8 @@ Console.WriteLine("\n--- Section 12: Jury Dispute Isolation & Auto-Raised Scorin
 
     var headWorkspaceHandler = new GetHeadJuryWorkspaceQueryHandler(db);
     var wsBeforeJudging = await headWorkspaceHandler.Handle(new GetHeadJuryWorkspaceQuery(s12EventId), CancellationToken.None);
-    Assert(wsBeforeJudging != null && wsBeforeJudging.ArbitrationCases.Count == 0 && wsBeforeJudging.DisputesResolved,
-        $"Moderation AiArt dispute must NOT leak to Head Jury workspace (arbCount={wsBeforeJudging?.ArbitrationCases.Count}, resolved={wsBeforeJudging?.DisputesResolved}).");
+    Assert(wsBeforeJudging != null && wsBeforeJudging.ArbitrationCases.Count == 1 && wsBeforeJudging.ArbitrationCases[0].Category == "AiArt" && !wsBeforeJudging.DisputesResolved,
+        $"Head Jury workspace must surface active event compliance AiArt dispute (arbCount={wsBeforeJudging?.ArbitrationCases.Count}, resolved={wsBeforeJudging?.DisputesResolved}).");
 
     var (juryQueryItems, juryQueryTotal) = await getDisputesHandler.Handle(
         new GetSubmissionDisputesQuery(EventId: s12EventId, Category: "ScoreAppeal"),
@@ -1182,11 +1183,11 @@ Console.WriteLine("\n--- Section 12: Jury Dispute Isolation & Auto-Raised Scorin
         $"Second Jury divergent scoring must succeed and average to 13 (errors={string.Join("; ", j2ScoreRes.Errors)}).");
 
     var wsAfterDeviation = await headWorkspaceHandler.Handle(new GetHeadJuryWorkspaceQuery(s12EventId), CancellationToken.None);
-    Assert(wsAfterDeviation != null && wsAfterDeviation.ArbitrationCases.Count == 1
-        && wsAfterDeviation.ArbitrationCases[0].Category == "ScoreAppeal"
-        && wsAfterDeviation.ArbitrationCases[0].DeviationPercent > 25m
+    Assert(wsAfterDeviation != null && wsAfterDeviation.ArbitrationCases.Count == 2
+        && wsAfterDeviation.ArbitrationCases.Any(c => c.Category == "ScoreAppeal" && c.DeviationPercent > 25m)
+        && wsAfterDeviation.ArbitrationCases.Any(c => c.Category == "AiArt")
         && !wsAfterDeviation.DisputesResolved,
-        $"Head Jury workspace must automatically surface the >25% scoring dispute without moderation AiArt dispute (count={wsAfterDeviation?.ArbitrationCases.Count}, dev={wsAfterDeviation?.ArbitrationCases.FirstOrDefault()?.DeviationPercent}).");
+        $"Head Jury workspace must surface both >25% scoring dispute and compliance AiArt dispute (count={wsAfterDeviation?.ArbitrationCases.Count}).");
 }
 
 Console.WriteLine("\n--- Section 13: Draft Event Creator-Only Visibility & Access Checks ---");
@@ -1463,6 +1464,123 @@ Console.WriteLine("\n--- Section 14: Carousel Top-5 Latest Featured Active Event
         s14Valid3Judging.Id,
         s14Valid2.Id
     }), "Carousel must return the exact top 5 latest non-ended featured events (including Judging, excluding Draft/Ended/expired/non-featured/6th oldest).");
+}
+
+Console.WriteLine("\n--- Section 16: Head Jury Arbitration Resolution & Results Sign-Off Checks ---");
+{
+    var s16AdminId = Guid.NewGuid();
+    var s16HeadJuryUserId = Guid.NewGuid();
+    var s16PanelJuryUserId = Guid.NewGuid();
+    var s16Artist1UserId = Guid.NewGuid();
+    var s16Artist2UserId = Guid.NewGuid();
+    var s16UnauthorizedUserId = Guid.NewGuid();
+    var s16EventId = Guid.NewGuid();
+    var s16Now = DateTimeOffset.UtcNow;
+
+    db.Users.AddRange(
+        new ApplicationUser { Id = s16AdminId, UserName = "s16admin", Email = "s16admin@test.invalid", FullName = "Admin 16" },
+        new ApplicationUser { Id = s16HeadJuryUserId, UserName = "s16headjury", Email = "s16headjury@test.invalid", FullName = "Head Jury 16" },
+        new ApplicationUser { Id = s16PanelJuryUserId, UserName = "s16paneljury", Email = "s16paneljury@test.invalid", FullName = "Panel Jury 16" },
+        new ApplicationUser { Id = s16Artist1UserId, UserName = "s16artist1", Email = "s16artist1@test.invalid", FullName = "Artist One 16" },
+        new ApplicationUser { Id = s16Artist2UserId, UserName = "s16artist2", Email = "s16artist2@test.invalid", FullName = "Artist Two 16" },
+        new ApplicationUser { Id = s16UnauthorizedUserId, UserName = "s16unauth", Email = "s16unauth@test.invalid", FullName = "Unauthorized 16" }
+    );
+
+    var s16HeadProfile = new CreatorProfile { Id = Guid.NewGuid(), UserId = s16HeadJuryUserId, DisplayName = "Head Jury Profile", IsDeleted = false };
+    var s16PanelProfile = new CreatorProfile { Id = Guid.NewGuid(), UserId = s16PanelJuryUserId, DisplayName = "Panel Jury Profile", IsDeleted = false };
+    var s16Artist1Profile = new CreatorProfile { Id = Guid.NewGuid(), UserId = s16Artist1UserId, DisplayName = "Artist 1 Profile", IsDeleted = false };
+    var s16Artist2Profile = new CreatorProfile { Id = Guid.NewGuid(), UserId = s16Artist2UserId, DisplayName = "Artist 2 Profile", IsDeleted = false };
+    db.CreatorProfiles.AddRange(s16HeadProfile, s16PanelProfile, s16Artist1Profile, s16Artist2Profile);
+
+    var s16Event = new PlatformEvent
+    {
+        Id = s16EventId,
+        Title = "Head Jury Arbitration Contest",
+        Description = "Verify arbitration resolution and contest sign-off",
+        Status = EventStatus.Judging,
+        CreatedByAdminId = s16AdminId,
+        SubmissionStartAt = s16Now.AddDays(-10),
+        SubmissionEndAt = s16Now.AddDays(-3),
+        JudgingStartAt = s16Now.AddDays(-2),
+        JudgingEndAt = s16Now.AddDays(2),
+        VotingStartAt = s16Now.AddDays(3),
+        VotingEndAt = s16Now.AddDays(5),
+        ResultAnnouncementAt = s16Now.AddDays(6),
+        CreatedAt = s16Now,
+        IsDeleted = false
+    };
+    db.PlatformEvents.Add(s16Event);
+
+    db.Juries.AddRange(
+        new Jury { Id = Guid.NewGuid(), EventId = s16EventId, CreatorId = s16HeadProfile.Id, IsHeadJury = true, CreatedAt = s16Now, IsDeleted = false },
+        new Jury { Id = Guid.NewGuid(), EventId = s16EventId, CreatorId = s16PanelProfile.Id, IsHeadJury = false, CreatedAt = s16Now, IsDeleted = false }
+    );
+
+    var art1 = new Artwork { Id = Guid.NewGuid(), CreatorProfileId = s16Artist1Profile.Id, Title = "Art 1", ImageUrl = "https://example.com/art1.png", IsDeleted = false };
+    var art2 = new Artwork { Id = Guid.NewGuid(), CreatorProfileId = s16Artist2Profile.Id, Title = "Art 2", ImageUrl = "https://example.com/art2.png", IsDeleted = false };
+    db.Artworks.AddRange(art1, art2);
+
+    var sub1 = new EventSubmission { Id = Guid.NewGuid(), EventId = s16EventId, SubmitterId = s16Artist1UserId, ArtworkId = art1.Id, Title = "Submission 1", Score = 85m, VoteCount = 10, IsDisqualified = false, SubmittedAt = s16Now };
+    var sub2 = new EventSubmission { Id = Guid.NewGuid(), EventId = s16EventId, SubmitterId = s16Artist2UserId, ArtworkId = art2.Id, Title = "Submission 2", Score = 90m, VoteCount = 15, IsDisqualified = false, SubmittedAt = s16Now };
+    db.EventSubmissions.AddRange(sub1, sub2);
+
+    // Seed 2 active disputes: 1 AiArt (compliance), 1 ScoreAppeal (score variance)
+    var aiDisputeId = Guid.NewGuid();
+    var scoreDisputeId = Guid.NewGuid();
+    db.SubmissionDisputes.AddRange(
+        new SubmissionDispute { Id = aiDisputeId, EventId = s16EventId, SubmissionId = sub1.Id, RaisedById = s16PanelJuryUserId, Category = "AiArt", Reason = "AI artifacts detected", Status = "Pending", CreatedAt = s16Now },
+        new SubmissionDispute { Id = scoreDisputeId, EventId = s16EventId, SubmissionId = sub2.Id, RaisedById = s16PanelJuryUserId, Category = "ScoreAppeal", Reason = "Score variance > 25%", Status = "Pending", CreatedAt = s16Now }
+    );
+    await db.SaveChangesAsync();
+
+    var workspaceHandler = new GetHeadJuryWorkspaceQueryHandler(db);
+    var wsInit = await workspaceHandler.Handle(new GetHeadJuryWorkspaceQuery(s16EventId), CancellationToken.None);
+    Assert(wsInit != null && wsInit.ArbitrationCases.Count == 2 && !wsInit.DisputesResolved && wsInit.AnomalyFlagsCount == 2,
+        "Head Jury workspace must initially report 2 pending disputes and DisputesResolved == false.");
+
+    // 1. Resolve AiArt dispute with Disqualify
+    var resolveHandler = new ResolveSubmissionDisputeCommandHandler(db);
+    var resDisqualify = await resolveHandler.Handle(
+        new ResolveSubmissionDisputeCommand(aiDisputeId, s16HeadJuryUserId, "Disqualify", "AI generation confirmed by Head Jury inspection."),
+        CancellationToken.None);
+    Assert(resDisqualify.Success, "Head Jury resolving AiArt dispute with Disqualify must succeed.");
+
+    var updatedSub1 = await db.EventSubmissions.FindAsync(sub1.Id);
+    var updatedAiDisp = await db.SubmissionDisputes.FindAsync(aiDisputeId);
+    Assert(updatedSub1 != null && updatedSub1.IsDisqualified && updatedSub1.VoteCount == 0 && updatedSub1.Score == null,
+        "Disqualify resolution must mark submission as disqualified and wipe scores/votes.");
+    Assert(updatedAiDisp != null && updatedAiDisp.Status == "Resolved" && updatedAiDisp.Resolution == "Disqualify",
+        "Dispute status must be updated to Resolved with Resolution='Disqualify'.");
+
+    // 2. Resolve ScoreAppeal dispute with Dismiss (Maintain Current Median Score)
+    var resDismiss = await resolveHandler.Handle(
+        new ResolveSubmissionDisputeCommand(scoreDisputeId, s16HeadJuryUserId, "Dismiss", "Scores confirmed within acceptable bounds."),
+        CancellationToken.None);
+    Assert(resDismiss.Success, "Head Jury resolving ScoreAppeal dispute with Dismiss must succeed.");
+
+    var updatedScoreDisp = await db.SubmissionDisputes.FindAsync(scoreDisputeId);
+    Assert(updatedScoreDisp != null && updatedScoreDisp.Status == "Rejected" && updatedScoreDisp.Resolution == "Dismiss",
+        "Dismissed score dispute must have Status='Rejected' and Resolution='Dismiss'.");
+
+    // 3. Workspace check: All disputes now resolved
+    var wsAfterResolutions = await workspaceHandler.Handle(new GetHeadJuryWorkspaceQuery(s16EventId), CancellationToken.None);
+    Assert(wsAfterResolutions != null && wsAfterResolutions.DisputesResolved && wsAfterResolutions.AnomalyFlagsCount == 0,
+        "After resolving both disputes (1 Disqualify, 1 Dismiss), DisputesResolved must be true and AnomalyFlagsCount == 0.");
+
+    // 4. Unauthorized user trying to sign off results must be rejected
+    var signOffHandler = new SignOffHeadJuryCommandHandler(db);
+    var unauthSignOff = await signOffHandler.Handle(new SignOffHeadJuryCommand(s16EventId, s16UnauthorizedUserId), CancellationToken.None);
+    Assert(!unauthSignOff.Success && unauthSignOff.Errors.Any(e => e.Contains("không có quyền")),
+        "Unauthorized user signing off contest results must be rejected.");
+
+    // 5. Authorized Head Jury signs off results
+    var headSignOff = await signOffHandler.Handle(new SignOffHeadJuryCommand(s16EventId, s16HeadJuryUserId), CancellationToken.None);
+    Assert(headSignOff.Success && headSignOff.SignedOffAt.HasValue,
+        "Head Jury signing off contest results must succeed and return SignedOffAt timestamp.");
+
+    var finalEvent = await db.PlatformEvents.FindAsync(s16EventId);
+    Assert(finalEvent != null && finalEvent.IsHeadJurySignedOff && finalEvent.HeadJurySignedOffAt.HasValue,
+        "Event entity must be updated with IsHeadJurySignedOff = true.");
 }
 
 
