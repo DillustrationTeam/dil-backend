@@ -750,6 +750,19 @@ public class EventsController : ApiControllerBase
     [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetHeadJuryWorkspace(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var query = new GetHeadJuryWorkspaceQuery(id);
+        var result = await Mediator.Send(query, cancellationToken);
+        if (result == null)
+        {
+            return NotFoundEnvelope("Không tìm thấy dữ liệu Head Jury Workspace cho sự kiện này.");
+        }
+        return OkEnvelope(result);
+    }
+
     /// <summary>
     /// [Demo/Testing] Kết thúc giai đoạn hiện tại hoặc chuyển sang giai đoạn kế tiếp cho sự kiện.
     /// Hỗ trợ kiểm thử từng giai đoạn (Submission -> Judging -> Voting -> Ended).

@@ -48,7 +48,7 @@ public class GetHeadJuryWorkspaceQueryHandler : IRequestHandler<GetHeadJuryWorks
 
         // Surface all active event disputes on the Jury / Head Jury arbitration panel
         var disputes = await _db.SubmissionDisputes.AsNoTracking()
-            .Where(d => d.EventId == request.EventId && !d.IsDeleted)
+            .Where(d => (d.EventId == request.EventId || (d.SubmissionId.HasValue && submissionIds.Contains(d.SubmissionId.Value))) && !d.IsDeleted)
             .OrderByDescending(d => d.Status == "Pending" || d.Status == "UnderReview")
             .ThenByDescending(d => d.CreatedAt)
             .ToListAsync(cancellationToken);
