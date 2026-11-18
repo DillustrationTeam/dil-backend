@@ -750,17 +750,33 @@ public class EventsController : ApiControllerBase
     [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetHeadJuryWorkspace(
+    /// <summary>
+    /// [Demo/Testing] Kết thúc giai đoạn hiện tại hoặc chuyển sang giai đoạn kế tiếp cho sự kiện.
+    /// Hỗ trợ kiểm thử từng giai đoạn (Submission -> Judging -> Voting -> Ended).
+    /// </summary>
+    [HttpPost("{id:guid}/advance-period")]
+    [HttpPost("{id:guid}/end-period")]
+    [Authorize(Roles = AdminOrModRoles)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> AdvancePeriod(
         Guid id,
+        [FromBody] AdvancePeriodRequestDto? dto = null,
         CancellationToken cancellationToken = default)
     {
-        var query = new GetHeadJuryWorkspaceQuery(id);
-        var result = await Mediator.Send(query, cancellationToken);
-        if (result == null)
+        var command = new AdvanceEventPeriodCommand(id, dto?.TargetPeriod);
+        var (success, data, errors, message) = await Mediator.Send(command, cancellationToken);
+        if (!success)
         {
-            return NotFoundEnvelope("Không tìm thấy dữ liệu Head Jury Workspace cho sự kiện này.");
+            return BadRequestEnvelope(errors);
         }
-        return OkEnvelope(result);
+
+        return OkEnvelope(new
+        {
+            message,
+            data
+        });
     }
 }
 
