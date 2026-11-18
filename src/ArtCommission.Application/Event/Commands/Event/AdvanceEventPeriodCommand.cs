@@ -86,50 +86,50 @@ public class AdvanceEventPeriodCommandHandler
         {
             case "Submission":
                 platformEvent.Status = EventStatus.Open;
-                platformEvent.SubmissionStartAt = now.AddMinutes(-5);
+                platformEvent.SubmissionStartAt = now.AddDays(-1);
                 platformEvent.SubmissionEndAt = now.AddDays(7);
-                platformEvent.JudgingStartAt = platformEvent.SubmissionEndAt;
+                platformEvent.JudgingStartAt = platformEvent.SubmissionEndAt.AddHours(1);
                 platformEvent.JudgingEndAt = platformEvent.JudgingStartAt.AddDays(5);
-                platformEvent.VotingStartAt = platformEvent.JudgingEndAt;
+                platformEvent.VotingStartAt = platformEvent.JudgingEndAt.AddHours(1);
                 platformEvent.VotingEndAt = platformEvent.VotingStartAt.AddDays(3);
-                platformEvent.ResultAnnouncementAt = platformEvent.VotingEndAt.AddDays(1);
+                platformEvent.ResultAnnouncementAt = platformEvent.VotingEndAt.AddHours(1);
                 message = "Đã chuyển sự kiện sang giai đoạn Nhận bài thi (Submission).";
                 break;
 
             case "Judging":
                 platformEvent.Status = EventStatus.Judging;
-                platformEvent.SubmissionStartAt = now.AddDays(-7);
-                platformEvent.SubmissionEndAt = now.AddMinutes(-5);
-                platformEvent.JudgingStartAt = now.AddMinutes(-5);
+                platformEvent.SubmissionStartAt = now.AddDays(-10);
+                platformEvent.SubmissionEndAt = now.AddDays(-3);
+                platformEvent.JudgingStartAt = now.AddDays(-2);
                 platformEvent.JudgingEndAt = now.AddDays(5);
-                platformEvent.VotingStartAt = platformEvent.JudgingEndAt;
+                platformEvent.VotingStartAt = platformEvent.JudgingEndAt.AddHours(1);
                 platformEvent.VotingEndAt = platformEvent.VotingStartAt.AddDays(3);
-                platformEvent.ResultAnnouncementAt = platformEvent.VotingEndAt.AddDays(1);
+                platformEvent.ResultAnnouncementAt = platformEvent.VotingEndAt.AddHours(1);
                 message = "Đã kết thúc nhận bài và chuyển sự kiện sang giai đoạn Ban giám khảo chấm điểm (Judging).";
                 break;
 
             case "Voting":
                 platformEvent.Status = EventStatus.Open;
-                platformEvent.SubmissionStartAt = now.AddDays(-12);
-                platformEvent.SubmissionEndAt = now.AddDays(-5);
-                platformEvent.JudgingStartAt = now.AddDays(-5);
-                platformEvent.JudgingEndAt = now.AddMinutes(-5);
-                platformEvent.VotingStartAt = now.AddMinutes(-5);
-                platformEvent.VotingEndAt = now.AddDays(3);
-                platformEvent.ResultAnnouncementAt = platformEvent.VotingEndAt.AddDays(1);
+                platformEvent.SubmissionStartAt = now.AddDays(-15);
+                platformEvent.SubmissionEndAt = now.AddDays(-8);
+                platformEvent.JudgingStartAt = now.AddDays(-7);
+                platformEvent.JudgingEndAt = now.AddDays(-2);
+                platformEvent.VotingStartAt = now.AddDays(-1);
+                platformEvent.VotingEndAt = now.AddDays(5);
+                platformEvent.ResultAnnouncementAt = platformEvent.VotingEndAt.AddHours(1);
                 message = "Đã kết thúc chấm điểm và chuyển sự kiện sang giai đoạn Bình chọn cộng đồng (Voting).";
                 break;
 
             case "Ended":
             default:
                 platformEvent.Status = EventStatus.Ended;
-                platformEvent.SubmissionStartAt = now.AddDays(-15);
-                platformEvent.SubmissionEndAt = now.AddDays(-8);
-                platformEvent.JudgingStartAt = now.AddDays(-8);
-                platformEvent.JudgingEndAt = now.AddDays(-3);
-                platformEvent.VotingStartAt = now.AddDays(-3);
-                platformEvent.VotingEndAt = now.AddMinutes(-10);
-                platformEvent.ResultAnnouncementAt = now.AddMinutes(-5);
+                platformEvent.SubmissionStartAt = now.AddDays(-20);
+                platformEvent.SubmissionEndAt = now.AddDays(-13);
+                platformEvent.JudgingStartAt = now.AddDays(-12);
+                platformEvent.JudgingEndAt = now.AddDays(-7);
+                platformEvent.VotingStartAt = now.AddDays(-6);
+                platformEvent.VotingEndAt = now.AddDays(-2);
+                platformEvent.ResultAnnouncementAt = now.AddDays(-1);
                 message = "Đã kết thúc bình chọn và công bố kết quả chung cuộc của sự kiện (Ended).";
                 break;
         }
