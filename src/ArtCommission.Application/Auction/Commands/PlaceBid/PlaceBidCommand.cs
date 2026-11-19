@@ -217,15 +217,34 @@ public sealed class PlaceBidCommandHandler
             {
                 if (ownAutoBid is null)
                 {
-                    ownAutoBid = new AuctionAutoBid
+                    // Unique index UX_AuctionAutoBids_Auction_Bidder KHÔNG lọc IsDeleted, nên sau khi
+                    // người dùng huỷ auto-bid (soft-delete) mà đăng ký lại thì insert mới sẽ vỡ khoá
+                    // unique ⇒ 409 "phiên vừa được cập nhật". Hồi sinh bản ghi cũ thay vì insert.
+                    var cancelledAutoBid = await _db.AuctionAutoBids.FirstOrDefaultAsync(
+                        x => x.AuctionId == auction.Id && x.BidderId == request.UserId,
+                        cancellationToken);
+
+                    if (cancelledAutoBid is not null)
                     {
-                        AuctionId = auction.Id,
-                        BidderId = request.UserId,
-                        MaxAmount = requestedCap,
-                        RegisteredAt = now
-                    };
-                    autoBids.Add(ownAutoBid);
-                    _db.AuctionAutoBids.Add(ownAutoBid);
+                        cancelledAutoBid.IsDeleted = false;
+                        cancelledAutoBid.MaxAmount = requestedCap;
+                        cancelledAutoBid.RegisteredAt = now;
+                        cancelledAutoBid.UpdatedAt = now;
+                        ownAutoBid = cancelledAutoBid;
+                        autoBids.Add(cancelledAutoBid);
+                    }
+                    else
+                    {
+                        ownAutoBid = new AuctionAutoBid
+                        {
+                            AuctionId = auction.Id,
+                            BidderId = request.UserId,
+                            MaxAmount = requestedCap,
+                            RegisteredAt = now
+                        };
+                        autoBids.Add(ownAutoBid);
+                        _db.AuctionAutoBids.Add(ownAutoBid);
+                    }
                 }
                 else
                 {
@@ -279,33 +298,80 @@ public sealed class PlaceBidCommandHandler
                 .ThenBy(x => x.RegisteredAt)
                 .ThenBy(x => x.BidderId)
                 .ToList();
-            var winner = ranked[0];
-            var runnerUp = ranked.Count > 1 ? ranked[1] : null;
 
+            // Giá khớp lệnh = trần của người về nhì + bước giá, nhưng không thấp hơn mức tối
+            // thiểu của phiên.
+            //
+            // VÌ SAO phải tính cả khi phiên CHƯA có bid dẫn đầu: trước đây nhánh "chưa có ai
+            // dẫn đầu" rơi về giá khởi điểm, nên khi một proxy-bid của người khác đăng ký sẵn
+            // mà người dùng đặt giá thường, hệ thống tạo bid dẫn đầu ở giá khởi điểm (500.000)
+            // trong khi lượt vừa đặt (550.000) bị đánh Outbid — bid dẫn đầu thấp hơn bid thua.
+            decimal ComputeClearingPrice(ProxyCandidate w, ProxyCandidate? runner)
+            {
+                if (w.BidderId == request.UserId && !request.IsAuto)
+                {
+                    // Bid thường là giá người dùng chọn trả; proxy-bid mới dùng giá vừa đủ thắng.
+                    return decimal.Round(request.Amount, 2, MidpointRounding.AwayFromZero);
+                }
+
+                var rivalCap = runner?.MaxAmount
+                    ?? (oldLeading is not null ? oldLeading.Amount : minimumNextBid);
+                var proxyPrice = runner is null && oldLeading is null
+                    ? minimumNextBid
+                    : rivalCap + auction.BidStep;
+                return decimal.Round(Math.Min(w.MaxAmount, Math.Max(minimumNextBid, proxyPrice)),
+                    2, MidpointRounding.AwayFromZero);
+            }
+
+            ProxyCandidate winner;
+            ProxyCandidate? runnerUp;
             decimal clearingPrice;
-            if (oldLeading is null)
-            {
-                clearingPrice = !request.IsAuto && winner.BidderId == request.UserId
-                    ? request.Amount
-                    : auction.StartPrice;
-            }
-            else if (winner.BidderId == request.UserId && !request.IsAuto)
-            {
-                // Bid thường là giá người dùng chọn trả; proxy-bid mới dùng giá vừa đủ thắng.
-                clearingPrice = request.Amount;
-            }
-            else
-            {
-                var proxyPrice = runnerUp is null
-                    ? oldLeading.Amount
-                    : runnerUp.MaxAmount + auction.BidStep;
-                clearingPrice = Math.Min(winner.MaxAmount, Math.Max(minimumNextBid, proxyPrice));
-            }
+            var disabled = new HashSet<Guid>();
 
-            clearingPrice = decimal.Round(clearingPrice, 2, MidpointRounding.AwayFromZero);
-            if (clearingPrice > winner.MaxAmount)
+            while (true)
             {
-                return (false, null, ["Trần giá không đủ để vượt lượt đặt giá hiện tại."], null);
+                var alive = ranked.Where(c => !disabled.Contains(c.BidderId)).ToList();
+                if (alive.Count == 0)
+                {
+                    return (false, null, ["Không còn người đặt giá hợp lệ cho phiên này."], null);
+                }
+
+                winner = alive[0];
+                runnerUp = alive.Count > 1 ? alive[1] : null;
+                clearingPrice = ComputeClearingPrice(winner, runnerUp);
+
+                if (clearingPrice > winner.MaxAmount)
+                {
+                    return (false, null, ["Trần giá không đủ để vượt lượt đặt giá hiện tại."], null);
+                }
+
+                if (winner.BidderId == request.UserId)
+                {
+                    break;   // ví người gửi request được kiểm tra ngay khi khoá cọc
+                }
+
+                // Proxy của người khác phải đủ tiền khoá cọc ở đúng mức giá khớp lệnh. Nếu không
+                // đủ thì vô hiệu hoá đăng ký đó và xét người kế tiếp, thay vì chặn lượt đặt giá
+                // của người dùng bằng một proxy "rỗng ví".
+                var proxyWallet = await _db.Wallets
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(w => w.UserId == winner.BidderId && !w.IsDeleted, cancellationToken);
+
+                if (proxyWallet is not null && proxyWallet.Balance >= clearingPrice)
+                {
+                    break;
+                }
+
+                var deadAutoBid = await _db.AuctionAutoBids.FirstOrDefaultAsync(
+                    x => x.AuctionId == auction.Id && x.BidderId == winner.BidderId && !x.IsDeleted,
+                    cancellationToken);
+                if (deadAutoBid is not null)
+                {
+                    deadAutoBid.IsDeleted = true;
+                    deadAutoBid.UpdatedAt = now;
+                }
+
+                disabled.Add(winner.BidderId);
             }
 
             var leaderChanged = oldLeading is null

@@ -352,6 +352,11 @@ public class AuctionDeliveryConfiguration : IEntityTypeConfiguration<AuctionDeli
         builder.Property(d => d.DisputeReason).HasMaxLength(500);
         builder.Property(d => d.DisputeEvidenceUrl).HasMaxLength(1000);
 
+        // Bằng chứng khiếu nại nhiều file: tối đa 5 ảnh (JSON array) + 1 video.
+        // nvarchar(max) vì 5 URL đầy đủ có thể vượt 1000 ký tự.
+        builder.Property(d => d.DisputeImageUrls).HasColumnType("nvarchar(max)");
+        builder.Property(d => d.DisputeVideoUrl).HasMaxLength(1000);
+
         builder.Property(d => d.CreatedAt).IsRequired();
         builder.Property(d => d.IsDeleted).HasDefaultValue(false);
 

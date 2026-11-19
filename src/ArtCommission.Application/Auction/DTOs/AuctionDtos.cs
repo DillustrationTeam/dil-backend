@@ -156,6 +156,10 @@ public sealed record AuctionDeliveryDto(
     string? DisputeResolution = null,
     DateTimeOffset? DisputeResolvedAt = null,
     string? DisputeResolvedNote = null,
+    /// <summary>Danh sách ảnh bằng chứng khiếu nại (tối đa 5). Luôn gồm cả ảnh cũ trong DisputeEvidenceUrl.</summary>
+    IReadOnlyList<string>? DisputeImageUrls = null,
+    /// <summary>Video bằng chứng khiếu nại (tối đa 1).</summary>
+    string? DisputeVideoUrl = null,
     /// <summary>Người mua được phép đánh giá người bán cho phiên này.</summary>
     bool CanRateSeller = false,
     /// <summary>Người mua đã đánh giá người bán cho phiên này rồi.</summary>
@@ -582,4 +586,93 @@ public sealed record CommercialRightsDeedDto(
     bool ResellAllowed,
     bool MoralRightsRetainedByArtist,
     string TermsAndConditions
+);
+
+
+// =====================================================================
+// Seller penalty ladder — màn quản trị (xem + thu hồi)
+// =====================================================================
+
+/// <summary>Một án phạt giao hàng nhìn từ phía Ban quản trị.</summary>
+public sealed record AuctionPenaltyAdminDto(
+    Guid PenaltyId,
+    Guid SellerId,
+    string? SellerName,
+    string? SellerEmail,
+    int StrikeLevel,
+    string Status,
+    decimal? SurchargePercent,
+    int SessionsTotal,
+    int SessionsUsed,
+    DateTimeOffset? BanUntil,
+    bool EscrowReleasedAtStrike,
+    Guid SourceAuctionId,
+    Guid? SourceDeliveryId,
+    string? Reason,
+    DateTimeOffset? RevokedAt,
+    string? RevokedByAdminName,
+    string? RevokeReason,
+    DateTimeOffset CreatedAt
+);
+
+/// <summary>Kết quả thu hồi án phạt.</summary>
+public sealed record AuctionPenaltyRevokeResultDto(
+    Guid PenaltyId,
+    Guid SellerId,
+    int StrikeLevel,
+    string Status,
+    DateTimeOffset RevokedAt,
+    string? RevokeReason
+);
+
+// =====================================================================
+// Seller penalty ladder — màn của CHÍNH người bán ("Tôi bị báo cáo")
+// =====================================================================
+
+/// <summary>
+/// Một lần bị báo cáo / bị phạt nhìn từ phía người bán: đủ ngữ cảnh để họ hiểu
+/// "vì sao tôi bị phạt" mà không cần hỏi lại Ban quản trị.
+/// </summary>
+public sealed record MyAuctionPenaltyDto(
+    Guid PenaltyId,
+    int StrikeLevel,
+    string Status,
+    decimal? SurchargePercent,
+    int SessionsTotal,
+    int SessionsUsed,
+    DateTimeOffset? BanUntil,
+    bool EscrowReleasedAtStrike,
+    /// <summary>Kết luận của Ban quản trị cho án phạt này (câu chữ đọc được).</summary>
+    string? Reason,
+    /// <summary>Lý do người mua nêu khi gửi khiếu nại.</summary>
+    string? BuyerComplaint,
+    /// <summary>Ghi chú phân xử của Ban quản trị (nếu có).</summary>
+    string? AdminNote,
+    /// <summary>refund = người mua được hoàn tiền; paid-out = tiền đã về ví người bán; null = chưa chốt.</summary>
+    string? DisputeResolution,
+    int EvidenceImageCount,
+    bool HasEvidenceVideo,
+    Guid SourceAuctionId,
+    Guid? SourceDeliveryId,
+    string? ArtworkTitle,
+    string? ArtworkThumbnailUrl,
+    DateTimeOffset? RevokedAt,
+    string? RevokeReason,
+    DateTimeOffset CreatedAt
+);
+
+/// <summary>
+/// Tổng hợp tình trạng bán của người bán: mức phạt đang đứng, phụ phí đang áp,
+/// số phiên còn bị trừ và thời hạn bị khoá bán.
+/// </summary>
+public sealed record MyPenaltySummaryDto(
+    int CurrentLevel,
+    decimal ActiveSurchargePercent,
+    int SurchargeSessionsRemaining,
+    DateTimeOffset? BannedUntil,
+    /// <summary>Án đang phải chịu ngay lúc này (còn phụ phí hoặc còn khoá bán).</summary>
+    int ActivePenaltyCount,
+    /// <summary>Án đã trừ hết số phiên phụ phí — không còn hiệu lực nhưng không bị thu hồi.</summary>
+    int ConsumedPenaltyCount,
+    int RevokedPenaltyCount
 );

@@ -62,6 +62,15 @@ public class AuctionDelivery : BaseEntity
     public string? DisputeEvidenceUrl { get; set; }
 
     /// <summary>
+    /// Danh sách ảnh bằng chứng khiếu nại, lưu dạng JSON array (tối đa 5 ảnh).
+    /// Giữ <see cref="DisputeEvidenceUrl"/> làm ảnh đầu tiên để không vỡ dữ liệu/UI cũ.
+    /// </summary>
+    public string? DisputeImageUrls { get; set; }
+
+    /// <summary>Video bằng chứng khiếu nại (tối đa 1 video).</summary>
+    public string? DisputeVideoUrl { get; set; }
+
+    /// <summary>
     /// Khiếu nại được gửi SAU khi ký quỹ đã giải ngân cho người bán (người mua đã nhận bản điện
     /// tử nhưng vẫn yêu cầu giao tranh vật lý). Loại khiếu nại này không đóng băng được tiền,
     /// chỉ ghi nhận để Admin đối soát và để người mua đánh giá người bán.
