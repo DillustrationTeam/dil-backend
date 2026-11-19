@@ -3,7 +3,8 @@ namespace ArtCommission.Domain.Enums;
 public enum EventStatus
 {
     Draft = 1,
-    Open = 2,
-    Judging = 3,
-    Ended = 4
+    Upcoming = 2,
+    Open = 3,
+    Judging = 4,
+    Ended = 5
 }

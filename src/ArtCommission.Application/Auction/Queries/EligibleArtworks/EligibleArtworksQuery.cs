@@ -30,6 +30,10 @@ public sealed class EligibleArtworksQueryHandler
 
         var limit = request.Limit <= 0 ? DefaultLimit : Math.Min(request.Limit, MaxLimit);
         var query = _db.Artworks.AsNoTracking().Where(artwork => !artwork.IsDeleted
+            // Tranh phải đã được kiểm duyệt: tranh Pending/Rejected/Hidden không được lên sàn
+            // (Marketplace cũng chặn y như vậy). Trước đây thiếu điều kiện này nên tranh vừa
+            // upload (Pending) vẫn mở được phiên và hiện công khai ở trang chi tiết phiên.
+            && artwork.ModerationStatus == "Approved"
             && (_db.ArtworkOwnerships.Any(o => o.ArtworkId == artwork.Id && o.OwnerId == request.UserId && o.IsCurrent && !o.IsDeleted)
                 || (!_db.ArtworkOwnerships.Any(o => o.ArtworkId == artwork.Id && o.IsCurrent && !o.IsDeleted)
                     && artwork.CreatorProfile != null
@@ -39,7 +43,15 @@ public sealed class EligibleArtworksQueryHandler
                 && (auction.Status == AuctionStatus.Scheduled
                     || auction.Status == AuctionStatus.Active
                     || (auction.Status == AuctionStatus.Ended
-                        && (auction.BidCount > 0 || auction.WinnerId != null)))));
+                        && (auction.BidCount > 0 || auction.WinnerId != null))
+                    // Các trạng thái SAU khi chốt vẫn đang giữ tranh: ký quỹ chưa đóng, hàng có
+                    // thể đang trên đường, quyền sở hữu đã sang người thắng. Thiếu các trạng
+                    // thái này thì người thắng thấy tranh "đủ điều kiện" và niêm yết lại một
+                    // bức tranh vật lý chưa giao xong.
+                    || auction.Status == AuctionStatus.AwaitingPhysical
+                    || auction.Status == AuctionStatus.InTransit
+                    || auction.Status == AuctionStatus.Disputed
+                    || auction.Status == AuctionStatus.Completed)));
 
         if (!string.IsNullOrWhiteSpace(request.Cursor))
         {

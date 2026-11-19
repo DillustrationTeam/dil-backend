@@ -42,6 +42,20 @@ public class CreatorWorkstationController : ApiControllerBase
         return result.Success ? OkEnvelope(result.Data) : BadRequestEnvelope(result.Errors);
     }
 
+    [HttpPut("creator/workstation/faqs/{id:guid}")]
+    public async Task<IActionResult> UpdateFaq(Guid id, [FromBody] UpsertCreatorFaqRequest request, CancellationToken cancellationToken)
+    {
+        var result = await Mediator.Send(new CreatorWorkstationMutationCommand("update-faq", CurrentUserId, id, request), cancellationToken);
+        return result.Success ? OkEnvelope(result.Data) : BadRequestEnvelope(result.Errors);
+    }
+
+    [HttpDelete("creator/workstation/faqs/{id:guid}")]
+    public async Task<IActionResult> DeleteFaq(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await Mediator.Send(new CreatorWorkstationMutationCommand("delete-faq", CurrentUserId, id), cancellationToken);
+        return result.Success ? OkEnvelope(result.Data) : BadRequestEnvelope(result.Errors);
+    }
+
     [HttpPost("creator/workstation/work-items")]
     public async Task<IActionResult> CreateWorkItem([FromBody] CreateWorkItemRequest request, CancellationToken cancellationToken)
     {

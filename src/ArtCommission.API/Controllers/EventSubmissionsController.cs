@@ -347,7 +347,8 @@ public class EventSubmissionsController : ApiControllerBase
             Reason: request.Reason,
             Description: request.Description,
             EvidenceUrls: request.EvidenceUrls,
-            Priority: request.Priority
+            Priority: request.Priority,
+            Category: request.Category
         );
 
         var (success, message, disputeId, errors) = await Mediator.Send(command, cancellationToken);

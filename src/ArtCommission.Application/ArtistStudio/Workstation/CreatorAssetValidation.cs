@@ -9,7 +9,7 @@ public static class CreatorAssetValidation
     public static string? Error(CreateCreatorAssetRequest asset)
     {
         if (string.IsNullOrWhiteSpace(asset.Name) || asset.Name.Trim().Length > 120 ||
-            !new[] { "Pose", "Palette", "Preset" }.Contains(asset.AssetType))
+            !new[] { "Pose", "Palette", "Preset", "Ref" }.Contains(asset.AssetType))
             return "Tên tài nguyên phải từ 1 đến 120 ký tự và loại tài nguyên phải hợp lệ.";
         if (!string.IsNullOrWhiteSpace(asset.AssetUrl) &&
             (asset.AssetUrl.Length > 2048 || !Uri.TryCreate(asset.AssetUrl, UriKind.Absolute, out var uri) ||
@@ -40,6 +40,8 @@ public static class CreatorAssetValidation
                 return "Pose mẫu cần có ảnh tham chiếu.";
             else if (asset.AssetType == "Preset" && string.IsNullOrWhiteSpace(asset.AssetUrl) && string.IsNullOrWhiteSpace(notes))
                 return "Preset cần có nội dung hướng dẫn hoặc ảnh tham chiếu.";
+            else if (asset.AssetType == "Ref" && string.IsNullOrWhiteSpace(asset.AssetUrl) && string.IsNullOrWhiteSpace(notes))
+                return "Tài liệu Ref cần có đường dẫn hoặc ghi chú.";
         }
         catch (JsonException) { return "Nội dung tài nguyên không phải JSON hợp lệ."; }
         return null;

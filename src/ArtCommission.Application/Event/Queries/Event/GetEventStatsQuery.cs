@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ArtCommission.Application.Event.Queries;
 
-public record GetEventStatsQuery : IRequest<EventStatsDto>;
+public record GetEventStatsQuery(Guid? CurrentUserId = null, bool IncludeDrafts = false) : IRequest<EventStatsDto>;
 
 public class GetEventStatsQueryHandler : IRequestHandler<GetEventStatsQuery, EventStatsDto>
 {
@@ -21,19 +21,29 @@ public class GetEventStatsQueryHandler : IRequestHandler<GetEventStatsQuery, Eve
 
     public async Task<EventStatsDto> Handle(GetEventStatsQuery request, CancellationToken cancellationToken)
     {
+        var now = DateTimeOffset.UtcNow;
+        var allowOwnDrafts = request.IncludeDrafts
+            && request.CurrentUserId.HasValue
+            && request.CurrentUserId.Value != Guid.Empty;
+
         var events = await _db.PlatformEvents
             .AsNoTracking()
-            .Where(e => !e.IsDeleted)
+            .Where(e => !e.IsDeleted
+                && (e.Status != EventStatus.Draft
+                    || (allowOwnDrafts && e.CreatedByAdminId == request.CurrentUserId!.Value)))
             .Select(e => new
             {
                 e.Status,
+                e.SubmissionStartAt,
                 e.Prize,
                 SubmissionsCount = e.Submissions.Count
             })
             .ToListAsync(cancellationToken);
 
         var totalEventsCount = events.Count;
-        var openEventsCount = events.Count(e => e.Status == EventStatus.Open);
+        var openEventsCount = events.Count(e =>
+            e.Status == EventStatus.Open
+            || (e.Status == EventStatus.Upcoming && e.SubmissionStartAt <= now));
         var totalSubmissionsCount = events.Sum(e => e.SubmissionsCount);
 
         long totalPrizePool = 0;

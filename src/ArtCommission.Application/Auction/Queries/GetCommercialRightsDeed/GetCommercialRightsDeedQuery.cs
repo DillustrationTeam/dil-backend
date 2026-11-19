@@ -50,15 +50,15 @@ public sealed class GetCommercialRightsDeedQueryHandler
             return (false, null, 400, ["Phiên đấu giá chưa được chốt hoặc chưa có người thắng hợp lệ."]);
         }
 
-        // VÄƒn báº£n bÃ n giao quyá»n thÆ°Æ¡ng máº¡i chá»©a tÃªn, giÃ¡ chá»‘t vÃ  chá»¯ kÃ½ sá»‘ cá»§a hai bÃªn.
-        // Chá»‰ ngÆ°á»i trong cuá»™c (ngÆ°á»i tháº¯ng / ngÆ°á»i bÃ¡n) hoáº·c Admin Ä‘Æ°á»£c Ä‘á»c.
+        // Văn bản bàn giao quyền thương mại chứa tên, giá chốt và chữ ký số của hai bên.
+        // Chỉ người trong cuộc (người thắng / người bán) hoặc Admin được đọc.
         var isParticipant = request.CurrentUserId.HasValue
                             && (request.CurrentUserId.Value == auction.WinnerId
                                 || request.CurrentUserId.Value == auction.SellerId);
         if (!request.IsAdmin && !isParticipant)
         {
             return (false, null, 403,
-                ["Chá»‰ ngÆ°á»i tháº¯ng, ngÆ°á»i bÃ¡n hoáº·c Ban quáº£n trá»‹ má»›i xem Ä‘Æ°á»£c vÄƒn báº£n nÃ y."]);
+                ["Chỉ người thắng, người bán hoặc Ban quản trị mới xem được văn bản này."]);
         }
 
         var artwork = await _db.Artworks
@@ -83,6 +83,19 @@ public sealed class GetCommercialRightsDeedQueryHandler
         var winner = await _db.Users
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == auction.WinnerId.Value, cancellationToken);
+
+        // Văn bản ghi TÁC GIẢ là hoạ sĩ sáng tác, không phải người bán: khi tranh được bán lại,
+        // người bán chỉ là chủ sở hữu trước đó. Trước đây dùng auction.SellerId nên văn bản của
+        // tranh resale ghi sai tác giả.
+        var creatorUserId = await _db.CreatorProfiles
+            .AsNoTracking()
+            .Where(p => p.Id == artwork.CreatorProfileId && !p.IsDeleted)
+            .Select(p => (Guid?)p.UserId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var creator = creatorUserId.HasValue
+            ? await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == creatorUserId.Value, cancellationToken)
+            : null;
 
         // SettledAt có thể null khi phiên đang chờ giao tranh vật lý — lấy mốc chuyển quyền sở hữu
         // hoặc thời điểm cập nhật cuối cùng làm ngày cấp văn bản.
@@ -112,8 +125,8 @@ public sealed class GetCommercialRightsDeedQueryHandler
             CertificateNumber: certNumber,
             VerificationCode: verificationCode,
             DigitalSignature: signatureHash,
-            CreatorId: auction.SellerId,
-            CreatorName: seller?.FullName ?? "Dillustration Artist",
+            CreatorId: creatorUserId ?? auction.SellerId,
+            CreatorName: creator?.FullName ?? seller?.FullName ?? "Dillustration Artist",
             OwnerId: auction.WinnerId.Value,
             OwnerName: winner?.FullName ?? "Exclusive Collector",
             FinalPrice: auction.FinalPrice ?? 0m,

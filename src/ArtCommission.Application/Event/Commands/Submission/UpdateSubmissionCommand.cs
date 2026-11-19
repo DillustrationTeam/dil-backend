@@ -90,6 +90,17 @@ public class UpdateSubmissionCommandHandler
 
         var oldArtwork = submission.Artwork;
 
+        // Giữ snapshot tiêu đề & ảnh cũ cho mọi khiếu nại đã tạo trước thời điểm cập nhật bài thi
+        var existingDisputes = await _db.SubmissionDisputes
+            .Where(d => d.SubmissionId == submission.Id &&
+                        (d.SubmissionTitleSnapshot == null || d.ArtworkImageUrlSnapshot == null))
+            .ToListAsync(cancellationToken);
+        foreach (var dispute in existingDisputes)
+        {
+            dispute.SubmissionTitleSnapshot ??= submission.Title;
+            dispute.ArtworkImageUrlSnapshot ??= oldArtwork?.ImageUrl ?? oldArtwork?.ThumbnailUrl;
+        }
+
         // 5. Xử lý thay đổi tác phẩm
         // Trường hợp 5A: Thí sinh upload một tranh mới toanh từ máy lên thay thế
         if (!string.IsNullOrWhiteSpace(request.ImageUrl))

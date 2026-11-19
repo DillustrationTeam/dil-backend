@@ -18,6 +18,7 @@ using AuctionEntity = ArtCommission.Domain.Entities.Auction.Auction;
 using AuctionAutoBid = ArtCommission.Domain.Entities.Auction.AuctionAutoBid;
 using BidEntity = ArtCommission.Domain.Entities.Auction.Bid;
 using AuctionWatchEntity = ArtCommission.Domain.Entities.Auction.AuctionWatch;
+using AuctionPenaltyEntity = ArtCommission.Domain.Entities.Auction.AuctionPenalty;
 using ArtworkOwnershipEntity = ArtCommission.Domain.Entities.Auction.ArtworkOwnership;
 using EscrowTransactionEntity = ArtCommission.Domain.Entities.Auction.EscrowTransaction;
 using DeliverableEntity = ArtCommission.Domain.Entities.Auction.Deliverable;
@@ -87,6 +88,7 @@ public interface IApplicationDbContext
     DbSet<BidEntity> Bids { get; }
     DbSet<AuctionAutoBid> AuctionAutoBids { get; }
     DbSet<AuctionWatchEntity> AuctionWatches { get; }
+    DbSet<AuctionPenaltyEntity> AuctionPenalties { get; }
     DbSet<ArtworkOwnershipEntity> ArtworkOwnerships { get; }
     DbSet<EscrowTransactionEntity> EscrowTransactions { get; }
     DbSet<DeliverableEntity> Deliverables { get; }

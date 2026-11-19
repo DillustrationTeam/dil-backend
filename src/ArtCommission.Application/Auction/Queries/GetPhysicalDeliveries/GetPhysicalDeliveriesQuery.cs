@@ -13,7 +13,13 @@ public sealed record GetPhysicalDeliveriesQuery(
     Guid? CurrentUserId,
     bool IsAdmin = false,
     string? Role = null,
-    string? Status = null
+    string? Status = null,
+    /// <summary>
+    /// Trần số đơn trả về (mặc định 300, tối đa 500). Endpoint này trước đây nạp TOÀN BỘ
+    /// phiên có bản vật lý rồi lọc status trong bộ nhớ, nên dữ liệu lớn dần là response phình
+    /// theo. Mặc định đủ rộng để không đổi hành vi màn hình hiện tại.
+    /// </summary>
+    int Limit = 300
 ) : IRequest<(bool Success, IReadOnlyList<PhysicalDeliveryListItemDto>? Data, string[] Errors)>;
 
 public sealed class GetPhysicalDeliveriesQueryHandler
@@ -60,8 +66,44 @@ public sealed class GetPhysicalDeliveriesQueryHandler
             }
         }
 
+        // Đẩy bộ lọc trạng thái XUỐNG SQL thay vì lọc sau khi đã nạp hết dữ liệu.
+        // Một giá trị status có thể khớp trạng thái ĐƠN GIAO (DeliveryStatus) hoặc trạng thái
+        // PHIÊN (AuctionStatus) — giữ đúng ngữ nghĩa cũ, nhưng lọc trước khi truyền dữ liệu về.
+        DeliveryStatus? deliveryFilter = null;
+        AuctionStatus? auctionFilter = null;
+        if (!string.IsNullOrWhiteSpace(request.Status)
+            && !string.Equals(request.Status, "ALL", StringComparison.OrdinalIgnoreCase))
+        {
+            var targetStatus = request.Status.Trim();
+            if (Enum.TryParse<DeliveryStatus>(targetStatus, ignoreCase: true, out var parsedDelivery))
+            {
+                deliveryFilter = parsedDelivery;
+            }
+
+            if (Enum.TryParse<AuctionStatus>(targetStatus, ignoreCase: true, out var parsedAuction))
+            {
+                auctionFilter = parsedAuction;
+            }
+
+            if (deliveryFilter is null && auctionFilter is null)
+            {
+                // Trạng thái không hợp lệ: không có bản ghi nào khớp, giữ nguyên hành vi cũ.
+                return (true, Array.Empty<PhysicalDeliveryListItemDto>(), []);
+            }
+
+            var deliveryValue = deliveryFilter;
+            var auctionValue = auctionFilter;
+            query = query.Where(a =>
+                (deliveryValue != null
+                 && _db.Set<AuctionDelivery>().Any(d => d.AuctionId == a.Id
+                                                        && !d.IsDeleted
+                                                        && d.Status == deliveryValue.Value))
+                || (auctionValue != null && a.Status == auctionValue.Value));
+        }
+
         var auctions = await query
             .OrderByDescending(a => a.UpdatedAt ?? a.CreatedAt)
+            .Take(Math.Clamp(request.Limit, 1, 500))
             .ToListAsync(cancellationToken);
 
         if (auctions.Count == 0)
@@ -133,18 +175,7 @@ public sealed class GetPhysicalDeliveriesQueryHandler
 
             var deliveryDto = AuctionMapper.ToDeliveryDto(delivery, canRateSeller, hasRatedSeller);
             var escrowStatusStr = escrow?.Status.ToString() ?? (a.Status == AuctionStatus.Active ? "BiddingHold" : "None");
-            // Bộ lọc status nếu có
-            if (!string.IsNullOrWhiteSpace(request.Status) && !string.Equals(request.Status, "ALL", StringComparison.OrdinalIgnoreCase))
-            {
-                var targetStatus = request.Status.Trim();
-                var matchDeliveryStatus = deliveryDto != null && string.Equals(deliveryDto.Status, targetStatus, StringComparison.OrdinalIgnoreCase);
-                var matchAuctionStatus = string.Equals(a.Status.ToString(), targetStatus, StringComparison.OrdinalIgnoreCase);
-
-                if (!matchDeliveryStatus && !matchAuctionStatus)
-                {
-                    continue;
-                }
-            }
+            // Bộ lọc trạng thái đã được áp trong SQL ở trên (không lọc lại trong bộ nhớ).
 
             userDict.TryGetValue(a.SellerId, out var sellerName);
             string? winnerName = null;

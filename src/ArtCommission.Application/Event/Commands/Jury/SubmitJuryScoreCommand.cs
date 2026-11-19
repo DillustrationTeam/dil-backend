@@ -69,6 +69,11 @@ public class SubmitJuryScoreCommandHandler
             return (false, null, ["Sự kiện đang ở trạng thái bản nháp (Draft), chưa thể chấm điểm."]);
         }
 
+        if (platformEvent.Status == Domain.Enums.EventStatus.Upcoming)
+        {
+            return (false, null, ["Sự kiện đang chờ mở nộp bài (Upcoming), chưa tới giai đoạn chấm điểm."]);
+        }
+
         if (platformEvent.Status == Domain.Enums.EventStatus.Ended)
         {
             return (false, null, ["Sự kiện đã kết thúc (Ended), không thể chấm điểm."]);
@@ -269,6 +274,78 @@ public class SubmitJuryScoreCommandHandler
             submission.AdminNote = request.Dto.Notes.Trim();
         }
 
+        // Automatically raise a scoring dispute (ScoreAppeal) when >= 2 jury evaluations diverge > 25%
+        var juryTotalsByJudge = await _db.CriteriaScores
+            .AsNoTracking()
+            .Where(cs => cs.SubmissionId == submission.Id)
+            .Join(
+                _db.Juries.AsNoTracking().Where(j => !j.IsDeleted),
+                cs => cs.GradedByJuryId,
+                j => j.Id,
+                (cs, j) => new { cs.GradedByJuryId, j.IsHeadJury, cs.Score })
+            .GroupBy(x => new { x.GradedByJuryId, x.IsHeadJury })
+            .Select(g => new { g.Key.IsHeadJury, Total = g.Sum(x => x.Score) })
+            .ToListAsync(cancellationToken);
+
+        if (juryTotalsByJudge.Count >= 2)
+        {
+            var allTotals = juryTotalsByJudge.Select(x => x.Total).ToList();
+            var headTotal = juryTotalsByJudge.Where(x => x.IsHeadJury).Select(x => x.Total).FirstOrDefault();
+            var otherTotals = juryTotalsByJudge.Where(x => !x.IsHeadJury).Select(x => x.Total).ToList();
+            var deviationPercent = CalculateDeviationPercent(allTotals, headTotal, otherTotals);
+
+            if (deviationPercent > 25.0m)
+            {
+                var minScore = allTotals.Min();
+                var maxScore = allTotals.Max();
+                var autoReason =
+                    $"[Tự động] Phát hiện chênh lệch điểm chấm giữa ban giám khảo ({deviationPercent:0.#}% > 25%: thấp nhất {minScore:0.##}, cao nhất {maxScore:0.##}). Cần Trưởng ban giám khảo xem xét trọng tài.";
+
+                var activeScoringDispute = await _db.SubmissionDisputes
+                    .FirstOrDefaultAsync(d =>
+                        !d.IsDeleted &&
+                        d.EventId == submission.EventId &&
+                        d.SubmissionId == submission.Id &&
+                        d.Category == "ScoreAppeal" &&
+                        (d.Status == "Pending" || d.Status == "UnderReview"),
+                        cancellationToken);
+
+                if (activeScoringDispute != null)
+                {
+                    activeScoringDispute.Reason = autoReason;
+                    activeScoringDispute.UpdatedAt = now;
+                }
+                else
+                {
+                    var raisedById = platformEvent.CreatedByAdminId != Guid.Empty
+                        ? platformEvent.CreatedByAdminId
+                        : request.UserId;
+
+                    var artworkImageUrl = submission.ArtworkId != Guid.Empty
+                        ? await _db.Artworks.AsNoTracking()
+                            .Where(a => a.Id == submission.ArtworkId)
+                            .Select(a => a.ImageUrl ?? a.ThumbnailUrl)
+                            .FirstOrDefaultAsync(cancellationToken)
+                        : null;
+
+                    _db.SubmissionDisputes.Add(new Domain.Entities.Dispute.SubmissionDispute
+                    {
+                        Id = Guid.NewGuid(),
+                        EventId = submission.EventId,
+                        SubmissionId = submission.Id,
+                        RaisedById = raisedById,
+                        Category = "ScoreAppeal",
+                        Priority = "High",
+                        Status = "Pending",
+                        Reason = autoReason,
+                        SubmissionTitleSnapshot = submission.Title,
+                        ArtworkImageUrlSnapshot = artworkImageUrl,
+                        CreatedAt = now
+                    });
+                }
+            }
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
 
         var result = new SubmissionScoreResultDto
@@ -282,5 +359,33 @@ public class SubmitJuryScoreCommandHandler
         };
 
         return (true, result, Array.Empty<string>());
+    }
+
+    public static decimal CalculateDeviationPercent(
+        IReadOnlyList<decimal> allJuryTotals,
+        decimal headScore,
+        IReadOnlyList<decimal> otherJuryTotals)
+    {
+        decimal headDeviation = 0m;
+        if (headScore > 0 && otherJuryTotals.Count > 0)
+        {
+            var otherAvg = otherJuryTotals.Average();
+            if (otherAvg > 0)
+            {
+                headDeviation = Math.Round(Math.Abs(headScore - otherAvg) / otherAvg * 100m, 1);
+            }
+        }
+
+        decimal spreadDeviation = 0m;
+        if (allJuryTotals.Count >= 2)
+        {
+            var avg = allJuryTotals.Average();
+            if (avg > 0)
+            {
+                spreadDeviation = Math.Round((allJuryTotals.Max() - allJuryTotals.Min()) / avg * 100m, 1);
+            }
+        }
+
+        return Math.Max(headDeviation, spreadDeviation);
     }
 }

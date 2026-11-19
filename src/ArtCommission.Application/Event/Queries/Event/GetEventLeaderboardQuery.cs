@@ -32,7 +32,11 @@ public class GetEventLeaderboardQueryHandler
             .AsNoTracking()
             .FirstOrDefaultAsync(e => e.Id == request.EventId && !e.IsDeleted, cancellationToken);
 
-        if (platformEvent == null)
+        if (platformEvent == null
+            || (platformEvent.Status == Domain.Enums.EventStatus.Draft
+                && (!request.CurrentUserId.HasValue
+                    || request.CurrentUserId.Value == Guid.Empty
+                    || platformEvent.CreatedByAdminId != request.CurrentUserId.Value)))
         {
             return (Array.Empty<EventLeaderboardItemDto>(), 0, null);
         }

@@ -18,6 +18,8 @@ public sealed record JuryDto
 
     public string? CreatorDisplayName { get; set; }
 
+    public string? CreatorEmail { get; set; }
+
     public string? CreatorAvatarUrl { get; set; }
 
     public string? CreatorBio { get; set; }

@@ -77,6 +77,12 @@ public class UploadSubmissionCommandHandler
             return (false, null, [$"Thời gian nhận bài thi đã kết thúc (Kết thúc lúc: {platformEvent.SubmissionEndAt:u})."]);
         }
 
+        if (platformEvent.Status == EventStatus.Upcoming)
+        {
+            platformEvent.Status = EventStatus.Open;
+            platformEvent.UpdatedAt = now;
+        }
+
         Guid targetArtworkId;
         string submissionTitle;
         string? submissionDesc = request.Description;

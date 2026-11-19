@@ -13,6 +13,30 @@ public sealed record AdminDashboardOverviewDto
     public List<AdminDailyRevenueDto> RevenueTrend { get; set; } = new();
 
     public List<AdminRecentTransactionDto> RecentTransactions { get; set; } = new();
+
+    public AdminAuctionMetricsDto AuctionMetrics { get; set; } = new();
+
+    public AdminTradeMetricsDto TradeMetrics { get; set; } = new();
+}
+
+public sealed record AdminAuctionMetricsDto
+{
+    public int TotalAuctions { get; set; }
+    public int ScheduledCount { get; set; }
+    public int ActiveCount { get; set; }
+    public int CompletedSettledCount { get; set; }
+    public int DisputedCount { get; set; }
+    public int CancelledExpiredCount { get; set; }
+}
+
+public sealed record AdminTradeMetricsDto
+{
+    public int TotalTrades { get; set; }
+    public int ProposedCount { get; set; }
+    public int InProgressCount { get; set; }
+    public int CompletedCount { get; set; }
+    public int DisputedCount { get; set; }
+    public int CancelledRejectedCount { get; set; }
 }
 
 public sealed record AdminFinancialKpiDto

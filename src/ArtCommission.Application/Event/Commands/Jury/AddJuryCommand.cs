@@ -94,17 +94,32 @@ public class AddJuryCommandHandler
             }
         }
 
-        var jury = new Jury
-        {
-            Id = Guid.NewGuid(),
-            EventId = request.EventId,
-            CreatorId = creator.Id,
-            IsHeadJury = request.IsHeadJury,
-            CreatedAt = now,
-            IsDeleted = false
-        };
+        var existingDeletedJury = await _db.Juries
+            .FirstOrDefaultAsync(j => j.EventId == request.EventId && j.CreatorId == creator.Id && j.IsDeleted, cancellationToken);
 
-        _db.Juries.Add(jury);
+        Jury jury;
+        if (existingDeletedJury != null)
+        {
+            existingDeletedJury.IsDeleted = false;
+            existingDeletedJury.IsHeadJury = request.IsHeadJury;
+            existingDeletedJury.CreatedAt = now;
+            existingDeletedJury.UpdatedAt = now;
+            jury = existingDeletedJury;
+        }
+        else
+        {
+            jury = new Jury
+            {
+                Id = Guid.NewGuid(),
+                EventId = request.EventId,
+                CreatorId = creator.Id,
+                IsHeadJury = request.IsHeadJury,
+                CreatedAt = now,
+                IsDeleted = false
+            };
+
+            _db.Juries.Add(jury);
+        }
         await _db.SaveChangesAsync(cancellationToken);
 
         var data = new JuryDto
@@ -117,6 +132,7 @@ public class AddJuryCommandHandler
             UserId = creator.UserId,
             CreatorName = creator.User?.FullName,
             CreatorDisplayName = creator.DisplayName,
+            CreatorEmail = creator.User?.Email,
             CreatorAvatarUrl = null,
             CreatorBio = creator.Bio,
             IsHeadJury = jury.IsHeadJury,

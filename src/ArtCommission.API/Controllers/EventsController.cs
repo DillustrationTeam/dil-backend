@@ -34,6 +34,8 @@ public class EventsController : ApiControllerBase
         [FromQuery] string? sortBy = "latest",
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
+        [FromQuery] bool excludeEnded = false,
+        [FromQuery] bool includeDrafts = false,
         CancellationToken cancellationToken = default)
     {
         var query = new GetEventsQuery(
@@ -45,7 +47,10 @@ public class EventsController : ApiControllerBase
             IsFeatured: isFeatured,
             SortBy: sortBy,
             Page: page,
-            PageSize: pageSize
+            PageSize: pageSize,
+            CurrentUserId: CurrentUserId == Guid.Empty ? null : CurrentUserId,
+            ExcludeEnded: excludeEnded,
+            IncludeDrafts: includeDrafts
         );
 
         var (items, totalCount) = await Mediator.Send(query, cancellationToken);
@@ -65,9 +70,14 @@ public class EventsController : ApiControllerBase
     [HttpGet("stats")]
     [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetEventStats(CancellationToken cancellationToken = default)
+    public async Task<IActionResult> GetEventStats(
+        [FromQuery] bool includeDrafts = false,
+        CancellationToken cancellationToken = default)
     {
-        var query = new GetEventStatsQuery();
+        var query = new GetEventStatsQuery(
+            CurrentUserId: CurrentUserId == Guid.Empty ? null : CurrentUserId,
+            IncludeDrafts: includeDrafts
+        );
         var result = await Mediator.Send(query, cancellationToken);
         return OkEnvelope(result);
     }
@@ -83,7 +93,10 @@ public class EventsController : ApiControllerBase
         Guid id,
         CancellationToken cancellationToken = default)
     {
-        var query = new GetEventByIdQuery(id);
+        var query = new GetEventByIdQuery(
+            EventId: id,
+            CurrentUserId: CurrentUserId == Guid.Empty ? null : CurrentUserId
+        );
         var result = await Mediator.Send(query, cancellationToken);
 
         if (result == null)
@@ -194,6 +207,7 @@ public class EventsController : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdateEvent(
         Guid id,
         [FromBody] EventRequestDto dto,
@@ -228,6 +242,11 @@ public class EventsController : ApiControllerBase
         var (success, data, errors) = await Mediator.Send(command, cancellationToken);
         if (!success)
         {
+            if (errors.Any(e => e.Contains("not found", StringComparison.OrdinalIgnoreCase)))
+            {
+                return NotFoundEnvelope(errors);
+            }
+
             return BadRequestEnvelope(errors);
         }
 
@@ -243,6 +262,7 @@ public class EventsController : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeleteEvent(
         Guid id,
         CancellationToken cancellationToken = default)
@@ -260,6 +280,11 @@ public class EventsController : ApiControllerBase
         var (success, errors) = await Mediator.Send(command, cancellationToken);
         if (!success)
         {
+            if (errors.Any(e => e.Contains("not found", StringComparison.OrdinalIgnoreCase)))
+            {
+                return NotFoundEnvelope(errors);
+            }
+
             return BadRequestEnvelope(errors);
         }
 
@@ -736,6 +761,35 @@ public class EventsController : ApiControllerBase
             return NotFoundEnvelope("Không tìm thấy dữ liệu Head Jury Workspace cho sự kiện này.");
         }
         return OkEnvelope(result);
+    }
+
+    /// <summary>
+    /// [Demo/Testing] Kết thúc giai đoạn hiện tại hoặc chuyển sang giai đoạn kế tiếp cho sự kiện.
+    /// Hỗ trợ kiểm thử từng giai đoạn (Submission -> Judging -> Voting -> Ended).
+    /// </summary>
+    [HttpPost("{id:guid}/advance-period")]
+    [HttpPost("{id:guid}/end-period")]
+    [Authorize(Roles = AdminOrModRoles)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> AdvancePeriod(
+        Guid id,
+        [FromBody] AdvancePeriodRequestDto? dto = null,
+        CancellationToken cancellationToken = default)
+    {
+        var command = new AdvanceEventPeriodCommand(id, dto?.TargetPeriod);
+        var (success, data, errors, message) = await Mediator.Send(command, cancellationToken);
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return OkEnvelope(new
+        {
+            message,
+            data
+        });
     }
 }
 

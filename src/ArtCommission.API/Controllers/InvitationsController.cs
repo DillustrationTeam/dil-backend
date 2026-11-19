@@ -59,6 +59,46 @@ public class InvitationsController : ApiControllerBase
     }
 
     /// <summary>
+    /// Lấy danh sách ứng viên người dùng để Admin/Moderator chọn gửi lời mời giám khảo (không cần nhớ email).
+    /// </summary>
+    [HttpGet("candidates")]
+    [Authorize(Roles = AdminOrModRoles)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GetInvitationCandidates(
+        [FromQuery] Guid eventId,
+        [FromQuery] string? search = null,
+        [FromQuery] string roleFilter = "All",
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default)
+    {
+        if (eventId == Guid.Empty)
+        {
+            return BadRequestEnvelope("Vui lòng chọn sự kiện hợp lệ.");
+        }
+
+        var query = new GetInvitationCandidatesQuery(
+            EventId: eventId,
+            Search: search,
+            RoleFilter: roleFilter,
+            Page: page,
+            PageSize: pageSize
+        );
+
+        var (items, totalCount) = await Mediator.Send(query, cancellationToken);
+
+        return OkEnvelope(items, new
+        {
+            page,
+            pageSize,
+            totalCount,
+            totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
+        });
+    }
+
+    /// <summary>
     /// Lấy danh sách lời mời của chính người dùng hiện tại (Creator).
     /// </summary>
     [HttpGet("me")]

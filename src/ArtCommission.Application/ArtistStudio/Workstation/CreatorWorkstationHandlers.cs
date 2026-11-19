@@ -55,8 +55,9 @@ public class CreatorWorkstationMutationHandler : IRequestHandler<CreatorWorkstat
         {
             case "terms":
                 if (c.Payload is not UpdateCreatorTermsRequest terms || terms.CommercialLicenseMultiplier is < 1m or > 10m) return (false, null, new[] { "Commercial license multiplier must be between 1 and 10." });
-                var entity = await _db.CreatorTerms.FirstOrDefaultAsync(x => x.CreatorProfileId == profile.Id && !x.IsDeleted, ct) ?? new CreatorTerms { CreatorProfileId = profile.Id };
-                var isNewTerms = entity.Id == Guid.Empty;
+                var existingTerms = await _db.CreatorTerms.FirstOrDefaultAsync(x => x.CreatorProfileId == profile.Id && !x.IsDeleted, ct);
+                var isNewTerms = existingTerms is null;
+                var entity = existingTerms ?? new CreatorTerms { CreatorProfileId = profile.Id };
                 var prevExt = CreatorTermsHelper.ParseExtended(entity.ExtendedTermsJson);
                 var ext = terms.Extended ?? new CreatorExtendedTermsDto();
                 static string? TrimMax(string? s, int max) => string.IsNullOrWhiteSpace(s) ? null : s.Trim() is var t && t.Length <= max ? t : t[..max];
@@ -71,11 +72,43 @@ public class CreatorWorkstationMutationHandler : IRequestHandler<CreatorWorkstat
                 return (true, CreatorTermsHelper.ToDto(entity), Array.Empty<string>());
             case "auto-reply":
                 if (c.Payload is not UpdateAutoReplySettingRequest reply || reply.BriefTemplate.Length > 2000) return (false, null, new[] { "Auto-reply template is invalid." });
-                var setting = await _db.CreatorAutoReplySettings.FirstOrDefaultAsync(x => x.CreatorProfileId == profile.Id && !x.IsDeleted, ct) ?? new CreatorAutoReplySetting { CreatorProfileId = profile.Id };
-                setting.IsEnabled = reply.IsEnabled; setting.BriefTemplate = reply.BriefTemplate.Trim(); if (setting.Id == Guid.Empty) _db.CreatorAutoReplySettings.Add(setting); await _db.SaveChangesAsync(ct); return (true, new AutoReplySettingDto(setting.IsEnabled, setting.BriefTemplate), Array.Empty<string>());
+                var existingSetting = await _db.CreatorAutoReplySettings.FirstOrDefaultAsync(x => x.CreatorProfileId == profile.Id && !x.IsDeleted, ct);
+                var isNewSetting = existingSetting is null;
+                var setting = existingSetting ?? new CreatorAutoReplySetting { CreatorProfileId = profile.Id };
+                setting.IsEnabled = reply.IsEnabled;
+                setting.BriefTemplate = reply.BriefTemplate.Trim();
+                setting.UpdatedAt = DateTimeOffset.UtcNow;
+                if (isNewSetting) _db.CreatorAutoReplySettings.Add(setting);
+                await _db.SaveChangesAsync(ct);
+                return (true, new AutoReplySettingDto(setting.IsEnabled, setting.BriefTemplate), Array.Empty<string>());
             case "faq":
+            case "update-faq":
                 if (c.Payload is not UpsertCreatorFaqRequest faq || string.IsNullOrWhiteSpace(faq.Question) || string.IsNullOrWhiteSpace(faq.Answer)) return (false, null, new[] { "FAQ question and answer are required." });
-                var newFaq = new CreatorFaq { CreatorProfileId = profile.Id, Question = faq.Question.Trim(), Answer = faq.Answer.Trim(), DisplayOrder = faq.DisplayOrder }; _db.CreatorFaqs.Add(newFaq); await _db.SaveChangesAsync(ct); return (true, new CreatorFaqDto(newFaq.Id, newFaq.Question, newFaq.Answer, newFaq.DisplayOrder), Array.Empty<string>());
+                CreatorFaq faqEntity;
+                if (c.Action == "update-faq")
+                {
+                    var ownedFaq = await _db.CreatorFaqs.FirstOrDefaultAsync(x => x.Id == c.TargetId && x.CreatorProfileId == profile.Id && !x.IsDeleted, ct);
+                    if (ownedFaq is null) return (false, null, new[] { "FAQ not found." });
+                    faqEntity = ownedFaq;
+                    faqEntity.UpdatedAt = DateTimeOffset.UtcNow;
+                }
+                else
+                {
+                    faqEntity = new CreatorFaq { CreatorProfileId = profile.Id };
+                    _db.CreatorFaqs.Add(faqEntity);
+                }
+                faqEntity.Question = faq.Question.Trim();
+                faqEntity.Answer = faq.Answer.Trim();
+                faqEntity.DisplayOrder = faq.DisplayOrder;
+                await _db.SaveChangesAsync(ct);
+                return (true, new CreatorFaqDto(faqEntity.Id, faqEntity.Question, faqEntity.Answer, faqEntity.DisplayOrder), Array.Empty<string>());
+            case "delete-faq":
+                var faqToDelete = await _db.CreatorFaqs.FirstOrDefaultAsync(x => x.Id == c.TargetId && x.CreatorProfileId == profile.Id && !x.IsDeleted, ct);
+                if (faqToDelete is null) return (false, null, new[] { "FAQ not found." });
+                faqToDelete.IsDeleted = true;
+                faqToDelete.UpdatedAt = DateTimeOffset.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                return (true, null, Array.Empty<string>());
             case "work-item":
                 if (c.Payload is not CreateWorkItemRequest item || string.IsNullOrWhiteSpace(item.ClientName) || string.IsNullOrWhiteSpace(item.Title) || !Stages.Contains(item.Stage)) return (false, null, new[] { "Work item details or stage are invalid." });
                 var work = new CreatorWorkItem { CreatorProfileId = profile.Id, ClientName = item.ClientName.Trim(), Title = item.Title.Trim(), Stage = item.Stage, DueAt = item.DueAt }; _db.CreatorWorkItems.Add(work); await _db.SaveChangesAsync(ct); return (true, new CreatorWorkItemDto(work.Id, work.ClientName, work.Title, work.Stage, work.DueAt, work.CreatedAt), Array.Empty<string>());

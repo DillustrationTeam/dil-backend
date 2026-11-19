@@ -10,7 +10,7 @@ namespace ArtCommission.Application.Admin.Queries;
 /// <summary>
 /// Query lấy báo cáo tổng quan hệ thống, KPIs tài chính, vận hành và dữ liệu biểu đồ (SCR-24 / UC32).
 /// </summary>
-public record GetAdminDashboardOverviewQuery(int Days = 120) : IRequest<AdminDashboardOverviewDto>;
+public record GetAdminDashboardOverviewQuery(int Days = 365) : IRequest<AdminDashboardOverviewDto>;
 
 public class GetAdminDashboardOverviewQueryHandler : IRequestHandler<GetAdminDashboardOverviewQuery, AdminDashboardOverviewDto>
 {
@@ -23,7 +23,7 @@ public class GetAdminDashboardOverviewQueryHandler : IRequestHandler<GetAdminDas
 
     public async Task<AdminDashboardOverviewDto> Handle(GetAdminDashboardOverviewQuery request, CancellationToken cancellationToken)
     {
-        var days = request.Days is > 0 and <= 120 ? request.Days : 120;
+        var days = request.Days is > 0 and <= 365 ? request.Days : 365;
         var now = DateTimeOffset.UtcNow;
         var todayStart = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
         var sevenDaysAgo = now.AddDays(-7);
@@ -240,6 +240,48 @@ public class GetAdminDashboardOverviewQueryHandler : IRequestHandler<GetAdminDas
             }).ToList();
         }
 
+        // 7. CHỈ SỐ ĐẤU GIÁ (Auction Metrics)
+        var auctionStatusCounts = await _db.Auctions
+            .Where(a => !a.IsDeleted)
+            .GroupBy(a => a.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+
+        var auctionMetrics = new AdminAuctionMetricsDto
+        {
+            TotalAuctions = auctionStatusCounts.Sum(x => x.Count),
+            ScheduledCount = auctionStatusCounts.FirstOrDefault(x => x.Status == AuctionStatus.Scheduled)?.Count ?? 0,
+            ActiveCount = auctionStatusCounts.FirstOrDefault(x => x.Status == AuctionStatus.Active)?.Count ?? 0,
+            CompletedSettledCount = auctionStatusCounts
+                .Where(x => x.Status == AuctionStatus.Ended || x.Status == AuctionStatus.Settled || x.Status == AuctionStatus.Completed || x.Status == AuctionStatus.AwaitingPhysical || x.Status == AuctionStatus.InTransit)
+                .Sum(x => x.Count),
+            DisputedCount = auctionStatusCounts.FirstOrDefault(x => x.Status == AuctionStatus.Disputed)?.Count ?? 0,
+            CancelledExpiredCount = auctionStatusCounts
+                .Where(x => x.Status == AuctionStatus.Cancelled || x.Status == AuctionStatus.Expired)
+                .Sum(x => x.Count)
+        };
+
+        // 8. CHỈ SỐ TRAO ĐỔI TRANH (Trade Metrics)
+        var tradeStatusCounts = await _db.ArtTrades
+            .Where(t => !t.IsDeleted)
+            .GroupBy(t => t.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+
+        var tradeMetrics = new AdminTradeMetricsDto
+        {
+            TotalTrades = tradeStatusCounts.Sum(x => x.Count),
+            ProposedCount = tradeStatusCounts.FirstOrDefault(x => x.Status == TradeStatus.Proposed)?.Count ?? 0,
+            InProgressCount = tradeStatusCounts
+                .Where(x => x.Status == TradeStatus.Accepted || x.Status == TradeStatus.BothSubmitted)
+                .Sum(x => x.Count),
+            CompletedCount = tradeStatusCounts.FirstOrDefault(x => x.Status == TradeStatus.Completed)?.Count ?? 0,
+            DisputedCount = tradeStatusCounts.FirstOrDefault(x => x.Status == TradeStatus.Disputed)?.Count ?? 0,
+            CancelledRejectedCount = tradeStatusCounts
+                .Where(x => x.Status == TradeStatus.Rejected || x.Status == TradeStatus.Cancelled)
+                .Sum(x => x.Count)
+        };
+
         return new AdminDashboardOverviewDto
         {
             FinancialKpis = financialKpis,
@@ -247,7 +289,9 @@ public class GetAdminDashboardOverviewQueryHandler : IRequestHandler<GetAdminDas
             CommissionMetrics = commissionMetrics,
             ActionRequiredQueue = actionRequiredQueue,
             RevenueTrend = trendList,
-            RecentTransactions = recentTxList
+            RecentTransactions = recentTxList,
+            AuctionMetrics = auctionMetrics,
+            TradeMetrics = tradeMetrics
         };
     }
 }

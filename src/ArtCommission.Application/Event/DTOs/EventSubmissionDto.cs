@@ -39,4 +39,10 @@ public sealed record EventSubmissionDto
     public bool IsDisqualified { get; set; }
 
     public DateTimeOffset SubmittedAt { get; set; }
+
+    public bool? CurrentJuryHasGraded { get; set; }
+
+    public decimal? CurrentJuryScore { get; set; }
+
+    public Dictionary<Guid, decimal>? CurrentJuryCriteriaScores { get; set; }
 }

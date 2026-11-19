@@ -86,6 +86,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<Bid> Bids => Set<Bid>();
     public DbSet<AuctionAutoBid> AuctionAutoBids => Set<AuctionAutoBid>();
     public DbSet<AuctionWatch> AuctionWatches => Set<AuctionWatch>();
+    public DbSet<AuctionPenalty> AuctionPenalties => Set<AuctionPenalty>();
     public DbSet<ArtworkOwnership> ArtworkOwnerships => Set<ArtworkOwnership>();
     public DbSet<EscrowTransaction> EscrowTransactions => Set<EscrowTransaction>();
     public DbSet<Deliverable> Deliverables => Set<Deliverable>();

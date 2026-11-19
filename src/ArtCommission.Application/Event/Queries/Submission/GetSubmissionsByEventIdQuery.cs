@@ -37,7 +37,11 @@ public class GetSubmissionsByEventIdQueryHandler
             .AsNoTracking()
             .FirstOrDefaultAsync(e => e.Id == request.EventId && !e.IsDeleted, cancellationToken);
 
-        if (platformEvent == null)
+        if (platformEvent == null
+            || (platformEvent.Status == Domain.Enums.EventStatus.Draft
+                && (!request.CurrentUserId.HasValue
+                    || request.CurrentUserId.Value == Guid.Empty
+                    || platformEvent.CreatedByAdminId != request.CurrentUserId.Value)))
         {
             return (Array.Empty<EventSubmissionDto>(), 0);
         }
@@ -46,17 +50,21 @@ public class GetSubmissionsByEventIdQueryHandler
         var isAnnounced = platformEvent.Status == Domain.Enums.EventStatus.Ended || 
                           (platformEvent.ResultAnnouncementAt != default && now >= platformEvent.ResultAnnouncementAt);
 
-        var canViewSecretScores = request.IsAdmin;
-        if (!canViewSecretScores && request.CurrentUserId.HasValue && request.CurrentUserId.Value != Guid.Empty)
+        Guid? currentJuryId = null;
+        if (request.CurrentUserId.HasValue && request.CurrentUserId.Value != Guid.Empty)
         {
-            canViewSecretScores = await _db.Juries
+            currentJuryId = await _db.Juries
+                .AsNoTracking()
                 .Include(j => j.Creator)
-                .AnyAsync(j =>
+                .Where(j =>
                     j.EventId == request.EventId &&
                     !j.IsDeleted &&
-                    (j.CreatorId == request.CurrentUserId.Value || (j.Creator != null && j.Creator.UserId == request.CurrentUserId.Value)),
-                    cancellationToken);
+                    (j.CreatorId == request.CurrentUserId.Value || (j.Creator != null && j.Creator.UserId == request.CurrentUserId.Value)))
+                .Select(j => (Guid?)j.Id)
+                .FirstOrDefaultAsync(cancellationToken);
         }
+
+        var canViewSecretScores = request.IsAdmin || currentJuryId.HasValue;
 
         var canViewScores = isAnnounced || canViewSecretScores;
 
@@ -154,6 +162,43 @@ public class GetSubmissionsByEventIdQueryHandler
                 SubmittedAt = s.SubmittedAt
             })
             .ToListAsync(cancellationToken);
+
+        if (currentJuryId.HasValue && items.Count > 0)
+        {
+            var returnedSubmissionIds = items.Select(i => i.Id).ToList();
+            var myCriteriaScores = await _db.CriteriaScores
+                .AsNoTracking()
+                .Where(cs => cs.GradedByJuryId == currentJuryId.Value && returnedSubmissionIds.Contains(cs.SubmissionId))
+                .ToListAsync(cancellationToken);
+
+            var myScoresBySubmission = myCriteriaScores
+                .GroupBy(cs => cs.SubmissionId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.ToDictionary(x => x.EventCriteriaId, x => x.Score));
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                if (myScoresBySubmission.TryGetValue(items[i].Id, out var critMap) && critMap.Count > 0)
+                {
+                    items[i] = items[i] with
+                    {
+                        CurrentJuryHasGraded = true,
+                        CurrentJuryScore = critMap.Values.Sum(),
+                        CurrentJuryCriteriaScores = critMap
+                    };
+                }
+                else
+                {
+                    items[i] = items[i] with
+                    {
+                        CurrentJuryHasGraded = false,
+                        CurrentJuryScore = null,
+                        CurrentJuryCriteriaScores = null
+                    };
+                }
+            }
+        }
 
         return (items, totalCount);
     }

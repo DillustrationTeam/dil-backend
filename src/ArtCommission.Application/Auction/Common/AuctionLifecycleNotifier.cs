@@ -49,6 +49,7 @@ public sealed class AuctionLifecycleNotifier : IAuctionLifecycleNotifier
             {
                 AuctionLifecycleEvent.Started => ("Phiên đấu giá bắt đầu", "Phiên đấu giá bạn theo dõi đã bắt đầu."),
                 AuctionLifecycleEvent.Ended => ("Phiên đấu giá đã kết thúc", "Phiên đấu giá bạn theo dõi đã kết thúc."),
+                AuctionLifecycleEvent.Cancelled => ("Phiên đấu giá đã bị huỷ", "Phiên đấu giá bạn theo dõi đã bị huỷ trước khi có lượt đặt giá."),
                 _ => ("Phiên đấu giá được gia hạn", "Có lượt đặt giá hợp lệ trong 3 phút cuối; thời gian kết thúc được cộng thêm 3 phút.")
             };
             var phase = lifecycleEvent.ToString();

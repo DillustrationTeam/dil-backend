@@ -25,6 +25,10 @@ public static class PlatformConfigKeys
     public const string AuctionHoldPercent = "AuctionHoldPercent";
 
     public const string AuctionPaymentWindowHours = "AuctionPaymentWindowHours";
+    // Auction delivery-dispute penalty ladder (confirmed dispute -> seller penalty)
+    public const string AuctionPenaltySurchargePercent = "AuctionPenaltySurchargePercent";
+    public const string AuctionPenaltyWindowSessions = "AuctionPenaltyWindowSessions";
+    public const string AuctionPenaltySuspensionDays = "AuctionPenaltySuspensionDays";
 
     public const string PayoutEnabled = "PayoutEnabled";
     public const string MilestoneAutoApprovalDays = "MilestoneAutoApprovalDays";

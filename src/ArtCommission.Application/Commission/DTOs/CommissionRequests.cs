@@ -13,6 +13,7 @@ public class CreateCommissionRequest
     public string? Description { get; set; }
     public DateTimeOffset? DeadlineAt { get; set; }
     public string? VoucherCode { get; set; }
+    public List<string>? ReferenceImages { get; set; } = [];
 }
 
 public class RespondCommissionRequest

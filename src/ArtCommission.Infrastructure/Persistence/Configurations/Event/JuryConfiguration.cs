@@ -29,12 +29,13 @@ public class JuryConfiguration : IEntityTypeConfiguration<Jury>
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(j => new { j.EventId, j.CreatorId })
-            .IsUnique();
+            .IsUnique()
+            .HasFilter("[IsDeleted] = 0");
 
         builder.HasIndex(j => j.CreatorId);
 
         builder.HasIndex(j => j.EventId)
             .IsUnique()
-            .HasFilter("[IsHeadJury] = 1");
+            .HasFilter("[IsHeadJury] = 1 AND [IsDeleted] = 0");
     }
 }

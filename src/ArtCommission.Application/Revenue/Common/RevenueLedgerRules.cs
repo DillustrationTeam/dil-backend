@@ -27,18 +27,14 @@ using ArtCommission.Domain.Enums;
 /// ---------------------------------------------------------------------------
 /// PHỤ THUỘC ĐÃ BIẾT — ĐỌC TRƯỚC KHI KẾT LUẬN "DOANH THU SAI"
 /// ---------------------------------------------------------------------------
-/// Module doanh thu này lấy SỔ CÁI VÍ làm nguồn sự thật. Nhưng module Commission
-/// (`CommissionService.DepositEscrowAsync` / `ApproveMilestoneAsync`) hiện CHƯA gọi
-/// ví: nạp escrow chỉ đổi `Commission.EscrowHeldAmount`, duyệt mốc chỉ cộng
-/// `Commission.DisbursedAmount` — không có dòng `WalletTransaction` nào được ghi.
+/// ĐÃ ĐỒNG BỘ VỚI CODE HIỆN TẠI (cập nhật khi module Commission bắt đầu ghi ví):
+/// Module Commission nay ghi sổ cái đầy đủ: nạp ký quỹ = <c>EscrowHold</c>, duyệt milestone =
+/// <c>EscrowRelease</c> (phía client) + <c>EscrowReceive</c> (phía creator). Vì vậy doanh thu
+/// của đơn đặt vẽ hoàn tất bình thường ĐÃ xuất hiện trong báo cáo — ghi chú cũ nói ngược lại
+/// đã bị xoá để người sửa sau không thêm nguồn dữ liệu thứ hai và đếm trùng.
 ///
-/// Vì vậy cho tới khi module Commission ghi tiền vào ví, doanh thu của một đơn đặt vẽ
-/// hoàn tất bình thường sẽ KHÔNG xuất hiện ở đây (chỉ đơn có tranh chấp được phân xử
-/// mới có, qua `ResolveDisputeArbitrationCommand`).
-///
-/// Đây là hệ quả của module khác, KHÔNG phải lỗi tính toán trong file này.
-/// Sửa đúng chỗ là ở module Commission — không thêm nguồn dữ liệu thứ hai ở đây,
-/// vì làm vậy sẽ đếm trùng ngay khi module kia được sửa.
+/// <c>CommissionEarning</c> là loại CŨ, không còn code nào ghi mới, nhưng dữ liệu lịch sử
+/// vẫn nằm trong ví người bán. Vẫn tính là thu nhập để báo cáo khớp số dư thật của ví.
 /// </summary>
 public static class RevenueLedgerRules
 {
@@ -46,7 +42,8 @@ public static class RevenueLedgerRules
     public static readonly WalletTransactionType[] IncomeTypes =
     [
         WalletTransactionType.EscrowReceive,
-        WalletTransactionType.EscrowRelease
+        WalletTransactionType.EscrowRelease,
+        WalletTransactionType.CommissionEarning
     ];
 
     /// <summary>Các loại giao dịch cần đọc từ sổ cái để tính doanh thu.</summary>
@@ -54,7 +51,18 @@ public static class RevenueLedgerRules
     [
         WalletTransactionType.EscrowReceive,
         WalletTransactionType.EscrowRelease,
-        WalletTransactionType.PlatformFee
+        WalletTransactionType.CommissionEarning,
+        WalletTransactionType.PlatformFee,
+        // Phụ phí do vi phạm giao hàng: vẫn là tiền bị trừ khỏi doanh thu, phải cộng vào
+        // "phí" thì net mới khớp số tiền người bán thực nhận.
+        WalletTransactionType.PenaltySurcharge
+    ];
+
+    /// <summary>Các loại giao dịch là PHÍ (trừ khỏi doanh thu gộp).</summary>
+    public static readonly WalletTransactionType[] FeeTypes =
+    [
+        WalletTransactionType.PlatformFee,
+        WalletTransactionType.PenaltySurcharge
     ];
 
     /// <summary>Kiểm tra một dòng sổ cái có phải thu nhập của Creator không.</summary>
@@ -65,4 +73,9 @@ public static class RevenueLedgerRules
     /// <summary>Kiểm tra loại giao dịch có liên quan tới tính doanh thu không.</summary>
     public static bool IsRelevant(WalletTransactionType type) =>
         Array.IndexOf(RelevantTypes, type) >= 0;
+
+    /// <summary>Kiểm tra một dòng sổ cái có phải PHÍ (trừ vào doanh thu) không.</summary>
+    public static bool IsFee(WalletTransactionType type, WalletTransactionDirection direction) =>
+        direction == WalletTransactionDirection.Out
+        && Array.IndexOf(FeeTypes, type) >= 0;
 }

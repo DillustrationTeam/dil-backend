@@ -89,7 +89,13 @@ public class RevenueQueryService : IRevenueQueryService
             .Sum(t => t.Amount);
 
         var fee = data
-            .Where(t => t.Type == WalletTransactionType.PlatformFee)
+            .Where(t => RevenueLedgerRules.IsFee(t.Type, t.Direction))
+            .Sum(t => t.Amount);
+
+        // Trong tổng phí, bao nhiêu là phụ phí vi phạm giao hàng — để người bán hiểu vì sao
+        // phí bị trừ cao hơn mức nền tảng thông thường.
+        var penaltyFee = data
+            .Where(t => t.Type == WalletTransactionType.PenaltySurcharge)
             .Sum(t => t.Amount);
 
         var net = gross - fee;
@@ -107,7 +113,30 @@ public class RevenueQueryService : IRevenueQueryService
             ? Math.Round(gross / completedOrders, 2, MidpointRounding.AwayFromZero)
             : 0m;
 
-        return new RevenueSummaryDto(gross, fee, net, completedOrders, average);
+        // Tiền đang bị sàn giữ cho người bán (chưa phải doanh thu): phiên đã chốt nhưng đang
+        // chờ giao tranh vật lý, hoặc đang bị đóng băng do khiếu nại. Không lọc theo kỳ vì đây
+        // là trạng thái HIỆN TẠI, không phải phát sinh trong kỳ.
+        var heldEscrows = await _db.EscrowTransactions
+            .AsNoTracking()
+            .Where(e => !e.IsDeleted
+                        && (e.Status == EscrowStatus.Deposited || e.Status == EscrowStatus.Disputed))
+            .Join(
+                _db.Auctions.AsNoTracking().Where(a => a.SellerId == creatorId && !a.IsDeleted),
+                e => e.AuctionId,
+                a => a.Id,
+                (e, a) => new { e.Status, e.Amount, e.ReleasedAmount })
+            .ToListAsync(cancellationToken);
+
+        var escrowHeld = heldEscrows.Sum(e => e.Amount - e.ReleasedAmount);
+        var escrowDisputed = heldEscrows
+            .Where(e => e.Status == EscrowStatus.Disputed)
+            .Sum(e => e.Amount - e.ReleasedAmount);
+
+        return new RevenueSummaryDto(
+            gross, fee, net, completedOrders, average,
+            PenaltyFeeAmount: penaltyFee,
+            EscrowHeldAmount: escrowHeld,
+            EscrowDisputedAmount: escrowDisputed);
     }
 
     public async Task<IReadOnlyList<RevenueTimeseriesPointDto>> GetTimeseriesAsync(

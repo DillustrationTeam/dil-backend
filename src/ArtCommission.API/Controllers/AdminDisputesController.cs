@@ -177,6 +177,7 @@ public class AdminDisputesController : ApiControllerBase
         [FromQuery] Guid? eventId = null,
         [FromQuery] Guid? submissionId = null,
         [FromQuery] string? status = null,
+        [FromQuery] string? category = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
         CancellationToken cancellationToken = default)
@@ -186,7 +187,8 @@ public class AdminDisputesController : ApiControllerBase
             SubmissionId: submissionId,
             Status: status,
             PageNumber: page,
-            PageSize: pageSize
+            PageSize: pageSize,
+            Category: category
         );
 
         var (items, totalCount) = await Mediator.Send(query, cancellationToken);

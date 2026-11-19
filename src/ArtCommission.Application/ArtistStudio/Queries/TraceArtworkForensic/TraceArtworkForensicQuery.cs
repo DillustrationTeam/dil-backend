@@ -18,7 +18,11 @@ public record TraceArtworkForensicQuery(
     Guid? CommissionId = null,
     string? FileSha256 = null,
     bool AllowFuzzyDwtMatch = false,
-    long? VisualHash = null
+    long? VisualHash = null,
+    string? ArtworkPrefix = null,
+    string? CommissionPrefix = null,
+    Guid? RequestingUserId = null,
+    bool IsAdmin = false
 ) : IRequest<List<ArtworkForensicTraceDto>>;
 
 public record GetRecentForensicReceiptsQuery(
@@ -103,6 +107,31 @@ public class TraceArtworkForensicQueryHandler :
             .AsNoTracking()
             .AsQueryable();
 
+        // Bảo mật RBAC: Nếu không phải Admin/Moderator, chỉ được tra cứu biên lai của chính mình:
+        // - Là người xem/tải (ViewerUserId == userId)
+        // - Là tác giả của Artwork (Artwork.CreatorProfile.UserId == userId)
+        // - Là Khách hàng hoặc Họa sĩ của đơn Commission
+        if (!request.IsAdmin && request.RequestingUserId.HasValue && request.RequestingUserId.Value != Guid.Empty)
+        {
+            var userId = request.RequestingUserId.Value;
+            var myCreatorId = await _db.CreatorProfiles
+                .AsNoTracking()
+                .Where(p => p.UserId == userId && !p.IsDeleted)
+                .Select(p => (Guid?)p.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            var myCommissionIds = await _db.Commissions
+                .AsNoTracking()
+                .Where(c => c.ClientId == userId || (myCreatorId.HasValue && c.CreatorId == myCreatorId.Value))
+                .Select(c => c.Id)
+                .ToListAsync(cancellationToken);
+
+            query = query.Where(r =>
+                r.ViewerUserId == userId
+                || (myCreatorId.HasValue && r.Artwork != null && r.Artwork.CreatorProfileId == myCreatorId.Value)
+                || (r.CommissionId.HasValue && myCommissionIds.Contains(r.CommissionId.Value)));
+        }
+
         if (!string.IsNullOrWhiteSpace(request.ReceiptToken))
         {
             var tokenClean = request.ReceiptToken.Trim();
@@ -121,9 +150,19 @@ public class TraceArtworkForensicQueryHandler :
         {
             query = query.Where(r => r.ArtworkId == request.ArtworkId.Value);
         }
+        else if (!string.IsNullOrWhiteSpace(request.ArtworkPrefix))
+        {
+            var pfx = request.ArtworkPrefix.Trim().ToUpperInvariant();
+            query = query.Where(r => r.ArtworkId.HasValue && r.ArtworkId.Value.ToString().Replace("-", "").ToUpper().StartsWith(pfx));
+        }
         else if (request.CommissionId.HasValue)
         {
             query = query.Where(r => r.CommissionId == request.CommissionId.Value);
+        }
+        else if (!string.IsNullOrWhiteSpace(request.CommissionPrefix))
+        {
+            var pfx = request.CommissionPrefix.Trim().ToUpperInvariant();
+            query = query.Where(r => r.CommissionId.HasValue && r.CommissionId.Value.ToString().Replace("-", "").ToUpper().StartsWith(pfx));
         }
         else if (request.VisualHash.HasValue)
         {

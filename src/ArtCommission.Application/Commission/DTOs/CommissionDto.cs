@@ -39,6 +39,7 @@ public class CommissionDto
     public string? CreatorTermsVersion { get; set; }
     public string CurrentWorkroomTermsVersion { get; set; } = "1.0";
     public ArtCommission.Application.ArtistStudio.DTOs.CreatorTermsDto? CreatorTermsSnapshot { get; set; }
+    public List<string> ReferenceImages { get; set; } = [];
     public DateTimeOffset CreatedAt { get; set; }
 }
 

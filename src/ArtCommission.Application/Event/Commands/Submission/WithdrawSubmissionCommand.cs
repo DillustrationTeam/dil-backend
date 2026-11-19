@@ -71,9 +71,30 @@ public class WithdrawSubmissionCommandHandler
             return (false, [$"Thời hạn nộp bài đã kết thúc (Kết thúc lúc: {platformEvent.SubmissionEndAt:u}). Bạn không thể rút bài dự thi sau khi cuộc thi đã chuyển sang giai đoạn chấm thi hoặc bình chọn."]);
         }
 
+        // 4.1. Không cho rút bài khi đang có khiếu nại chờ xử lý; đồng thời giữ lại lịch sử các khiếu nại trước đó
+        var relatedDisputes = await _db.SubmissionDisputes
+            .Where(d => d.SubmissionId == submission.Id)
+            .ToListAsync(cancellationToken);
+
+        if (relatedDisputes.Any(d =>
+                !d.IsDeleted &&
+                (string.Equals(d.Status, "Pending", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(d.Status, "UnderReview", StringComparison.OrdinalIgnoreCase))))
+        {
+            return (false, ["Bài dự thi đang có khiếu nại chờ xử lý. Bạn không thể rút bài cho đến khi ban tổ chức giải quyết xong."]);
+        }
+
         // 5. Dọn dẹp tranh nếu tranh này được upload riêng cho bài thi này (không dùng ở bài khác, không có tương tác nào)
         var artwork = submission.Artwork ?? await _db.Artworks
             .FirstOrDefaultAsync(a => a.Id == submission.ArtworkId, cancellationToken);
+
+        foreach (var dispute in relatedDisputes)
+        {
+            dispute.SubmissionTitleSnapshot ??= submission.Title;
+            dispute.ArtworkImageUrlSnapshot ??= artwork?.ImageUrl ?? artwork?.ThumbnailUrl;
+            dispute.SubmissionId = null;
+            dispute.UpdatedAt = now;
+        }
 
         if (artwork != null)
         {

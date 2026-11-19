@@ -52,6 +52,20 @@ using PayOsOptions = ArtCommission.Infrastructure.ExternalServices.PayOs.PayOsOp
 var builder = WebApplication.CreateBuilder(args);
 var isGeneratingOpenApi = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name == "GetDocument.Insider";
 
+// Fallback cổng mặc định 5075 khi chạy trực tiếp binary / `dotnet run --no-launch-profile`
+// (không đọc launchSettings.json), giúp API luôn khớp với NEXT_PUBLIC_API_URL (localhost:5075)
+// thay vì rơi về cổng mặc định 5000 của Kestrel. Giữ nguyên nếu người dùng/host đã chỉ định URL.
+var hasExplicitServerUrls =
+    !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ASPNETCORE_URLS"))
+    || !string.IsNullOrWhiteSpace(builder.Configuration[WebHostDefaults.ServerUrlsKey])
+    || args.Any(a => a.StartsWith("--urls", StringComparison.OrdinalIgnoreCase))
+    || builder.Configuration.GetSection("Kestrel:Endpoints").GetChildren().Any();
+
+if (!isGeneratingOpenApi && !hasExplicitServerUrls)
+{
+    builder.WebHost.UseUrls("http://localhost:5075");
+}
+
 // ---------------------------------------------------------------------------
 // Nạp khoá Gemini từ .env ở thư mục cha của repo Code.
 //
@@ -129,9 +143,24 @@ builder.Services.AddHostedService<PaymentReconciliationWorker>();
 builder.Services.Configure<InvitationExpirationSettings>(
     builder.Configuration.GetSection(InvitationExpirationSettings.SectionName));
 builder.Services.AddHostedService<InvitationExpirationWorker>();
+builder.Services.AddHostedService<EventLifecycleWorker>();
 
 // 3d-3. Job nền tự động hoàn tất đơn giao tranh vật lý sau 48h nếu người mua không xác nhận
 builder.Services.AddHostedService<DeliveryAutoConfirmWorker>();
+
+builder.Services.Configure<PhysicalChoiceExpirySettings>(
+    builder.Configuration.GetSection("PhysicalChoiceExpiry"));
+builder.Services.AddHostedService<PhysicalChoiceExpiryWorker>();
+
+// 3d-4. Job nền huỷ đơn giao tranh vật lý khi NGƯỜI BÁN không gửi hàng trong hạn
+builder.Services.Configure<ShipmentOverdueSettings>(
+    builder.Configuration.GetSection("PhysicalShipment"));
+builder.Services.AddHostedService<ShipmentOverdueWorker>();
+
+// 3d-5. Job nhắc người theo dõi khi phiên đấu giá sắp kết thúc (mặc định trước 15 phút)
+builder.Services.Configure<AuctionEndingSoonSettings>(
+    builder.Configuration.GetSection("AuctionEndingSoon"));
+builder.Services.AddHostedService<AuctionEndingSoonWorker>();
 
 // 3c. Cổng thanh toán payOS
 // Secret lấy từ User Secrets (dev) hoặc biến môi trường PayOS__ClientId / PayOS__ApiKey / PayOS__ChecksumKey.
@@ -183,11 +212,13 @@ builder.Services.AddScoped<IVoucherCheckService, VoucherCheckService>();
 // 3g. UC32–UC35 — Auction: cọc đấu giá + chốt phiên (dùng chung IWalletService)
 builder.Services.AddScoped<IAuctionMoneyService, AuctionMoneyService>();
 builder.Services.AddScoped<IAuctionSettlementService, AuctionSettlementService>();
+ builder.Services.AddScoped<IAuctionPenaltyService, AuctionPenaltyService>();
 builder.Services.AddScoped<IAuctionRealtimePublisher, AuctionRealtimePublisher>();
 builder.Services.AddScoped<IAuctionLifecycleNotifier, AuctionLifecycleNotifier>();
 
-// 3h. UC43 — Workroom Chat: phân giải phòng, kiểm quyền thành viên
+// 3h. UC43 — Workroom Chat: phân giải phòng, kiểm quyền thành viên & auto-reply
 builder.Services.AddScoped<IChatRoomService, ChatRoomService>();
+builder.Services.AddScoped<ICreatorAutoReplyService, CreatorAutoReplyService>();
 
 // 3i. Lưu file: chat attachment + link tải file gốc có hạn
 builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection(StorageOptions.SectionName));
@@ -597,6 +628,8 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseCors("AllowFrontend");
+
 // Local private files use expiring signed URLs, matching R2 presigned-download behavior.
 app.Use(async (context, next) =>
 {
@@ -653,8 +686,6 @@ if (!string.IsNullOrWhiteSpace(storageOptions.LocalRootPath))
         RequestPath = storageOptions.PublicBasePath
     });
 }
-
-app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
 app.UseAuthorization();

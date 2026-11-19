@@ -10,7 +10,15 @@ public sealed class AuctionRealtimePublisher : IAuctionRealtimePublisher
 
     public AuctionRealtimePublisher(IHubContext<AuctionHub> hub) => _hub = hub;
 
-    public Task PublishBidPlacedAsync(Guid auctionId, PlaceBidResultDto bid, decimal currentPrice, decimal minimumNextBid, DateTimeOffset endAt, CancellationToken cancellationToken) =>
+    public Task PublishBidPlacedAsync(
+        Guid auctionId,
+        PlaceBidResultDto bid,
+        decimal currentPrice,
+        decimal minimumNextBid,
+        DateTimeOffset endAt,
+        CancellationToken cancellationToken,
+        string? auctionStatus = null,
+        Guid? leadingBidderId = null) =>
         _hub.Clients.Group(AuctionHub.GroupName(auctionId)).SendAsync("BidPlaced", new
         {
             auctionId,
@@ -18,7 +26,11 @@ public sealed class AuctionRealtimePublisher : IAuctionRealtimePublisher
             currentPrice,
             minimumNextBid,
             endAt,
-            auctionStatus = "Active"
+            // Trạng thái thật của phiên (có thể đã chốt nếu lượt này chạm giá mua ngay),
+            // thay vì hard-code "Active" như trước.
+            auctionStatus = auctionStatus ?? "Active",
+            // Người đang dẫn đầu có thể khác người gửi lệnh khi auto-bid nâng giá thay họ.
+            leadingBidderId
         }, cancellationToken);
 
     public Task PublishAuctionExtendedAsync(Guid auctionId, Guid bidId, DateTimeOffset oldEndAt, DateTimeOffset newEndAt, CancellationToken cancellationToken) =>

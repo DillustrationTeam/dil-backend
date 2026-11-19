@@ -1,4 +1,4 @@
-﻿using ArtCommission.Application.Common.Interfaces;
+using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Commission.DTOs;
 using ArtCommission.Application.Commission.Interfaces;
@@ -126,7 +126,7 @@ public class CommissionService : ICommissionService
         var totalPrice = selectedPackage.Price;
         var milestones = stages.OrderBy(stage => stage.Sequence).Select(stage => new Milestone
         {
-            Sequence = stage.Sequence, Title = stage.Title, Price = stage.Price, MaxRevisions = stage.MaxRevisions > 0 ? stage.MaxRevisions : (selectedPackage.MaxRevisions > 0 ? selectedPackage.MaxRevisions : 3), Status = MilestoneStatus.Pending
+            Sequence = stage.Sequence, Title = stage.Title, Price = stage.Price, MaxRevisions = stage.MaxRevisions, Status = MilestoneStatus.Pending
         }).ToList();
         var creatorTerms = await _dbContext.CreatorTerms.AsNoTracking()
             .FirstOrDefaultAsync(x => x.CreatorProfileId == creator.Id && !x.IsDeleted, cancellationToken);
@@ -180,6 +180,7 @@ public class CommissionService : ICommissionService
             LicenseType = request.LicenseType,
             LicenseMultiplierApplied = multiplier,
             CreatorTermsSnapshotJson = ArtCommission.Application.ArtistStudio.DTOs.CreatorTermsHelper.SerializeSnapshot(creatorTerms),
+            ReferenceImagesJson = request.ReferenceImages is { Count: > 0 } ? System.Text.Json.JsonSerializer.Serialize(request.ReferenceImages) : null,
             TotalPrice = totalPrice,
             DiscountAmount = discountAmount,
             FinalPrice = finalPrice,
@@ -310,10 +311,16 @@ public class CommissionService : ICommissionService
         {
             await EnsurePackageSlotAvailableAsync(commission.CreatorId, null, commission.PackageId, asArgumentError: false, cancellationToken);
             commission.Status = CommissionStatus.InProgress;
+            await SyncCommissionReferencesToCreatorAssetsAsync(commission, cancellationToken);
         }
         else if (string.Equals(request.Action, "Reject", StringComparison.OrdinalIgnoreCase))
         {
             commission.Status = CommissionStatus.Cancelled;
+            if (!string.IsNullOrWhiteSpace(request.RejectReason))
+            {
+                var trimmedReason = request.RejectReason.Trim();
+                commission.CancellationReason = trimmedReason.Length > 500 ? trimmedReason[..500] : trimmedReason;
+            }
         }
         else if (string.Equals(request.Action, "Negotiate", StringComparison.OrdinalIgnoreCase))
         {
@@ -322,9 +329,23 @@ public class CommissionService : ICommissionService
             {
                 if (request.NegotiatePrice.Value <= 0) throw new ArgumentException("Negotiated price must be positive.");
                 var milestones = await _dbContext.Milestones.Where(m => m.CommissionId == id).OrderBy(m => m.Sequence).ToListAsync(cancellationToken);
-                if (milestones.Count == 0 || milestones[^1].Price + request.NegotiatePrice.Value - commission.TotalPrice <= 0)
+                if (milestones.Count == 0)
                     throw new ArgumentException("Negotiated price cannot produce an invalid milestone.");
-                milestones[^1].Price += request.NegotiatePrice.Value - commission.TotalPrice;
+                var oldMilestoneSum = milestones.Sum(m => m.Price);
+                var newMilestoneSum = oldMilestoneSum + (request.NegotiatePrice.Value - commission.TotalPrice);
+                if (oldMilestoneSum <= 0 || newMilestoneSum < milestones.Count)
+                    throw new ArgumentException("Negotiated price cannot produce an invalid milestone.");
+                var allocated = 0m;
+                for (var i = 0; i < milestones.Count - 1; i++)
+                {
+                    var scaled = Math.Floor(milestones[i].Price * newMilestoneSum / oldMilestoneSum);
+                    if (scaled < 1m) scaled = 1m;
+                    milestones[i].Price = scaled;
+                    allocated += scaled;
+                }
+                milestones[^1].Price = newMilestoneSum - allocated;
+                if (milestones[^1].Price <= 0)
+                    throw new ArgumentException("Negotiated price cannot produce an invalid milestone.");
                 commission.TotalPrice = request.NegotiatePrice.Value;
                 if (commission.VoucherId.HasValue)
                 {
@@ -362,6 +383,7 @@ public class CommissionService : ICommissionService
         if (accept)
         {
             await EnsurePackageSlotAvailableAsync(commission.CreatorId, null, commission.PackageId, asArgumentError: false, cancellationToken);
+            await SyncCommissionReferencesToCreatorAssetsAsync(commission, cancellationToken);
         }
         commission.Status = accept ? CommissionStatus.InProgress : CommissionStatus.Cancelled;
         commission.UpdatedAt = DateTimeOffset.UtcNow;
@@ -1296,6 +1318,26 @@ public class CommissionService : ICommissionService
         commission.Status = CommissionStatus.Cancelled;
         commission.CancellationRequestStatus ??= "Approved";
         commission.UpdatedAt = DateTimeOffset.UtcNow;
+
+        var creatorUserId = await CreatorUserIdAsync(commission.CreatorId, cancellationToken);
+        await PublishSafeAsync(
+            commission.ClientId,
+            NotificationType.CommissionStatusChanged,
+            "Đơn đặt vẽ đã bị hủy",
+            $"Đơn “{commission.Title}” đã được hủy và hoàn trả phần ký quỹ Escrow còn lại. Phòng làm việc sẽ chuyển sang chế độ khóa lưu trữ.",
+            commission.Id,
+            $"CommissionCancelled:{commission.Id}:Client",
+            cancellationToken);
+        await PublishSafeAsync(
+            creatorUserId,
+            NotificationType.CommissionStatusChanged,
+            "Đơn đặt vẽ đã bị hủy",
+            $"Đơn “{commission.Title}” đã được hủy và hoàn trả phần ký quỹ Escrow còn lại cho khách hàng. Phòng làm việc sẽ chuyển sang chế độ khóa lưu trữ.",
+            commission.Id,
+            $"CommissionCancelled:{commission.Id}:Creator",
+            cancellationToken);
+
+        commission.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
     public async Task<CommissionDisputeDto> CreateDisputeAsync(Guid id, CreateDisputeRequest request, Guid raisedById, CancellationToken cancellationToken = default)
@@ -1822,8 +1864,77 @@ public class CommissionService : ICommissionService
             CreatorTermsVersion = c.CreatorTermsVersion,
             CurrentWorkroomTermsVersion = CurrentWorkroomTermsVersion,
             CreatorTermsSnapshot = ArtCommission.Application.ArtistStudio.DTOs.CreatorTermsHelper.ParseSnapshot(c.CreatorTermsSnapshotJson),
+            ReferenceImages = ParseReferenceImages(c.ReferenceImagesJson),
             CreatedAt = c.CreatedAt
         };
+    }
+
+        private async Task SyncCommissionReferencesToCreatorAssetsAsync(Commission commission, CancellationToken cancellationToken)
+    {
+        var refUrls = ParseReferenceImages(commission.ReferenceImagesJson);
+        if (refUrls.Count == 0) return;
+
+        var existingUrls = await _dbContext.CreatorAssets
+            .AsNoTracking()
+            .Where(a => a.CreatorProfileId == commission.CreatorId && !a.IsDeleted && a.AssetUrl != null)
+            .Select(a => a.AssetUrl!)
+            .ToListAsync(cancellationToken);
+
+        var existingSet = new HashSet<string>(existingUrls, StringComparer.OrdinalIgnoreCase);
+        var orderCode = commission.Id.ToString("N")[..8].ToUpperInvariant();
+        var titleSnippet = commission.Title.Length > 60 ? commission.Title[..60] : commission.Title;
+
+        for (var i = 0; i < refUrls.Count; i++)
+        {
+            var url = refUrls[i]?.Trim();
+            if (string.IsNullOrWhiteSpace(url) || existingSet.Contains(url)) continue;
+
+            var isPdf = url.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
+                || url.Contains(".pdf?", StringComparison.OrdinalIgnoreCase);
+            var isImage = !isPdf && (
+                url.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+                || url.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
+                || url.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase)
+                || url.EndsWith(".webp", StringComparison.OrdinalIgnoreCase)
+                || url.EndsWith(".gif", StringComparison.OrdinalIgnoreCase)
+                || url.EndsWith(".avif", StringComparison.OrdinalIgnoreCase)
+                || url.Contains("res.cloudinary.com", StringComparison.OrdinalIgnoreCase)
+                || url.Contains("commissions/references", StringComparison.OrdinalIgnoreCase));
+
+            var assetType = "Ref";
+            var name = $"Ref #{i + 1} · {titleSnippet} (#CMD-{orderCode})";
+            if (name.Length > 120) name = name[..120];
+
+            var metadata = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                notes = $"Tài liệu tham khảo từ đơn #CMD-{orderCode}: {commission.Title}",
+                commissionId = commission.Id
+            });
+
+            _dbContext.CreatorAssets.Add(new CreatorAsset
+            {
+                CreatorProfileId = commission.CreatorId,
+                AssetType = assetType,
+                Name = name,
+                AssetUrl = url,
+                MetadataJson = metadata
+            });
+
+            existingSet.Add(url);
+        }
+    }
+
+    private static List<string> ParseReferenceImages(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<string>>(json) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
     }
 
     private static CommissionDetailDto MapToDetailDto(Commission c)
@@ -1866,6 +1977,7 @@ public class CommissionService : ICommissionService
             CreatorTermsVersion = dto.CreatorTermsVersion,
             CurrentWorkroomTermsVersion = dto.CurrentWorkroomTermsVersion,
             CreatorTermsSnapshot = dto.CreatorTermsSnapshot,
+            ReferenceImages = dto.ReferenceImages,
             CreatedAt = dto.CreatedAt,
             Milestones = c.Milestones.Select(MapToMilestoneDto).ToList(),
             Review = c.Reviews.FirstOrDefault() != null ? MapToReviewDto(c.Reviews.First()) : null,

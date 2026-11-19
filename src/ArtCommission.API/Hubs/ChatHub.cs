@@ -4,9 +4,14 @@ using ArtCommission.Application.Chat.Commands.SendMessage;
 using ArtCommission.Application.Chat.Common;
 using ArtCommission.Application.Chat.Queries.GetChatMessage;
 using ArtCommission.Application.Chat.Queries.GetChatRoom;
+using ArtCommission.Application.Common.Interfaces;
+using ArtCommission.Application.Notifications.Common;
+using ArtCommission.Domain.Enums;
 using MediatR;
+using INotificationPublisher = ArtCommission.Application.Notifications.Common.INotificationPublisher;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 
 namespace ArtCommission.API.Hubs;
 
@@ -27,15 +32,27 @@ public class ChatHub : Hub
 {
     private readonly ISender _mediator;
     private readonly IChatRoomService _chatRoomService;
+    private readonly ICreatorAutoReplyService _autoReplyService;
+    private readonly IHubContext<NotificationHub> _notificationHub;
+    private readonly INotificationPublisher _notificationPublisher;
+    private readonly IApplicationDbContext _db;
     private readonly ILogger<ChatHub> _logger;
 
     public ChatHub(
         ISender mediator,
         IChatRoomService chatRoomService,
+        ICreatorAutoReplyService autoReplyService,
+        IHubContext<NotificationHub> notificationHub,
+        INotificationPublisher notificationPublisher,
+        IApplicationDbContext db,
         ILogger<ChatHub> logger)
     {
         _mediator = mediator;
         _chatRoomService = chatRoomService;
+        _autoReplyService = autoReplyService;
+        _notificationHub = notificationHub;
+        _notificationPublisher = notificationPublisher;
+        _db = db;
         _logger = logger;
     }
 
@@ -111,6 +128,27 @@ public class ChatHub : Hub
         // Phát cho CẢ phòng, kể cả người gửi: nhờ vậy mọi client hiển thị tin theo
         // cùng một thứ tự do server quyết định, không phụ thuộc đồng hồ máy khách.
         await Clients.Group(RoomGroup(room)).SendAsync("ReceiveMessage", message, Context.ConnectionAborted);
+        await NotifyRoomRecipientsAsync(room, userId, message.SenderFullName, message.Body, message.SentAt, Context.ConnectionAborted);
+
+        try
+        {
+            var autoReply = await _autoReplyService.TryCreateAutoReplyAsync(
+                room,
+                userId,
+                body ?? string.Empty,
+                message.MessageType,
+                Context.ConnectionAborted);
+
+            if (autoReply is not null)
+            {
+                await Clients.Group(RoomGroup(room)).SendAsync("ReceiveMessage", autoReply, Context.ConnectionAborted);
+                await NotifyRoomRecipientsAsync(room, autoReply.SenderId, autoReply.SenderFullName, autoReply.Body, autoReply.SentAt, Context.ConnectionAborted);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Không thể tạo auto-reply cho phòng {RoomId}.", room);
+        }
     }
 
     /// <summary>
@@ -160,6 +198,7 @@ public class ChatHub : Hub
             "ReceiveMessage",
             message,
             Context.ConnectionAborted);
+        await NotifyRoomRecipientsAsync(room.Id, userId, message.SenderFullName, message.Body, message.SentAt, Context.ConnectionAborted);
     }
 
     /// <summary>Đánh dấu đã đọc; phát trạng thái cho cả phòng để hiện "đã xem".</summary>
@@ -262,5 +301,97 @@ public class ChatHub : Hub
             Context.ConnectionAborted);
 
         return success;
+    }
+
+    private async Task NotifyRoomRecipientsAsync(
+        Guid roomId,
+        Guid senderId,
+        string? senderName,
+        string? messageBody,
+        DateTimeOffset sentAt,
+        CancellationToken ct)
+    {
+        try
+        {
+            var recipientIds = await _db.ChatRoomMembers
+                .AsNoTracking()
+                .Where(m => m.RoomId == roomId && !m.HasLeft && !m.IsDeleted && m.UserId != senderId)
+                .Select(m => m.UserId)
+                .ToListAsync(ct);
+
+            var recipientSet = new HashSet<Guid>(recipientIds);
+
+            var commissionId = await _db.ChatRooms
+                .AsNoTracking()
+                .Where(r => r.Id == roomId && !r.IsDeleted)
+                .Select(r => r.CommissionId)
+                .FirstOrDefaultAsync(ct);
+
+            string? commissionTitle = null;
+            if (commissionId.HasValue)
+            {
+                var commission = await _db.Commissions
+                    .AsNoTracking()
+                    .Where(c => c.Id == commissionId.Value && !c.IsDeleted)
+                    .Select(c => new { c.Title, c.ClientId, c.CreatorId })
+                    .FirstOrDefaultAsync(ct);
+
+                if (commission is not null)
+                {
+                    commissionTitle = commission.Title;
+                    if (commission.ClientId != senderId)
+                    {
+                        recipientSet.Add(commission.ClientId);
+                    }
+
+                    var creatorUserId = await _db.CreatorProfiles
+                        .AsNoTracking()
+                        .Where(p => p.Id == commission.CreatorId && !p.IsDeleted)
+                        .Select(p => p.UserId)
+                        .FirstOrDefaultAsync(ct);
+
+                    var resolvedCreatorUserId = creatorUserId != Guid.Empty ? creatorUserId : commission.CreatorId;
+                    if (resolvedCreatorUserId != senderId)
+                    {
+                        recipientSet.Add(resolvedCreatorUserId);
+                    }
+                }
+            }
+
+            var displaySender = string.IsNullOrWhiteSpace(senderName) ? "Đối tác" : senderName.Trim();
+            var trimmedBody = (messageBody ?? string.Empty).Trim();
+            var preview = string.IsNullOrEmpty(trimmedBody)
+                ? "đã gửi một tệp đính kèm"
+                : trimmedBody.Length > 80
+                    ? $"{trimmedBody[..80]}..."
+                    : trimmedBody;
+            var notifBody = string.IsNullOrWhiteSpace(commissionTitle)
+                ? $"{displaySender}: {preview}"
+                : $"{displaySender} trong “{commissionTitle}”: {preview}";
+
+            foreach (var recipientId in recipientSet)
+            {
+                await _notificationHub.Clients
+                    .Group(NotificationHub.UserGroup(recipientId))
+                    .SendAsync("WorkroomMessageReceived", new { roomId, senderId, sentAt }, ct);
+
+                if (commissionId.HasValue)
+                {
+                    await _notificationPublisher.PublishAsync(
+                        userId: recipientId,
+                        notificationType: NotificationType.WorkroomMessage,
+                        title: "Tin nhắn mới trong phòng làm việc",
+                        body: notifBody,
+                        refType: "ChatRoom",
+                        refId: commissionId.Value,
+                        dedupKey: null,
+                        cancellationToken: ct);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Không thể đẩy thông báo WorkroomMessageReceived cho phòng {RoomId}.", roomId);
+        }
     }
 }

@@ -5,12 +5,13 @@ public class SubmissionDisputeDto
     public Guid Id { get; set; }
     public Guid EventId { get; set; }
     public string? EventTitle { get; set; }
-    public Guid SubmissionId { get; set; }
+    public Guid? SubmissionId { get; set; }
     public string? SubmissionTitle { get; set; }
     public string? ArtworkImageUrl { get; set; }
     public Guid RaisedById { get; set; }
     public string? RaisedByName { get; set; }
-    public string Priority { get; set; } = "Medium";     // Low, Medium, High
+    public string Category { get; set; } = "Other";
+    public string Priority { get; set; } = "Low";        // Derived server-side: Low, Medium, High
     public string Reason { get; set; } = string.Empty;
     public string? EvidenceUrls { get; set; }
     public List<string>? EvidenceUrlList { get; set; }
@@ -24,6 +25,7 @@ public class SubmissionDisputeDto
 public class CreateSubmissionDisputeRequest
 {
     public Guid SubmissionId { get; set; }
+    public string? Category { get; set; }
     public string Reason { get; set; } = string.Empty;
     public string? Description { get; set; }
     public List<string>? EvidenceUrls { get; set; }

@@ -1,3 +1,4 @@
+using ArtCommission.Application.Auction.Commands.CreateAuction;
 using ArtCommission.Application.Auction.Common;
 using ArtCommission.Application.Auction.DTOs;
 using ArtCommission.Application.Common.Interfaces;
@@ -105,6 +106,27 @@ public class UpdateAuctionCommandHandler
         if (newEndAt <= newStartAt)
         {
             return (false, null, ["Thời điểm kết thúc phải sau thời điểm bắt đầu."]);
+        }
+
+        // Áp CÙNG giới hạn thời lượng như lúc tạo phiên. Trước đây nhánh sửa chỉ kiểm
+        // "EndAt ở tương lai", nên người bán có thể kéo dài phiên vô hạn bằng nhiều lần PUT
+        // (mỗi lần cộng thêm vài chục ngày) — vượt xa trần 30 ngày của CreateAuction.
+        if (newEndAt - newStartAt < TimeSpan.FromHours(CreateAuctionCommandValidator.MinimumDurationHours))
+        {
+            return (false, null,
+                [$"Phiên đấu giá phải kéo dài ít nhất {CreateAuctionCommandValidator.MinimumDurationHours} giờ."]);
+        }
+
+        if (newEndAt - newStartAt > TimeSpan.FromDays(CreateAuctionCommandValidator.MaximumDurationDays))
+        {
+            return (false, null,
+                [$"Phiên đấu giá tối đa {CreateAuctionCommandValidator.MaximumDurationDays} ngày."]);
+        }
+
+        // Thời điểm bắt đầu không được lùi quá xa về quá khứ (bù lệch đồng hồ 1 giờ như lúc tạo).
+        if (newStartAt < now.AddHours(-1))
+        {
+            return (false, null, ["Thời điểm bắt đầu không được ở quá khứ quá 1 giờ."]);
         }
 
         if (newBuyNow.HasValue && newBuyNow.Value <= newStartPrice)

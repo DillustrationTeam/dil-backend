@@ -1,3 +1,4 @@
+﻿using ArtCommission.Application.Common.Interfaces;
 using Microsoft.AspNetCore.SignalR;
 using ArtCommission.API.Hubs;
 using ArtCommission.Application.Auction.DTOs;
@@ -29,11 +30,13 @@ public class CommissionsController : ControllerBase
     private static readonly string[] WipContentTypes = ["image/jpeg", "image/png", "image/webp"];
     private readonly ICommissionService _commissionService;
     private readonly IHubContext<ChatHub> _chatHub;
+    private readonly IFileStorageService _fileStorage;
 
-    public CommissionsController(ICommissionService commissionService, IHubContext<ChatHub> chatHub)
+    public CommissionsController(ICommissionService commissionService, IHubContext<ChatHub> chatHub, IFileStorageService fileStorage)
     {
         _commissionService = commissionService;
         _chatHub = chatHub;
+        _fileStorage = fileStorage;
     }
 
     private Guid GetCurrentUserId()
@@ -41,6 +44,37 @@ public class CommissionsController : ControllerBase
         var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (Guid.TryParse(userIdStr, out var id) && id != Guid.Empty) return id;
         throw new UnauthorizedAccessException("A valid user identity is required.");
+    }
+
+    /// <summary>
+    /// POST /api/v1/commissions/attachments
+    /// Upload ảnh / tài liệu tham khảo cho Yêu cầu Đặt vẽ (Reference Material)
+    /// </summary>
+    [HttpPost("attachments")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> UploadReferenceAttachment(IFormFile? file, CancellationToken ct)
+    {
+        var userId = GetCurrentUserId();
+        if (file is null || file.Length == 0 || file.Length > 10 * 1024 * 1024)
+            return BadRequest(ApiErrors.Create(400, "Bad Request", "File tham khảo tối đa 10MB.", HttpContext.TraceIdentifier));
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        var allowedExts = new[] { ".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf" };
+        if (!allowedExts.Contains(ext))
+            return BadRequest(ApiErrors.Create(400, "Bad Request", "Chỉ hỗ trợ tệp định dạng JPG, PNG, WebP, GIF hoặc PDF.", HttpContext.TraceIdentifier));
+
+        var uniqueName = $"{Guid.NewGuid():N}{ext}";
+        await using var stream = file.OpenReadStream();
+        var url = await _fileStorage.SaveAsync(stream, uniqueName, file.ContentType, $"commissions/references/{userId}", ct);
+
+        var absoluteUrl = Uri.TryCreate(url, UriKind.Absolute, out var absolute) && absolute.Scheme is "http" or "https"
+            ? url : $"{Request.Scheme}://{Request.Host}{url}";
+
+        return Ok(new ApiResponse<object>(new { url = absoluteUrl, fileName = file.FileName, fileSize = file.Length }));
     }
 
     /// <summary>
