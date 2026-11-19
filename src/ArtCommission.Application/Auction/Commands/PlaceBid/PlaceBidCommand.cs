@@ -217,15 +217,34 @@ public sealed class PlaceBidCommandHandler
             {
                 if (ownAutoBid is null)
                 {
-                    ownAutoBid = new AuctionAutoBid
+                    // Unique index UX_AuctionAutoBids_Auction_Bidder KHÔNG lọc IsDeleted, nên sau khi
+                    // người dùng huỷ auto-bid (soft-delete) mà đăng ký lại thì insert mới sẽ vỡ khoá
+                    // unique ⇒ 409 "phiên vừa được cập nhật". Hồi sinh bản ghi cũ thay vì insert.
+                    var cancelledAutoBid = await _db.AuctionAutoBids.FirstOrDefaultAsync(
+                        x => x.AuctionId == auction.Id && x.BidderId == request.UserId,
+                        cancellationToken);
+
+                    if (cancelledAutoBid is not null)
                     {
-                        AuctionId = auction.Id,
-                        BidderId = request.UserId,
-                        MaxAmount = requestedCap,
-                        RegisteredAt = now
-                    };
-                    autoBids.Add(ownAutoBid);
-                    _db.AuctionAutoBids.Add(ownAutoBid);
+                        cancelledAutoBid.IsDeleted = false;
+                        cancelledAutoBid.MaxAmount = requestedCap;
+                        cancelledAutoBid.RegisteredAt = now;
+                        cancelledAutoBid.UpdatedAt = now;
+                        ownAutoBid = cancelledAutoBid;
+                        autoBids.Add(cancelledAutoBid);
+                    }
+                    else
+                    {
+                        ownAutoBid = new AuctionAutoBid
+                        {
+                            AuctionId = auction.Id,
+                            BidderId = request.UserId,
+                            MaxAmount = requestedCap,
+                            RegisteredAt = now
+                        };
+                        autoBids.Add(ownAutoBid);
+                        _db.AuctionAutoBids.Add(ownAutoBid);
+                    }
                 }
                 else
                 {
