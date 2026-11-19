@@ -40,7 +40,7 @@ public class CreatePayoutRequestCommandHandler
     : IRequestHandler<CreatePayoutRequestCommand, (bool, PayoutRequestDto?, decimal, string[])>
 {
     /// <summary>Số tiền rút tối thiểu mặc định khi Admin chưa cấu hình PlatformConfig.</summary>
-    private const decimal DefaultMinPayoutAmount = 50_000m;
+    private const decimal DefaultMinPayoutAmount = 2_000m;
 
     private readonly IApplicationDbContext _db;
     private readonly IWalletService _walletService;

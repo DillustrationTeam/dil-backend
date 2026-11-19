@@ -525,8 +525,18 @@ public record DisputePhysicalDeliveryCommand(
     Guid UserId,
     Guid AuctionId,
     string DisputeReason,
-    string? DisputeEvidenceUrl = null
+    string? DisputeEvidenceUrl = null,
+    /// <summary>Ảnh bằng chứng (tối đa 5). Ảnh đầu tiên cũng ghi vào DisputeEvidenceUrl để tương thích.</summary>
+    IReadOnlyList<string>? DisputeImageUrls = null,
+    /// <summary>Video bằng chứng (tối đa 1).</summary>
+    string? DisputeVideoUrl = null
 ) : IRequest<(bool Success, AuctionDeliveryDto? Data, string[] Errors)>;
+
+/// <summary>Số ảnh bằng chứng tối đa cho một khiếu nại (video tối đa 1).</summary>
+public static class DisputeEvidenceLimits
+{
+    public const int MaxImages = 5;
+}
 
 public class DisputePhysicalDeliveryCommandHandler
     : IRequestHandler<DisputePhysicalDeliveryCommand, (bool, AuctionDeliveryDto?, string[])>
@@ -606,9 +616,36 @@ public class DisputePhysicalDeliveryCommandHandler
                            || escrow?.Status == EscrowStatus.Released;
 
         var now = DateTimeOffset.UtcNow;
+
+        // BẰNG CHỨNG NHIỀU FILE: tối đa 5 ảnh + 1 video.
+        // Ảnh đầu tiên vẫn ghi vào DisputeEvidenceUrl để màn hình/phiên bản cũ đọc được.
+        var images = (request.DisputeImageUrls ?? Array.Empty<string>())
+            .Where(u => !string.IsNullOrWhiteSpace(u))
+            .Select(u => u.Trim())
+            .Distinct()
+            .ToList();
+
+        if (images.Count == 0 && !string.IsNullOrWhiteSpace(request.DisputeEvidenceUrl))
+        {
+            images.Add(request.DisputeEvidenceUrl.Trim());
+        }
+
+        if (images.Count > DisputeEvidenceLimits.MaxImages)
+        {
+            return (false, null, [$"Chỉ được đính kèm tối đa {DisputeEvidenceLimits.MaxImages} ảnh bằng chứng."]);
+        }
+
+        var videoUrl = string.IsNullOrWhiteSpace(request.DisputeVideoUrl)
+            ? null
+            : request.DisputeVideoUrl.Trim();
+
         delivery.Status = DeliveryStatus.Disputed;
         delivery.DisputeReason = request.DisputeReason.Trim();
-        delivery.DisputeEvidenceUrl = request.DisputeEvidenceUrl?.Trim();
+        delivery.DisputeEvidenceUrl = images.Count > 0 ? images[0] : null;
+        delivery.DisputeImageUrls = images.Count > 0
+            ? System.Text.Json.JsonSerializer.Serialize(images)
+            : null;
+        delivery.DisputeVideoUrl = videoUrl;
         delivery.IsPostPayoutDispute = isPostPayout;
         delivery.DisputeResolution = null;
         delivery.DisputeResolvedAt = null;

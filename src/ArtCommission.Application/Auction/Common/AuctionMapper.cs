@@ -121,8 +121,49 @@ public static class AuctionMapper
                 DisputeResolution: delivery.DisputeResolution,
                 DisputeResolvedAt: delivery.DisputeResolvedAt,
                 DisputeResolvedNote: delivery.DisputeResolvedNote,
+                DisputeImageUrls: ParseDisputeImages(delivery),
+                DisputeVideoUrl: delivery.DisputeVideoUrl,
                 CanRateSeller: canRateSeller,
                 HasRatedSeller: hasRatedSeller);
+
+    /// <summary>
+    /// Đọc danh sách ảnh bằng chứng khiếu nại từ cột JSON. Luôn gộp ảnh cũ
+    /// (<c>DisputeEvidenceUrl</c>) vào đầu danh sách để dữ liệu trước khi có tính năng
+    /// nhiều ảnh vẫn hiển thị được.
+    /// </summary>
+    private static IReadOnlyList<string> ParseDisputeImages(AuctionDelivery delivery)
+    {
+        var images = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(delivery.DisputeEvidenceUrl))
+        {
+            images.Add(delivery.DisputeEvidenceUrl);
+        }
+
+        if (!string.IsNullOrWhiteSpace(delivery.DisputeImageUrls))
+        {
+            try
+            {
+                var parsed = System.Text.Json.JsonSerializer.Deserialize<List<string>>(delivery.DisputeImageUrls!);
+                if (parsed is not null)
+                {
+                    foreach (var url in parsed.Where(u => !string.IsNullOrWhiteSpace(u)))
+                    {
+                        if (!images.Contains(url))
+                        {
+                            images.Add(url);
+                        }
+                    }
+                }
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                // Cột bị ghi tay/hỏng: bỏ qua, vẫn còn ảnh cũ ở trên.
+            }
+        }
+
+        return images;
+    }
 
     public static IReadOnlyList<AuctionReceiptDto> BuildReceipts(
         Domain.Entities.Auction.Auction auction,
