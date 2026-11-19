@@ -37,6 +37,18 @@ public class DeactivateAccountCommandHandler : IRequestHandler<DeactivateAccount
             return (false, validation.Errors.Select(e => e.ErrorMessage).ToArray());
         }
 
+        // 0. Không cho tự xóa tài khoản khi đang bị Suspend/Ban hiệu lực (LockoutEnd > hiện tại).
+        // Về lý thuyết middleware xác thực JWT đã chặn request này từ trước (token bị LockoutEnd
+        // từ chối), kiểm tra lại ở đây để phòng hờ trường hợp access token chưa kịp hết hạn.
+        var lockoutEnd = await _db.Users
+            .Where(u => u.Id == request.UserId)
+            .Select(u => (DateTimeOffset?)u.LockoutEnd)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (lockoutEnd.HasValue && lockoutEnd.Value > DateTimeOffset.UtcNow)
+        {
+            return (false, new[] { "Tài khoản của bạn đang bị đình chỉ/khóa bởi quản trị viên. Không thể tự xóa tài khoản lúc này." });
+        }
+
         // 1. Không còn commission nào đang chạy (chưa Completed/Cancelled) liên quan tới user này (dù là Client hay Creator).
         var hasActiveCommission = await _db.Commissions.AnyAsync(
             c => (c.ClientId == request.UserId || c.CreatorId == request.UserId)
