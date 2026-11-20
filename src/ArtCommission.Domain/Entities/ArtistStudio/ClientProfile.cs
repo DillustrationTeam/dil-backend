@@ -13,5 +13,11 @@ public class ClientProfile : BaseEntity
     public string? Timezone { get; set; }
     public List<string> PreferredLanguages { get; set; } = new();
 
+    /// <summary>
+    /// Các tab nào trên trang hồ sơ công khai (client-profile-screen) được hiển thị cho người khác xem.
+    /// Giá trị hợp lệ: "reputation", "saved", "liked" — "requested" (đơn đã đặt) luôn riêng tư, không nằm trong danh sách này.
+    /// </summary>
+    public List<string> PublicVisibleTabs { get; set; } = new();
+
     public ApplicationUser? User { get; set; }
 }

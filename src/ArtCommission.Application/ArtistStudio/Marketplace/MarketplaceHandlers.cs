@@ -1,3 +1,4 @@
+using ArtCommission.Application.ArtistStudio.ClientProfiles;
 using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.ArtistStudio.Queries;
 using ArtCommission.Application.Common.Interfaces;
@@ -15,13 +16,14 @@ public record GetCreatorServicesQuery(Guid CreatorId) : IRequest<IReadOnlyList<C
 public record GetCreatorReviewsQuery(Guid CreatorId) : IRequest<IReadOnlyList<CreatorReviewDto>>;
 public record GetMyCollectionsQuery(Guid UserId) : IRequest<IReadOnlyList<PersonalCollectionDto>>;
 public record GetMyFavoritesQuery(Guid UserId) : IRequest<IReadOnlyList<ArtworkDto>>;
+public record GetClientPublicFavoritesQuery(Guid ClientId) : IRequest<IReadOnlyList<ArtworkDto>>;
 public record GetFollowingFeedQuery(Guid UserId, int Take = 30) : IRequest<IReadOnlyList<ArtworkDto>>;
 public record GetCreatorFollowStatusQuery(Guid UserId, Guid CreatorProfileId) : IRequest<bool>;
 public record GetFeaturedBannersQuery() : IRequest<IReadOnlyList<BannerDto>>;
 public record GetMarketplaceHomeQuery(Guid UserId, int Take = 12) : IRequest<MarketplaceHomeFeedDto>;
 public record GetSearchSuggestionsQuery(string? Query) : IRequest<SearchSuggestionsDto>;
 
-public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, IReadOnlyList<ArtworkDto>>, IRequestHandler<GetArtworkDetailQuery, ArtworkDetailDto?>, IRequestHandler<GetArtworkCommentsQuery, IReadOnlyList<ArtworkCommentDto>>, IRequestHandler<GetCreatorServicesQuery, IReadOnlyList<CommissionServiceDto>>, IRequestHandler<GetCreatorReviewsQuery, IReadOnlyList<CreatorReviewDto>>, IRequestHandler<GetMyCollectionsQuery, IReadOnlyList<PersonalCollectionDto>>, IRequestHandler<GetMyFavoritesQuery, IReadOnlyList<ArtworkDto>>, IRequestHandler<GetFollowingFeedQuery, IReadOnlyList<ArtworkDto>>, IRequestHandler<GetCreatorFollowStatusQuery, bool>, IRequestHandler<GetFeaturedBannersQuery, IReadOnlyList<BannerDto>>, IRequestHandler<GetMarketplaceHomeQuery, MarketplaceHomeFeedDto>, IRequestHandler<GetSearchSuggestionsQuery, SearchSuggestionsDto>
+public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, IReadOnlyList<ArtworkDto>>, IRequestHandler<GetArtworkDetailQuery, ArtworkDetailDto?>, IRequestHandler<GetArtworkCommentsQuery, IReadOnlyList<ArtworkCommentDto>>, IRequestHandler<GetCreatorServicesQuery, IReadOnlyList<CommissionServiceDto>>, IRequestHandler<GetCreatorReviewsQuery, IReadOnlyList<CreatorReviewDto>>, IRequestHandler<GetMyCollectionsQuery, IReadOnlyList<PersonalCollectionDto>>, IRequestHandler<GetMyFavoritesQuery, IReadOnlyList<ArtworkDto>>, IRequestHandler<GetClientPublicFavoritesQuery, IReadOnlyList<ArtworkDto>>, IRequestHandler<GetFollowingFeedQuery, IReadOnlyList<ArtworkDto>>, IRequestHandler<GetCreatorFollowStatusQuery, bool>, IRequestHandler<GetFeaturedBannersQuery, IReadOnlyList<BannerDto>>, IRequestHandler<GetMarketplaceHomeQuery, MarketplaceHomeFeedDto>, IRequestHandler<GetSearchSuggestionsQuery, SearchSuggestionsDto>
 {
     private readonly IApplicationDbContext _db;
     public MarketplaceQueryHandler(IApplicationDbContext db) => _db = db;
@@ -196,6 +198,19 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
     }
     public async Task<IReadOnlyList<PersonalCollectionDto>> Handle(GetMyCollectionsQuery q, CancellationToken ct) => await _db.PersonalCollections.AsNoTracking().Where(x => x.OwnerUserId == q.UserId && !x.IsDeleted).OrderByDescending(x => x.CreatedAt).Select(x => new PersonalCollectionDto(x.Id, x.Name, x.IsPublic, x.CollectionArtworks.Count(a => !a.Artwork!.IsDeleted && a.Artwork.ModerationStatus == "Approved" && !a.Artwork.CreatorProfile!.IsDeleted), x.CreatedAt)).ToListAsync(ct);
     public async Task<IReadOnlyList<ArtworkDto>> Handle(GetMyFavoritesQuery q, CancellationToken ct) { var items = await _db.Artworks.AsNoTracking().Where(a => _db.ArtworkFavorites.Any(f => f.UserId == q.UserId && f.ArtworkId == a.Id)).Where(x => !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted).Include(x => x.Category).Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).Include(x => x.CreatorProfile).ToListAsync(ct); return items.Select(Map).ToList(); }
+
+    public async Task<IReadOnlyList<ArtworkDto>> Handle(GetClientPublicFavoritesQuery q, CancellationToken ct)
+    {
+        // Chưa từng cấu hình (profile null) -> mặc định cho hiện; đã cấu hình thì tôn trọng lựa chọn của chủ tài khoản.
+        var profile = await _db.ClientProfiles.AsNoTracking().FirstOrDefaultAsync(x => x.UserId == q.ClientId && !x.IsDeleted, ct);
+        if (profile is not null && !profile.PublicVisibleTabs.Contains(PublicProfileTabs.Liked))
+        {
+            return Array.Empty<ArtworkDto>();
+        }
+
+        var items = await _db.Artworks.AsNoTracking().Where(a => _db.ArtworkFavorites.Any(f => f.UserId == q.ClientId && f.ArtworkId == a.Id)).Where(x => !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted).Include(x => x.Category).Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).Include(x => x.CreatorProfile).ToListAsync(ct);
+        return items.Select(Map).ToList();
+    }
     public async Task<IReadOnlyList<ArtworkDto>> Handle(GetFollowingFeedQuery q, CancellationToken ct)
     {
         var ratings = await CreatorRatingStats.LoadAsync(_db, ct);

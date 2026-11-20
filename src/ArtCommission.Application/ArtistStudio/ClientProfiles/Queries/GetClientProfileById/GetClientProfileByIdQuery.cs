@@ -1,3 +1,4 @@
+using ArtCommission.Application.ArtistStudio.ClientProfiles;
 using ArtCommission.Application.ArtistStudio.ClientProfiles.DTOs;
 using ArtCommission.Application.Common.Interfaces;
 using MediatR;
@@ -29,6 +30,13 @@ public class GetClientProfileByIdQueryHandler : IRequestHandler<GetClientProfile
         var profile = await _db.ClientProfiles.AsNoTracking()
             .FirstOrDefaultAsync(x => x.UserId == request.UserId && !x.IsDeleted, cancellationToken);
 
+        // Chưa từng lưu ClientProfile -> mặc định hiện cả 3 tab công khai (hành vi trước khi có tính năng này).
+        IReadOnlyList<string> publicVisibleTabs = profile is null ? PublicProfileTabs.All : profile.PublicVisibleTabs;
+
+        // Chưa từng đặt username hồ sơ (ClientProfile.Username) -> fallback về username đã chọn lúc đăng ký
+        // qua Google (ApplicationUser.LoginUsername), để không hiện "Chưa đặt" một cách sai lệch.
+        var username = profile?.Username ?? user.LoginUsername;
+
         return (true, new ClientProfileDto(
             user.Id,
             user.FullName,
@@ -37,12 +45,13 @@ public class GetClientProfileByIdQueryHandler : IRequestHandler<GetClientProfile
             user.Bio,
             user.IsVerified,
             user.CreatedAt,
-            profile?.Username,
+            username,
             profile?.InterestTags ?? new List<string>(),
             profile?.Country,
             profile?.Timezone,
             profile?.PreferredLanguages ?? new List<string>(),
-            profile?.UsernameChangedAt
+            profile?.UsernameChangedAt,
+            publicVisibleTabs
         ), Array.Empty<string>());
     }
 }

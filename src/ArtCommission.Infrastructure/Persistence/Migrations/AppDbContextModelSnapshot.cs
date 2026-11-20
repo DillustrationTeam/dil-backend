@@ -650,6 +650,10 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("PublicVisibleTabs")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Timezone")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
