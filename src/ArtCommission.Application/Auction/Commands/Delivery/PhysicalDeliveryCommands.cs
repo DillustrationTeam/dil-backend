@@ -403,6 +403,143 @@ public class UpdateShippingInfoCommandHandler
 }
 
 // =====================================================================
+// 3b. Người bán báo bưu phẩm ĐÃ ĐẾN NƠI (chỉ đối soát — KHÔNG giải ngân)
+// =====================================================================
+
+/// <summary>
+/// Người bán xác nhận trên hệ thống rằng bưu phẩm đã tới tay người mua.
+///
+/// LUẬT:
+///   - Chỉ người bán của phiên gọi được.
+///   - Đơn phải đang <see cref="DeliveryStatus.InTransit"/>, tức người bán ĐÃ điền thông tin
+///     gửi hàng (hãng + mã vận đơn + ít nhất một bằng chứng).
+///   - Nếu lúc gửi hàng người bán KHÔNG khai link tra cứu hành trình (chỉ có ảnh biên lai /
+///     ảnh kiện hàng) thì bước này BẮT BUỘC gửi kèm ảnh bưu kiện đã đến nơi.
+///   - Bước này KHÔNG đổi trạng thái đơn, KHÔNG giải ngân: quyền chốt đơn vẫn của người mua
+///     (hoặc job auto-confirm sau 48 giờ). Ảnh bưu kiện đến nơi hiển thị cho cả người mua và Admin.
+/// </summary>
+public record ReportDeliveryArrivalCommand(
+    Guid UserId,
+    Guid AuctionId,
+    string? ArrivalProofUrl = null
+) : IRequest<(bool Success, AuctionDeliveryDto? Data, string[] Errors)>;
+
+public class ReportDeliveryArrivalCommandHandler
+    : IRequestHandler<ReportDeliveryArrivalCommand, (bool, AuctionDeliveryDto?, string[])>
+{
+    private readonly IApplicationDbContext _db;
+    private readonly INotificationPublisher _notifications;
+    private readonly ILogger<ReportDeliveryArrivalCommandHandler> _logger;
+
+    public ReportDeliveryArrivalCommandHandler(
+        IApplicationDbContext db,
+        INotificationPublisher notifications,
+        ILogger<ReportDeliveryArrivalCommandHandler> logger)
+    {
+        _db = db;
+        _notifications = notifications;
+        _logger = logger;
+    }
+
+    public async Task<(bool, AuctionDeliveryDto?, string[])> Handle(
+        ReportDeliveryArrivalCommand request,
+        CancellationToken cancellationToken)
+    {
+        var auction = await _db.Auctions
+            .FirstOrDefaultAsync(a => a.Id == request.AuctionId && !a.IsDeleted, cancellationToken);
+
+        if (auction is null)
+        {
+            return (false, null, ["Không tìm thấy phiên đấu giá."]);
+        }
+
+        if (auction.SellerId != request.UserId)
+        {
+            return (false, null, ["Chỉ người bán của phiên mới được báo hàng đã đến nơi."]);
+        }
+
+        var delivery = await _db.Set<AuctionDelivery>()
+            .FirstOrDefaultAsync(d => d.AuctionId == auction.Id && !d.IsDeleted, cancellationToken);
+
+        if (delivery is null)
+        {
+            return (false, null, ["Người mua chưa yêu cầu giao tranh vật lý hoặc chưa có thông tin nhận hàng."]);
+        }
+
+        if (delivery.Status is DeliveryStatus.Delivered or DeliveryStatus.Cancelled
+            or DeliveryStatus.Disputed or DeliveryStatus.Resolved)
+        {
+            return (false, null,
+                ["Đơn giao nhận đã kết thúc hoặc đang khiếu nại, không báo lại được nữa."]);
+        }
+
+        // Chưa cập nhật thông tin gửi hàng thì chưa có gì để đối soát: bắt điền bước gửi trước.
+        if (delivery.Status != DeliveryStatus.InTransit)
+        {
+            return (false, null,
+                ["Vui lòng cập nhật thông tin gửi hàng (hãng vận chuyển, mã vận đơn và bằng chứng) trước khi báo hàng đã đến nơi."]);
+        }
+
+        var proofUrl = request.ArrivalProofUrl?.Trim();
+        // Có link tra cứu hành trình thì link đó là bằng chứng đến nơi → không bắt buộc ảnh.
+        // Không có link thì buộc phải có ảnh bưu kiện đã đến nơi.
+        var hasTrackingJourney = !string.IsNullOrWhiteSpace(delivery.TrackingUrl);
+
+        if (!hasTrackingJourney)
+        {
+            if (string.IsNullOrWhiteSpace(proofUrl))
+            {
+                return (false, null,
+                    ["Đơn gửi hàng không có link tra cứu hành trình, nên phải gửi kèm ảnh bưu kiện đã đến nơi."]);
+            }
+
+            if (!Uri.TryCreate(proofUrl, UriKind.Absolute, out var absoluteProof) || absoluteProof.Scheme is not ("http" or "https"))
+            {
+                return (false, null, ["Đường dẫn ảnh bưu kiện đã đến nơi không hợp lệ."]);
+            }
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        delivery.SellerReportedDeliveredAt ??= now;
+        delivery.DeliveredAt ??= now;
+        if (!string.IsNullOrWhiteSpace(proofUrl))
+        {
+            delivery.ArrivalProofUrl = proofUrl;
+        }
+        delivery.UpdatedAt = now;
+
+        // KHÔNG đổi delivery.Status, KHÔNG đổi auction.Status, KHÔNG giải ngân ký quỹ.
+        await _db.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Người bán {SellerId} báo bưu phẩm phiên {AuctionId} đã đến nơi (kèm ảnh: {HasProof}).",
+            request.UserId, auction.Id, !string.IsNullOrWhiteSpace(delivery.ArrivalProofUrl));
+
+        if (auction.WinnerId.HasValue)
+        {
+            try
+            {
+                await _notifications.PublishAsync(
+                    userId: auction.WinnerId.Value,
+                    notificationType: NotificationType.AuctionLifecycle,
+                    title: "Người bán báo bưu phẩm đã đến nơi",
+                    body: $"Tác phẩm từ phiên #{auction.Id.ToString()[..8].ToUpperInvariant()} đã được người bán xác nhận giao tới nơi. "
+                        + "Vui lòng kiểm tra bưu phẩm và bấm “Đã nhận hàng” để hoàn tất đơn.",
+                    refType: "Auction",
+                    refId: auction.Id,
+                    cancellationToken: cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Lỗi gửi thông báo cho Buyer {WinnerId}", auction.WinnerId);
+            }
+        }
+
+        return (true, AuctionMapper.ToDeliveryDto(delivery), []);
+    }
+}
+
+// =====================================================================
 // 4. Người mua xác nhận đã nhận tranh và hài lòng (Nhả tiền cho Seller)
 // =====================================================================
 

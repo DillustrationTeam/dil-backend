@@ -43,6 +43,19 @@ public class AuctionDelivery : BaseEntity
     /// <summary>Ảnh biên lai phát hàng / chữ ký nhận hoặc ảnh bưu tá giao tận tay (PoD).</summary>
     public string? DeliveryReceiptUrl { get; set; }
 
+    /// <summary>
+    /// Thời điểm NGƯỜI BÁN tự báo bưu phẩm đã tới tay người mua. Chỉ là thông tin đối soát:
+    /// không đổi <see cref="Status"/>, không giải ngân ký quỹ — quyền xác nhận hoàn tất vẫn
+    /// thuộc về người mua (hoặc job auto-confirm sau 48 giờ).
+    /// </summary>
+    public DateTimeOffset? SellerReportedDeliveredAt { get; set; }
+
+    /// <summary>
+    /// Ảnh chụp bưu kiện tại thời điểm đã đến nơi (phiếu phát / kiện hàng trước cửa).
+    /// Bắt buộc khi người bán KHÔNG khai link tra cứu hành trình; người mua và Admin đều xem được.
+    /// </summary>
+    public string? ArrivalProofUrl { get; set; }
+
     /// <summary>Trạng thái giao nhận.</summary>
     public DeliveryStatus Status { get; set; } = DeliveryStatus.AwaitingShipment;
 
