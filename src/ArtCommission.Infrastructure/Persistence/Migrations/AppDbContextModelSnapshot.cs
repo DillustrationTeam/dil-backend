@@ -1433,6 +1433,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("ArrivalProofUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<Guid>("AuctionId")
                         .HasColumnType("uniqueidentifier");
 
@@ -1505,6 +1508,9 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTimeOffset?>("SellerReportedDeliveredAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<DateTimeOffset?>("ShippedAt")
                         .HasColumnType("datetimeoffset");

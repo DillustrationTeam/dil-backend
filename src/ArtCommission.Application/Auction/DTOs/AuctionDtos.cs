@@ -163,7 +163,13 @@ public sealed record AuctionDeliveryDto(
     /// <summary>Người mua được phép đánh giá người bán cho phiên này.</summary>
     bool CanRateSeller = false,
     /// <summary>Người mua đã đánh giá người bán cho phiên này rồi.</summary>
-    bool HasRatedSeller = false
+    bool HasRatedSeller = false,
+    /// <summary>
+    /// Người bán báo bưu phẩm đã đến nơi (chỉ để đối soát, không giải ngân, không đổi trạng thái).
+    /// </summary>
+    DateTimeOffset? SellerReportedDeliveredAt = null,
+    /// <summary>Ảnh bưu kiện đã đến nơi — bắt buộc khi người bán không khai link tra cứu hành trình.</summary>
+    string? ArrivalProofUrl = null
 );
 
 /// <summary>Dữ liệu tóm tắt cho màn hình Quản lý giao nhận tranh vật lý (User & Admin).</summary>

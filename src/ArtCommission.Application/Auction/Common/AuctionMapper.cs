@@ -124,7 +124,9 @@ public static class AuctionMapper
                 DisputeImageUrls: ParseDisputeImages(delivery),
                 DisputeVideoUrl: delivery.DisputeVideoUrl,
                 CanRateSeller: canRateSeller,
-                HasRatedSeller: hasRatedSeller);
+                HasRatedSeller: hasRatedSeller,
+                SellerReportedDeliveredAt: delivery.SellerReportedDeliveredAt,
+                ArrivalProofUrl: delivery.ArrivalProofUrl);
 
     /// <summary>
     /// Đọc danh sách ảnh bằng chứng khiếu nại từ cột JSON. Luôn gộp ảnh cũ

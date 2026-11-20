@@ -55,6 +55,12 @@ public sealed record UpdateShippingInfoRequest(
 /// <summary>Thân request người mua xác nhận đã nhận tranh vật lý.</summary>
 public sealed record ConfirmDeliveryRequest(string? DeliveryReceiptUrl = null);
 
+/// <summary>
+/// Thân request người bán báo bưu phẩm đã đến nơi. `ArrivalProofUrl` bắt buộc khi đơn
+/// gửi hàng không có link tra cứu hành trình (upload qua `delivery/ship-evidence?kind=arrival`).
+/// </summary>
+public sealed record ReportDeliveryArrivalRequest(string? ArrivalProofUrl = null);
+
 /// <summary>Thân request người mua khiếu nại giao nhận tranh.</summary>
 /// <summary>
 /// Thân request gửi khiếu nại đơn giao tranh vật lý.
@@ -761,6 +767,33 @@ public class AuctionsController : ApiControllerBase
     }
 
     /// <summary>
+    /// Người bán báo bưu phẩm ĐÃ ĐẾN NƠI. Chỉ ghi nhận để người mua / Admin đối soát —
+    /// KHÔNG đổi trạng thái đơn và KHÔNG giải ngân ký quỹ. Đơn phải đang InTransit (đã điền
+    /// thông tin gửi hàng); nếu không có link tra cứu hành trình thì bắt buộc gửi kèm
+    /// `arrivalProofUrl` (ảnh bưu kiện đã đến nơi).
+    /// </summary>
+    [HttpPost("{auctionId:guid}/delivery/report-arrival")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ReportDeliveryArrival(
+        Guid auctionId,
+        [FromBody] ReportDeliveryArrivalRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty) return UnauthorizedEnvelope();
+
+        var (success, data, errors) = await Mediator.Send(
+            new ReportDeliveryArrivalCommand(
+                CurrentUserId,
+                auctionId,
+                request?.ArrivalProofUrl),
+            cancellationToken);
+
+        return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
+    }
+
+    /// <summary>
     /// Người thắng phiên có bản vật lý chọn NHẬN TRANH ĐIỆN TỬ NGAY, bỏ bước giao nhận bưu cục.
     /// Ký quỹ được giải ngân ngay cho người bán và phiên đóng lại (UC35).
     /// </summary>
@@ -1191,9 +1224,12 @@ public class AuctionsController : ApiControllerBase
             });
         }
 
-        var folder = string.Equals(kind, "package", StringComparison.OrdinalIgnoreCase)
-            ? "auction-shipping-packages"
-            : "auction-shipping-receipts";
+        var folder = kind?.ToLowerInvariant() switch
+        {
+            "package" => "auction-shipping-packages",
+            "arrival" => "auction-arrival-proofs",
+            _ => "auction-shipping-receipts",
+        };
 
         if (file is null || file.Length == 0)
         {
