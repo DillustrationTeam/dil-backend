@@ -1,3 +1,4 @@
+using ArtCommission.Application.ArtistStudio.ClientProfiles;
 using ArtCommission.Application.ArtistStudio.ClientProfiles.DTOs;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Entities.ArtistStudio;
@@ -14,7 +15,8 @@ public record UpdateClientProfileCommand(
     string? Country,
     string? Timezone,
     List<string>? PreferredLanguages,
-    string? CurrentPassword = null
+    string? CurrentPassword = null,
+    List<string>? PublicVisibleTabs = null
 ) : IRequest<(bool Success, ClientProfileDto? Data, string[] Errors)>;
 
 public class UpdateClientProfileCommandValidator : AbstractValidator<UpdateClientProfileCommand>
@@ -43,6 +45,10 @@ public class UpdateClientProfileCommandValidator : AbstractValidator<UpdateClien
         RuleFor(x => x.Timezone)
             .MaximumLength(100)
             .When(x => !string.IsNullOrWhiteSpace(x.Timezone));
+
+        RuleFor(x => x.PublicVisibleTabs)
+            .Must(tabs => tabs == null || tabs.All(tab => PublicProfileTabs.All.Contains(tab)))
+            .WithMessage($"PublicVisibleTabs can only contain: {string.Join(", ", PublicProfileTabs.All)}.");
     }
 }
 
@@ -98,7 +104,9 @@ public class UpdateClientProfileCommandHandler : IRequestHandler<UpdateClientPro
                 InterestTags = NormalizeList(request.InterestTags),
                 Country = string.IsNullOrWhiteSpace(request.Country) ? null : request.Country.Trim(),
                 Timezone = string.IsNullOrWhiteSpace(request.Timezone) ? null : request.Timezone.Trim(),
-                PreferredLanguages = NormalizeList(request.PreferredLanguages)
+                PreferredLanguages = NormalizeList(request.PreferredLanguages),
+                // Chưa từng cấu hình -> mặc định hiện cả 3 tab công khai, trừ khi request này tự đặt sẵn.
+                PublicVisibleTabs = request.PublicVisibleTabs?.Distinct().ToList() ?? PublicProfileTabs.All.ToList()
             };
             _db.ClientProfiles.Add(profile);
         }
@@ -152,6 +160,11 @@ public class UpdateClientProfileCommandHandler : IRequestHandler<UpdateClientPro
                 profile.PreferredLanguages = NormalizeList(request.PreferredLanguages);
             }
 
+            if (request.PublicVisibleTabs is not null)
+            {
+                profile.PublicVisibleTabs = request.PublicVisibleTabs.Distinct().ToList();
+            }
+
             profile.UpdatedAt = DateTimeOffset.UtcNow;
         }
 
@@ -173,12 +186,13 @@ public class UpdateClientProfileCommandHandler : IRequestHandler<UpdateClientPro
             user.Bio,
             user.IsVerified,
             user.CreatedAt,
-            profile.Username,
+            profile.Username ?? user.LoginUsername,
             profile.InterestTags,
             profile.Country,
             profile.Timezone,
             profile.PreferredLanguages,
-            profile.UsernameChangedAt
+            profile.UsernameChangedAt,
+            profile.PublicVisibleTabs
         ), Array.Empty<string>());
     }
 

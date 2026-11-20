@@ -371,6 +371,15 @@ public class IdentityService : IIdentityService
         user.IsDeleted = true;
         user.DeletedAt = DateTimeOffset.UtcNow;
 
+        // Giải phóng email/username để chủ tài khoản có thể đăng ký lại bằng cùng Gmail.
+        // Các bản ghi Commission/Wallet/Dispute/Message vẫn giữ nguyên UserId (không đổi),
+        // nên lịch sử phục vụ tra cứu gian lận không bị mất — chỉ PII định danh bị ẩn danh hóa.
+        var deletedTag = $"deleted-{user.Id}";
+        user.Email = $"{deletedTag}@deleted.dillustration.local";
+        user.UserName = deletedTag;
+        user.LoginUsername = null;
+        user.NormalizedLoginUsername = null;
+
         var result = await _userManager.UpdateAsync(user);
         if (!result.Succeeded)
         {

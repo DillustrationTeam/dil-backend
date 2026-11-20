@@ -20,40 +20,119 @@ public class EmailService : IEmailService
         _configuration = configuration;
     }
 
+    /// <summary>Logo được lưu ở domain frontend (host tĩnh /weblogo.png) vì email client tải ảnh qua URL tuyệt đối, không dùng được đường dẫn tương đối hay asset cục bộ.</summary>
+    private const string LogoUrl = "https://dil-frontend.onrender.com/weblogo.png";
+
+    /// <summary>
+    /// Khung email nhất quán cho mọi loại thông báo (mã OTP, cảnh báo bảo mật, ...): header có logo,
+    /// card kính tối theo đúng bảng màu Digital Etherealism của dự án, và footer liên hệ hỗ trợ.
+    /// </summary>
+    private static string BuildBrandedEmailHtml(string preheader, string bodyHtml, string footerNote)
+    {
+        return $@"
+<!DOCTYPE html>
+<html>
+<head><meta charset=""utf-8"" /></head>
+<body style=""margin: 0; padding: 24px 16px; background-color: #0B0E17; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #E4E1E5;"">
+  <span style=""display: none; max-height: 0; overflow: hidden; opacity: 0;"">{WebUtility.HtmlEncode(preheader)}</span>
+  <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" border=""0"" style=""max-width: 480px; margin: 0 auto; background-color: #121622; border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.08); overflow: hidden;"">
+    <tr>
+      <td style=""padding: 24px 28px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); text-align: center;"">
+        <img src=""{LogoUrl}"" alt=""Dillustration"" height=""32"" style=""height: 32px; display: inline-block; vertical-align: middle;"" />
+      </td>
+    </tr>
+    <tr>
+      <td style=""padding: 28px 28px 8px 28px; font-size: 14px; line-height: 1.7;"">
+        {bodyHtml}
+      </td>
+    </tr>
+    <tr>
+      <td style=""padding: 20px 28px 24px 28px; font-size: 11.5px; color: #78767A;"">
+        {WebUtility.HtmlEncode(footerNote)}
+      </td>
+    </tr>
+    <tr>
+      <td style=""padding: 16px 28px; background-color: #0E111A; text-align: center; font-size: 11px; color: #64748B;"">
+        DILLUSTRATION • Nền tảng Commission &amp; Đấu giá tranh số • Hỗ trợ: support@dillustration.art
+      </td>
+    </tr>
+  </table>
+</body>
+</html>";
+    }
+
+    private static string BuildCodeBlockHtml(string code) =>
+        $@"<div style=""margin: 16px 0; text-align: center; background-color: #171D2D; border: 1px solid rgba(167, 172, 217, 0.25); border-radius: 12px; padding: 18px 12px;"">
+            <span style=""font-size: 30px; font-weight: bold; letter-spacing: 8px; color: #A7ACD9; font-family: 'Courier New', monospace;"">{WebUtility.HtmlEncode(code)}</span>
+          </div>";
+
+    private const string DefaultExpiryNote = "Lưu ý: nếu không phải bạn yêu cầu, hãy bỏ qua email này — tài khoản của bạn vẫn an toàn và không có gì thay đổi.";
+
     public Task SendEmailVerificationAsync(string toEmail, string fullName, string verificationToken, CancellationToken cancellationToken = default)
     {
-        var body = $"<p>Xin chào {fullName},</p><p>Mã xác minh email của bạn: <b>{verificationToken}</b></p>";
-        return SendAsync(toEmail, "Xác minh email - Dillustration", body, cancellationToken);
+        var body = $@"
+            <p style=""margin: 0 0 4px 0;"">Xin chào <strong>{WebUtility.HtmlEncode(fullName)}</strong>,</p>
+            <p style=""margin: 0 0 4px 0; color: #C7C5CF;"">Đây là mã xác minh để kích hoạt email cho tài khoản Dillustration của bạn:</p>
+            {BuildCodeBlockHtml(verificationToken)}
+            <p style=""margin: 12px 0 0 0; color: #C7C5CF;"">Mã có hiệu lực trong 10 phút.</p>";
+        var html = BuildBrandedEmailHtml("Mã xác minh email Dillustration của bạn", body, DefaultExpiryNote);
+        return SendAsync(toEmail, "Xác minh email - Dillustration", html, cancellationToken);
     }
 
     public Task SendVerificationCodeEmailAsync(string toEmail, string code, CancellationToken cancellationToken = default)
     {
-        var body = $"<p>Mã xác minh email của bạn là:</p><p style=\"font-size:28px;font-weight:bold;letter-spacing:4px;\">{code}</p><p>Mã có hiệu lực trong 10 phút. Nếu bạn không yêu cầu mã này, hãy bỏ qua email.</p>";
-        return SendAsync(toEmail, "Mã xác minh đăng ký - Dillustration", body, cancellationToken);
+        var body = $@"
+            <p style=""margin: 0 0 4px 0;"">Xin chào,</p>
+            <p style=""margin: 0 0 4px 0; color: #C7C5CF;"">Đây là mã xác minh để hoàn tất đăng ký tài khoản Dillustration:</p>
+            {BuildCodeBlockHtml(code)}
+            <p style=""margin: 12px 0 0 0; color: #C7C5CF;"">Mã có hiệu lực trong 10 phút.</p>";
+        var html = BuildBrandedEmailHtml("Mã xác minh đăng ký Dillustration của bạn", body, DefaultExpiryNote);
+        return SendAsync(toEmail, "Mã xác minh đăng ký - Dillustration", html, cancellationToken);
     }
 
     public Task SendPasswordResetCodeEmailAsync(string toEmail, string code, CancellationToken cancellationToken = default)
     {
-        var body = $"<p>Mã đặt lại mật khẩu của bạn là:</p><p style=\"font-size:28px;font-weight:bold;letter-spacing:4px;\">{code}</p><p>Mã có hiệu lực trong 10 phút. Nếu bạn không yêu cầu đổi mật khẩu, hãy bỏ qua email này.</p>";
-        return SendAsync(toEmail, "Mã đặt lại mật khẩu - Dillustration", body, cancellationToken);
+        var body = $@"
+            <p style=""margin: 0 0 4px 0;"">Xin chào,</p>
+            <p style=""margin: 0 0 4px 0; color: #C7C5CF;"">Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản Dillustration của bạn. Dùng mã bên dưới để tiếp tục:</p>
+            {BuildCodeBlockHtml(code)}
+            <p style=""margin: 12px 0 0 0; color: #C7C5CF;"">Mã có hiệu lực trong 10 phút.</p>";
+        var html = BuildBrandedEmailHtml("Mã đặt lại mật khẩu Dillustration của bạn", body, "Lưu ý: nếu không phải bạn yêu cầu đổi mật khẩu, hãy bỏ qua email này — mật khẩu hiện tại của bạn vẫn giữ nguyên, không có gì bị thay đổi.");
+        return SendAsync(toEmail, "Mã đặt lại mật khẩu - Dillustration", html, cancellationToken);
     }
 
     public Task SendChangeEmailCodeEmailAsync(string toEmail, string code, CancellationToken cancellationToken = default)
     {
-        var body = $"<p>Mã xác minh để đổi sang email này là:</p><p style=\"font-size:28px;font-weight:bold;letter-spacing:4px;\">{code}</p><p>Mã có hiệu lực trong 10 phút. Nếu bạn không yêu cầu đổi email, hãy bỏ qua email này.</p>";
-        return SendAsync(toEmail, "Mã xác minh đổi email - Dillustration", body, cancellationToken);
+        var body = $@"
+            <p style=""margin: 0 0 4px 0;"">Xin chào,</p>
+            <p style=""margin: 0 0 4px 0; color: #C7C5CF;"">Bạn vừa yêu cầu đổi email đăng nhập của tài khoản Dillustration sang địa chỉ này. Dùng mã bên dưới để xác minh:</p>
+            {BuildCodeBlockHtml(code)}
+            <p style=""margin: 12px 0 0 0; color: #C7C5CF;"">Mã có hiệu lực trong 10 phút.</p>";
+        var html = BuildBrandedEmailHtml("Mã xác minh đổi email Dillustration", body, "Lưu ý: nếu không phải bạn yêu cầu đổi email, hãy bỏ qua email này.");
+        return SendAsync(toEmail, "Mã xác minh đổi email - Dillustration", html, cancellationToken);
     }
 
     public Task SendEmailChangedNoticeAsync(string oldEmail, string newEmail, CancellationToken cancellationToken = default)
     {
-        var body = $"<p>Email đăng nhập của tài khoản bạn vừa được đổi sang <b>{newEmail}</b>.</p><p>Nếu đây không phải là bạn, vui lòng liên hệ hỗ trợ ngay lập tức.</p>";
-        return SendAsync(oldEmail, "Email tài khoản của bạn vừa được thay đổi - Dillustration", body, cancellationToken);
+        var body = $@"
+            <p style=""margin: 0 0 4px 0;"">Xin chào,</p>
+            <p style=""margin: 0; color: #C7C5CF;"">
+              Email đăng nhập của tài khoản Dillustration gắn với địa chỉ này vừa được đổi sang
+              <strong style=""color: #FFFFFF;"">{WebUtility.HtmlEncode(newEmail)}</strong>. Mọi thiết bị khác đã bị đăng xuất để đảm bảo an toàn.
+            </p>";
+        var html = BuildBrandedEmailHtml("Email đăng nhập của bạn vừa được thay đổi", body, "Nếu đây không phải là bạn, vui lòng liên hệ hỗ trợ ngay lập tức qua support@dillustration.art để khóa tài khoản kịp thời.");
+        return SendAsync(oldEmail, "Email tài khoản của bạn vừa được thay đổi - Dillustration", html, cancellationToken);
     }
 
     public Task SendReauthCodeEmailAsync(string toEmail, string code, CancellationToken cancellationToken = default)
     {
-        var body = $"<p>Mã xác thực lại danh tính của bạn là:</p><p style=\"font-size:28px;font-weight:bold;letter-spacing:4px;\">{code}</p><p>Dùng mã này để xác nhận chính bạn đang yêu cầu đổi email đăng nhập. Mã có hiệu lực trong 10 phút. Nếu bạn không yêu cầu, hãy bỏ qua email này.</p>";
-        return SendAsync(toEmail, "Mã xác thực lại danh tính - Dillustration", body, cancellationToken);
+        var body = $@"
+            <p style=""margin: 0 0 4px 0;"">Xin chào,</p>
+            <p style=""margin: 0 0 4px 0; color: #C7C5CF;"">Để xác nhận chính bạn đang yêu cầu đổi email đăng nhập, vui lòng dùng mã xác thực danh tính bên dưới:</p>
+            {BuildCodeBlockHtml(code)}
+            <p style=""margin: 12px 0 0 0; color: #C7C5CF;"">Mã có hiệu lực trong 10 phút.</p>";
+        var html = BuildBrandedEmailHtml("Mã xác thực lại danh tính Dillustration", body, "Lưu ý: nếu không phải bạn yêu cầu, hãy bỏ qua email này — tài khoản của bạn vẫn an toàn.");
+        return SendAsync(toEmail, "Mã xác thực lại danh tính - Dillustration", html, cancellationToken);
     }
 
     private async Task SendAsync(string toEmail, string subject, string htmlBody, CancellationToken cancellationToken)

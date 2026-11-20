@@ -18,6 +18,14 @@ public class GetClientPublicCollectionsQueryHandler : IRequestHandler<GetClientP
 
     public async Task<IReadOnlyList<PersonalCollectionDto>> Handle(GetClientPublicCollectionsQuery request, CancellationToken cancellationToken)
     {
+        // Chưa từng cấu hình (profile null) -> mặc định cho hiện; đã cấu hình thì tôn trọng lựa chọn của chủ tài khoản.
+        var profile = await _db.ClientProfiles.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.UserId == request.ClientId && !x.IsDeleted, cancellationToken);
+        if (profile is not null && !profile.PublicVisibleTabs.Contains(PublicProfileTabs.Saved))
+        {
+            return Array.Empty<PersonalCollectionDto>();
+        }
+
         return await _db.PersonalCollections.AsNoTracking()
             .Where(x => x.OwnerUserId == request.ClientId && x.IsPublic && !x.IsDeleted)
             .OrderByDescending(x => x.CreatedAt)

@@ -13,5 +13,6 @@ public record ClientProfileDto(
     string? Country,
     string? Timezone,
     IReadOnlyList<string> PreferredLanguages,
-    DateTimeOffset? UsernameChangedAt = null
+    DateTimeOffset? UsernameChangedAt = null,
+    IReadOnlyList<string>? PublicVisibleTabs = null
 );

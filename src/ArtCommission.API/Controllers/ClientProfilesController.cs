@@ -1,4 +1,5 @@
 using ArtCommission.Application.ArtistStudio.ClientProfiles.Commands.UpdateClientProfile;
+using ArtCommission.Application.ArtistStudio.ClientProfiles.Queries.GetClientFollowers;
 using ArtCommission.Application.ArtistStudio.ClientProfiles.Queries.GetClientFollowing;
 using ArtCommission.Application.ArtistStudio.ClientProfiles.Queries.GetClientOwnedArtworks;
 using ArtCommission.Application.ArtistStudio.ClientProfiles.Queries.GetClientProfileById;
@@ -22,7 +23,8 @@ public class ClientProfilesController : ApiControllerBase
         string? Country,
         string? Timezone,
         List<string>? PreferredLanguages,
-        string? CurrentPassword = null);
+        string? CurrentPassword = null,
+        List<string>? PublicVisibleTabs = null);
 
     /// <summary>Hồ sơ công khai của Client — không cần đăng nhập.</summary>
     [HttpGet("{id:guid}")]
@@ -65,13 +67,23 @@ public class ClientProfilesController : ApiControllerBase
         return OkEnvelope(data);
     }
 
+    /// <summary>Danh sách người đang theo dõi hồ sơ nghệ sĩ của Client (rỗng nếu Client chưa có CreatorProfile).</summary>
+    [HttpGet("{id:guid}/followers")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetFollowers(Guid id, CancellationToken cancellationToken)
+    {
+        var data = await Mediator.Send(new GetClientFollowersQuery(id), cancellationToken);
+        return OkEnvelope(data);
+    }
+
     /// <summary>Tranh Client đã thích (Favorites/Wishlist) — tái dùng query sẵn có của marketplace.</summary>
     [HttpGet("{id:guid}/favorites")]
     [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetFavorites(Guid id, CancellationToken cancellationToken)
     {
-        var data = await Mediator.Send(new GetMyFavoritesQuery(id), cancellationToken);
+        var data = await Mediator.Send(new GetClientPublicFavoritesQuery(id), cancellationToken);
         return OkEnvelope(data);
     }
 
@@ -131,7 +143,7 @@ public class ClientProfilesController : ApiControllerBase
         }
 
         var (success, data, errors) = await Mediator.Send(
-            new UpdateClientProfileCommand(CurrentUserId, request.Username, request.InterestTags, request.Country, request.Timezone, request.PreferredLanguages, request.CurrentPassword),
+            new UpdateClientProfileCommand(CurrentUserId, request.Username, request.InterestTags, request.Country, request.Timezone, request.PreferredLanguages, request.CurrentPassword, request.PublicVisibleTabs),
             cancellationToken);
 
         return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
