@@ -451,3 +451,6 @@ uploads/
 
 # Runtime uploads under the local demo storage root (keep existing tracked fixtures).
 src/ArtCommission.API/wwwroot/demo-uploads/
+
+# Manual DB patch/seed scripts (local only, never commit)
+*.sql

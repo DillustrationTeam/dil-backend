@@ -41,6 +41,14 @@ public sealed class LocalFileStorageService : IStorageService
 
     public string GeneratePresignedDownloadUrl(string privateKey, TimeSpan expiry)
     {
+        // Dữ liệu cũ (trade/dispute) lưu NGUYÊN URL tuyệt đối vào cột "key". Bọc nó
+        // vào /demo-uploads/private/… sẽ ra 403. Đã là URL thì trả lại chính nó.
+        if (Uri.TryCreate(privateKey, UriKind.Absolute, out var absolute) &&
+            (absolute.Scheme == Uri.UriSchemeHttp || absolute.Scheme == Uri.UriSchemeHttps))
+        {
+            return privateKey;
+        }
+
         var expiresAt = DateTimeOffset.UtcNow.Add(expiry).ToUnixTimeSeconds();
         var signature = LocalPresignedUrlSigner.Sign(privateKey, expiresAt, _signingKey);
         return $"{_baseUrl}/demo-uploads/private/{ToUrlPath(privateKey)}?expires={expiresAt}&signature={signature}";
