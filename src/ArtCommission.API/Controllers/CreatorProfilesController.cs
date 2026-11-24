@@ -327,15 +327,30 @@ public class CreatorProfilesController : ApiControllerBase
     /// </summary>
     [HttpGet("artworks")]
     [AllowAnonymous]
-    public async Task<IActionResult> GetArtworks(CancellationToken cancellationToken)
+    public async Task<IActionResult> GetArtworks(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 12,
+        [FromQuery] string? search = null,
+        [FromQuery] Guid? categoryId = null,
+        CancellationToken cancellationToken = default)
     {
-        var (success, data, errors) = await Mediator.Send(new GetArtworksQuery(), cancellationToken);
+        var (success, data, totalCount, errors) = await Mediator.Send(
+            new GetArtworksQuery(page, pageSize, search, categoryId), cancellationToken);
         if (!success)
         {
             return BadRequestEnvelope(errors);
         }
 
-        return OkEnvelope(data);
+        var effectivePageSize = pageSize is < 1 or > 60 ? 12 : pageSize;
+        var effectivePage = page < 1 ? 1 : page;
+
+        return OkEnvelope(data, new
+        {
+            page = effectivePage,
+            pageSize = effectivePageSize,
+            totalCount,
+            totalPages = (int)Math.Ceiling(totalCount / (double)effectivePageSize)
+        });
     }
 
     [HttpGet("artworks/{id:guid}")]
