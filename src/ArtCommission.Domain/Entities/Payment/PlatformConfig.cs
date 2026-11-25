@@ -45,4 +45,8 @@ public static class PlatformConfigKeys
     public const string AiScanViolenceThreshold = "AiScanViolenceThreshold";
     public const string AiScanAiDetectionThreshold = "AiScanAiDetectionThreshold";
     public const string AiScanAutoTaggingEnabled = "AiScanAutoTaggingEnabled";
+
+    // AI Reference Sketch — giảm giá toàn sàn + giới hạn lượt sinh ảnh (docs/ai-reference/PLAN.md T12)
+    public const string AiReferenceSketchDiscountPercent = "AiReferenceSketchDiscountPercent";
+    public const string AiReferenceSketchMaxGenerationsPerWindow = "AiReferenceSketchMaxGenerationsPerWindow";
 }

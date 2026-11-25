@@ -39,6 +39,16 @@ public sealed class LocalFileStorageService : IStorageService
         return Task.FromResult<Stream?>(File.Exists(fullPath) ? File.OpenRead(fullPath) : null);
     }
 
+    public Task DeletePrivateAsync(string privateKey, CancellationToken ct = default)
+    {
+        var fullPath = ResolveSafePath("private", privateKey);
+        if (File.Exists(fullPath))
+        {
+            File.Delete(fullPath);
+        }
+        return Task.CompletedTask;
+    }
+
     public string GeneratePresignedDownloadUrl(string privateKey, TimeSpan expiry)
     {
         // Dữ liệu cũ (trade/dispute) lưu NGUYÊN URL tuyệt đối vào cột "key". Bọc nó

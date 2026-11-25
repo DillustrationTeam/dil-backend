@@ -14,6 +14,9 @@ public class CreateCommissionRequest
     public DateTimeOffset? DeadlineAt { get; set; }
     public string? VoucherCode { get; set; }
     public List<string>? ReferenceImages { get; set; } = [];
+    public List<Guid>? AiReferenceImageIds { get; set; } = [];
+    public bool IsFreestyle { get; set; }
+    public string? LayoutHint { get; set; }
 }
 
 public class RespondCommissionRequest

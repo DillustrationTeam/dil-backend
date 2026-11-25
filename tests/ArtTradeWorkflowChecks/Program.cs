@@ -555,6 +555,9 @@ public class TestStorageService : IStorageService
     public Task<string> UploadPrivateAsync(Stream stream, string key, string contentType, CancellationToken ct = default)
         => Task.FromResult($"private/{key}");
 
+    public Task DeletePrivateAsync(string privateKey, CancellationToken ct = default)
+        => Task.CompletedTask;
+
     public string GeneratePresignedDownloadUrl(string privateKey, TimeSpan expiry)
         => $"https://private-bucket.example.com/{privateKey}?expires={DateTimeOffset.UtcNow.Add(expiry).ToUnixTimeSeconds()}";
 }

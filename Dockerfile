@@ -20,6 +20,11 @@ COPY --from=build /app/publish .
 
 RUN mkdir -p /app/uploads && chown -R $APP_UID:$APP_UID /app/uploads
 
+# Font for drawing the visible "AI REFERENCE" watermark on AI reference sketches (ImageSharp needs a system font).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 ENV ASPNETCORE_URLS=http://+:8080 \
     ASPNETCORE_ENVIRONMENT=Production
 EXPOSE 8080

@@ -106,6 +106,8 @@ public interface IApplicationDbContext
     DbSet<AiMessage> AiMessages { get; }
     DbSet<DeadlineReminder> DeadlineReminders { get; }
     DbSet<UserReminderSetting> UserReminderSettings { get; }
+    DbSet<AiReferenceGeneration> AiReferenceGenerations { get; }
+    DbSet<AiReferenceImage> AiReferenceImages { get; }
 
     // Module Creator Revenue Analytics (UC51)
     DbSet<RevenueSnapshot> RevenueSnapshots { get; }
