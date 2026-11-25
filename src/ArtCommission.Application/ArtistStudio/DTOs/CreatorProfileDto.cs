@@ -16,7 +16,8 @@ public record CreatorProfileDto(
     int RatingCount,
     int FollowerCount,
     DateTimeOffset CreatedAt,
-    int AvailableSlots = 0
+    int AvailableSlots = 0,
+    string? AvatarUrl = null
 );
 
 public record CreateCreatorProfileRequest(
