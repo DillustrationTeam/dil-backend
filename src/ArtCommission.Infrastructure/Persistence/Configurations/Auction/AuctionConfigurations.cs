@@ -46,6 +46,11 @@ public class AuctionConfiguration : IEntityTypeConfiguration<AuctionEntity>
         builder.Property(a => a.FeeSurchargePercent).HasPrecision(5, 2);
         builder.Property(a => a.EffectiveFeePercent).HasPrecision(5, 2);
 
+        // Fraud-detection snapshot (see AuctionRiskAssessment). Nullable: never-scanned auctions
+        // keep NULL so "not scanned yet" stays distinguishable from "scanned, score 0".
+        builder.Property(a => a.RiskScore).HasPrecision(5, 2);
+        builder.Property(a => a.RiskLevel).HasConversion<string>().HasMaxLength(16);
+
         builder.Property(a => a.BidCount).HasDefaultValue(0);
         builder.Property(a => a.RowVersion).IsRowVersion();
 

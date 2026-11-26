@@ -10,6 +10,13 @@ public interface IIdentityService
     Task<(bool Success, UserDto? User, string[] Roles, string[] Errors)> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default);
     Task<(bool Success, UserDto? User, string[] Roles, string[] Errors)> GetUserByEmailAsync(string email, CancellationToken cancellationToken = default);
     Task<bool> IsEmailUniqueAsync(string email, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Ids of every active (not soft-deleted) user holding <paramref name="roleName"/>.
+    /// Used to fan out operational alerts (fraud queue, dispute escalation) to the operators who
+    /// actually act on them, without leaking Identity types into the Application layer.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> GetUserIdsInRoleAsync(string roleName, CancellationToken cancellationToken = default);
     Task<bool> VerifyUserEmailAsync(Guid userId, CancellationToken cancellationToken = default);
     Task<(bool Success, string[] Errors)> ChangePasswordAsync(Guid userId, string currentPassword, string newPassword, CancellationToken cancellationToken = default);
     Task<bool> HasPasswordAsync(Guid userId, CancellationToken cancellationToken = default);

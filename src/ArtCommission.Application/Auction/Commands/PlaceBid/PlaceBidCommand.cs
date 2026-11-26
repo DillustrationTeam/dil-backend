@@ -1,5 +1,6 @@
 using ArtCommission.Application.Auction.Common;
 using ArtCommission.Application.Auction.DTOs;
+using ArtCommission.Application.Auction.Risk;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
@@ -58,6 +59,7 @@ public sealed class PlaceBidCommandHandler
     private readonly IAuctionLifecycleNotifier _lifecycleNotifier;
     private readonly IAuctionSettlementService _settlementService;
     private readonly IWalletService _walletService;
+    private readonly IRiskEngine _riskEngine;
     private readonly ILogger<PlaceBidCommandHandler> _logger;
 
     public PlaceBidCommandHandler(
@@ -68,6 +70,7 @@ public sealed class PlaceBidCommandHandler
         IAuctionLifecycleNotifier lifecycleNotifier,
         IAuctionSettlementService settlementService,
         IWalletService walletService,
+        IRiskEngine riskEngine,
         ILogger<PlaceBidCommandHandler> logger)
     {
         _db = db;
@@ -77,6 +80,7 @@ public sealed class PlaceBidCommandHandler
         _lifecycleNotifier = lifecycleNotifier;
         _settlementService = settlementService;
         _walletService = walletService;
+        _riskEngine = riskEngine;
         _logger = logger;
     }
 
@@ -493,6 +497,17 @@ public sealed class PlaceBidCommandHandler
             if (oldLeading is not null && oldLeading.BidderId != winner.BidderId)
             {
                 await PublishOutbidNotificationAsync(oldLeading, winnerBidderName: null, auction, requestBid.Id, cancellationToken);
+            }
+
+            // Fraud detection, hot path: only rules that need data already in memory. Runs after the
+            // commit so a detector failure can never roll back a legitimate bid.
+            try
+            {
+                await _riskEngine.EvaluateAsync(auction.Id, hotPathOnly: true, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Risk hot-path evaluation failed for auctionId={AuctionId}.", auction.Id);
             }
 
             return (true, result, [], null);

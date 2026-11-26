@@ -97,7 +97,13 @@ public enum NotificationType
     BugReportReplied,
 
     /// <summary>Có tin nhắn mới trong phòng làm việc (Workroom Chat).</summary>
-    WorkroomMessage
+    WorkroomMessage,
+
+    /// <summary>Fraud detector flagged an auction above the alert threshold. Sent to Administrator/Moderator.</summary>
+    AuctionFraudAlert,
+
+    /// <summary>Neutral notice to the seller that one of their auctions is under extra review.</summary>
+    AuctionRiskFlagged
 }
 
 public static class NotificationTypeNames
@@ -130,6 +136,8 @@ public static class NotificationTypeNames
     public const string SubmissionDisputeCreated = nameof(NotificationType.SubmissionDisputeCreated);
     public const string BugReportReplied = nameof(NotificationType.BugReportReplied);
     public const string WorkroomMessage = nameof(NotificationType.WorkroomMessage);
+    public const string AuctionFraudAlert = nameof(NotificationType.AuctionFraudAlert);
+    public const string AuctionRiskFlagged = nameof(NotificationType.AuctionRiskFlagged);
 
     public static readonly string[] All =
     [
@@ -160,7 +168,9 @@ public static class NotificationTypeNames
         TradeDisputeResolved,
         SubmissionDisputeCreated,
         BugReportReplied,
-        WorkroomMessage
+        WorkroomMessage,
+        AuctionFraudAlert,
+        AuctionRiskFlagged
     ];
 }
 
