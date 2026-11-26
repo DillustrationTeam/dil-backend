@@ -80,6 +80,17 @@ public class GeminiAiClient : IAiChatClient, ITranslationClient
         return SendAsync(contents, systemInstruction, cancellationToken, maxOutputTokens, jsonResponse);
     }
 
+    public Task<AiCompletionResult> CompleteWithToolsAsync(
+        string? systemInstruction,
+        IReadOnlyList<AiChatTurn> history,
+        string userMessage,
+        IReadOnlyList<IAiTool> tools,
+        CancellationToken cancellationToken = default)
+    {
+        // TODO: Implement Gemini function-calling loop when tools are wired up.
+        return CompleteAsync(systemInstruction, history, userMessage, cancellationToken);
+    }
+
     public Task<AiCompletionResult> TranslateAsync(
         string text,
         string targetLang,

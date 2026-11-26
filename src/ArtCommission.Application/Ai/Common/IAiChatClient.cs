@@ -58,6 +58,17 @@ public interface IAiChatClient
         CancellationToken cancellationToken = default,
         int? maxOutputTokens = null,
         bool jsonResponse = false);
+
+    /// <summary>
+    /// Sinh câu trả lời có hỗ trợ gọi hàm tra cứu (<see cref="IAiTool"/>).
+    /// Khi <paramref name="tools"/> rỗng, hành vi tương đương <see cref="CompleteAsync"/>.
+    /// </summary>
+    Task<AiCompletionResult> CompleteWithToolsAsync(
+        string? systemInstruction,
+        IReadOnlyList<AiChatTurn> history,
+        string userMessage,
+        IReadOnlyList<IAiTool> tools,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

@@ -283,6 +283,8 @@ builder.Services.AddScoped<ITranslationClient>(sp => new FallbackTranslationClie
     sp.GetRequiredService<ILogger<FallbackTranslationClient>>()));
 
 builder.Services.AddScoped<IAiContextBuilder, AiContextBuilder>();
+// Đăng ký các IAiTool tra cứu dữ liệu công khai cho AI Assistant tại đây, ví dụ:
+// builder.Services.AddScoped<IAiTool, SearchEventsTool>();
 builder.Services.AddScoped<IDeadlineRiskPredictor, DeadlineRiskPredictor>();
 
 // 3j-quater. AI phác thảo bố cục reference — OpenAI Images (gpt-image-1-mini).
