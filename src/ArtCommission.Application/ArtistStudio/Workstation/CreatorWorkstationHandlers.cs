@@ -64,7 +64,6 @@ public class CreatorWorkstationMutationHandler : IRequestHandler<CreatorWorkstat
                 entity.CommercialLicenseMultiplier = Math.Round(terms.CommercialLicenseMultiplier, 2, MidpointRounding.AwayFromZero);
                 entity.RevisionPolicy = TrimMax(terms.RevisionPolicy, 2000);
                 entity.CancellationPolicy = TrimMax(terms.CancellationPolicy, 2000);
-                entity.AllowAiReferenceSketch = terms.AllowAiReferenceSketch;
                 var customClauses = (ext.CustomClauses ?? Array.Empty<CreatorCustomClauseDto>()).Where(item => !string.IsNullOrWhiteSpace(item.Title) || !string.IsNullOrWhiteSpace(item.Content)).Take(10).Select(item => new CreatorCustomClauseDto(TrimMax(item.Title, 150) ?? "Điều khoản bổ sung", TrimMax(item.Content, 1500) ?? string.Empty)).ToArray();
                 entity.ExtendedTermsJson = CreatorTermsHelper.SerializeExtended(ext with { Version = isNewTerms && string.IsNullOrEmpty(entity.ExtendedTermsJson) ? 1 : prevExt.Version + 1, WillDraw = TrimMax(ext.WillDraw, 1500), WontDraw = TrimMax(ext.WontDraw, 1500), CommercialScope = TrimMax(ext.CommercialScope, 1500), UsageRestrictions = TrimMax(ext.UsageRestrictions, 1500), DeliveryProcess = null, CustomClauses = customClauses });
                 entity.UpdatedAt = DateTimeOffset.UtcNow;

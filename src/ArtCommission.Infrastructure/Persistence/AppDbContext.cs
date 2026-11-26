@@ -108,8 +108,6 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<AiMessage> AiMessages => Set<AiMessage>();
     public DbSet<DeadlineReminder> DeadlineReminders => Set<DeadlineReminder>();
     public DbSet<UserReminderSetting> UserReminderSettings => Set<UserReminderSetting>();
-    public DbSet<AiReferenceGeneration> AiReferenceGenerations => Set<AiReferenceGeneration>();
-    public DbSet<AiReferenceImage> AiReferenceImages => Set<AiReferenceImage>();
 
     // ---------------------------------------------------------------------
     // Module Creator Revenue Analytics (UC51)

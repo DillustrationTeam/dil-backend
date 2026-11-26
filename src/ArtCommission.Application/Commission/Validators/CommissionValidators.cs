@@ -25,15 +25,6 @@ public class CreateCommissionRequestValidator : AbstractValidator<CreateCommissi
             .NotEmpty().WithMessage("Đường dẫn tệp tham chiếu không được để trống.")
             .MaximumLength(2000).WithMessage("Đường dẫn tệp tham chiếu tối đa 2000 ký tự.")
             .Must(IsSafeHttpUrl).WithMessage("Đường dẫn tệp/ảnh tham chiếu phải là HTTP(S) hợp lệ và an toàn.");
-        RuleFor(x => x.LayoutHint)
-            .MaximumLength(ArtCommission.Application.Ai.ReferenceSketch.ReferenceSketchLimits.MaxLayoutHintLength)
-            .WithMessage("Gợi ý bố cục tối đa 300 ký tự.");
-        RuleFor(x => x)
-            .Must(x => (x.ReferenceImages?.Count ?? 0) + (x.AiReferenceImageIds?.Count ?? 0) <= 10)
-            .WithMessage("Chỉ được đính kèm tối đa 10 ảnh/tệp tham chiếu (bao gồm ảnh AI).");
-        RuleFor(x => x)
-            .Must(x => !x.IsFreestyle || (x.AiReferenceImageIds?.Count ?? 0) == 0)
-            .WithMessage("Không thể chọn ảnh AI khi để creator tự freestyle.");
     }
 
     public static bool IsSafeHttpUrl(string? value)

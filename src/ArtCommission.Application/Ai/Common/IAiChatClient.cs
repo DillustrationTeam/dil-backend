@@ -42,22 +42,11 @@ public interface IAiChatClient
     /// </param>
     /// <param name="history">Lịch sử hội thoại theo thứ tự thời gian, KHÔNG gồm lượt hỏi mới.</param>
     /// <param name="userMessage">Câu hỏi mới của người dùng.</param>
-    /// <param name="maxOutputTokens">
-    /// Đè trần token cho RIÊNG lượt gọi này (null = dùng mặc định cấu hình chung
-    /// <c>GeminiOptions.MaxOutputTokens</c>). Dùng khi 1 tính năng cần JSON có cấu trúc
-    /// dài hơn mức mặc định mà không muốn đổi mặc định chung ảnh hưởng mọi tính năng AI khác.
-    /// </param>
-    /// <param name="jsonResponse">
-    /// true = yêu cầu provider trả JSON thuần (Gemini <c>responseMimeType = application/json</c>),
-    /// giảm lỗi JSON hỏng/bọc markdown cho các tính năng cần đầu ra có cấu trúc.
-    /// </param>
     Task<AiCompletionResult> CompleteAsync(
         string? systemInstruction,
         IReadOnlyList<AiChatTurn> history,
         string userMessage,
-        CancellationToken cancellationToken = default,
-        int? maxOutputTokens = null,
-        bool jsonResponse = false);
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

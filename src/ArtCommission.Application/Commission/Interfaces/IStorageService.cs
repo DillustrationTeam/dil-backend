@@ -12,5 +12,4 @@ public interface IStorageService
     Task<Stream?> OpenPrivateReadAsync(string privateKey, CancellationToken ct = default)
         => Task.FromResult<Stream?>(null);
     string GeneratePresignedDownloadUrl(string privateKey, TimeSpan expiry);
-    Task DeletePrivateAsync(string privateKey, CancellationToken ct = default);
 }

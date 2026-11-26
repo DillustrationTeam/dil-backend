@@ -24,16 +24,14 @@ public record CreatorTermsDto(
     string? RevisionPolicy,
     string? CancellationPolicy,
     CreatorExtendedTermsDto? Extended = null,
-    DateTimeOffset? UpdatedAt = null,
-    bool AllowAiReferenceSketch = false
+    DateTimeOffset? UpdatedAt = null
 );
 
 public record UpdateCreatorTermsRequest(
     decimal CommercialLicenseMultiplier,
     string? RevisionPolicy,
     string? CancellationPolicy,
-    CreatorExtendedTermsDto? Extended = null,
-    bool AllowAiReferenceSketch = false
+    CreatorExtendedTermsDto? Extended = null
 );
 
 public static class CreatorTermsHelper
@@ -105,8 +103,7 @@ public static class CreatorTermsHelper
             OrDefault(terms.RevisionPolicy, string.Empty) is { Length: > 0 } rev ? rev : null,
             OrDefault(terms.CancellationPolicy, string.Empty) is { Length: > 0 } cancel ? cancel : null,
             ParseExtended(terms.ExtendedTermsJson),
-            terms.UpdatedAt ?? terms.CreatedAt,
-            terms.AllowAiReferenceSketch
+            terms.UpdatedAt ?? terms.CreatedAt
         );
     }
 

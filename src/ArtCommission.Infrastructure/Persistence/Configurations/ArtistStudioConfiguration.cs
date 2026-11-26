@@ -235,7 +235,6 @@ public class CreatorTermsConfiguration : IEntityTypeConfiguration<CreatorTerms>
     public void Configure(EntityTypeBuilder<CreatorTerms> builder)
     {
         builder.Property(x => x.CommercialLicenseMultiplier).HasPrecision(18, 2);
-        builder.Property(x => x.AllowAiReferenceSketch).HasDefaultValue(false);
     }
 }
 

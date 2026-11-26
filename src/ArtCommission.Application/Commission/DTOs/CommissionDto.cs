@@ -13,7 +13,6 @@ public class CommissionDto
     public Guid? VoucherId { get; set; }
     public string LicenseType { get; set; } = "Personal";
     public decimal LicenseMultiplierApplied { get; set; }
-    public decimal AiReferenceDiscountPercentApplied { get; set; }
     public decimal DiscountAmount { get; set; }
     public decimal TotalPrice { get; set; }
     public decimal FinalPrice { get; set; }
@@ -41,13 +40,8 @@ public class CommissionDto
     public string CurrentWorkroomTermsVersion { get; set; } = "1.0";
     public ArtCommission.Application.ArtistStudio.DTOs.CreatorTermsDto? CreatorTermsSnapshot { get; set; }
     public List<string> ReferenceImages { get; set; } = [];
-    public List<AiReferenceImageSummaryDto> AiReferenceImages { get; set; } = [];
-    public bool IsFreestyle { get; set; }
-    public string? LayoutHint { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 }
-
-public sealed record AiReferenceImageSummaryDto(string Url, string LabelVi, string LabelEn);
 
 public class CommissionDetailDto : CommissionDto
 {
