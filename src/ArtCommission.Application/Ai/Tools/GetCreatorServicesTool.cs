@@ -11,7 +11,7 @@ public sealed class GetCreatorServicesTool(IApplicationDbContext db) : IAiTool
     public string Name => "get_creator_services";
 
     public string Description =>
-        "Gets an approved creator's active commission packages, add-ons, FAQs, rate card, and commission terms by creatorProfileId or displayName.";
+        "Gets an approved creator's active commission packages (optionally filtered by maxPrice or maxDeliveryDays), add-ons, FAQs, rate card, and commission terms by creatorProfileId or displayName.";
 
     public object ParametersSchema => new
     {
@@ -27,6 +27,16 @@ public sealed class GetCreatorServicesTool(IApplicationDbContext db) : IAiTool
             {
                 type = "string",
                 description = "Optional creator display name to look up"
+            },
+            maxPrice = new
+            {
+                type = "number",
+                description = "Optional maximum starting price filter (VND)"
+            },
+            maxDeliveryDays = new
+            {
+                type = "integer",
+                description = "Optional maximum delivery days filter"
             }
         }
     };
@@ -41,6 +51,14 @@ public sealed class GetCreatorServicesTool(IApplicationDbContext db) : IAiTool
 
         var displayName = args.TryGetProperty("displayName", out var dnProp) && dnProp.ValueKind == JsonValueKind.String
             ? dnProp.GetString()?.Trim().ToLower()
+            : null;
+
+        decimal? maxPrice = args.TryGetProperty("maxPrice", out var maxP) && maxP.ValueKind == JsonValueKind.Number && maxP.TryGetDecimal(out var parsedMaxP)
+            ? parsedMaxP
+            : null;
+
+        int? maxDeliveryDays = args.TryGetProperty("maxDeliveryDays", out var maxD) && maxD.ValueKind == JsonValueKind.Number && maxD.TryGetInt32(out var parsedMaxD)
+            ? parsedMaxD
             : null;
 
         if (profileId is null && string.IsNullOrEmpty(displayName))
@@ -80,7 +98,12 @@ public sealed class GetCreatorServicesTool(IApplicationDbContext db) : IAiTool
 
         var services = await db.CommissionServices
             .AsNoTracking()
-            .Where(s => s.CreatorProfileId == creator.Id && s.IsActive && !s.IsDeleted)
+            .Where(s => s.CreatorProfileId == creator.Id
+                && s.IsActive
+                && !s.IsDeleted
+                && (!maxPrice.HasValue || s.StartingPrice <= maxPrice.Value)
+                && (!maxDeliveryDays.HasValue || s.DeliveryDays <= maxDeliveryDays.Value))
+            .OrderBy(s => s.StartingPrice)
             .Select(s => new
             {
                 s.Title,
@@ -94,6 +117,7 @@ public sealed class GetCreatorServicesTool(IApplicationDbContext db) : IAiTool
         var addons = await db.Set<CreatorAddon>()
             .AsNoTracking()
             .Where(a => a.CreatorId == creator.Id && a.IsActive && !a.IsDeleted)
+            .OrderBy(a => a.Price)
             .Select(a => new
             {
                 a.Title,

@@ -10,7 +10,7 @@ public sealed class SearchArtworkCategoriesTool(IApplicationDbContext db) : IAiT
     public string Name => "search_artwork_categories";
 
     public string Description =>
-        "Lists or searches active artwork categories and public non-AI tags.";
+        "Lists or searches active artwork categories (with approved public artwork counts) and public non-AI tags.";
 
     public object ParametersSchema => new
     {
@@ -20,12 +20,28 @@ public sealed class SearchArtworkCategoriesTool(IApplicationDbContext db) : IAiT
             keyword = new
             {
                 type = "string",
-                description = "Optional keyword matching category name, description, or tag name"
+                description = "Optional keyword matching category name, slug, description, or tag name"
             },
             includeTags = new
             {
                 type = "boolean",
                 description = "Whether to include matching public tags (default true)"
+            },
+            nonEmptyOnly = new
+            {
+                type = "boolean",
+                description = "If true, only return categories that have at least one approved public artwork"
+            },
+            sortBy = new
+            {
+                type = "string",
+                @enum = new[] { "display_order", "artwork_count", "name" },
+                description = "Optional sort order for categories (defaults to display_order)"
+            },
+            tagLimit = new
+            {
+                type = "integer",
+                description = "Optional maximum number of tags to return (1-50, default 30)"
             }
         }
     };
@@ -37,10 +53,37 @@ public sealed class SearchArtworkCategoriesTool(IApplicationDbContext db) : IAiT
             : null;
 
         var includeTags = !args.TryGetProperty("includeTags", out var inc) || inc.ValueKind != JsonValueKind.False;
+        var nonEmptyOnly = args.TryGetProperty("nonEmptyOnly", out var ne) && ne.ValueKind == JsonValueKind.True;
+
+        var sortBy = args.TryGetProperty("sortBy", out var sb) && sb.ValueKind == JsonValueKind.String
+            ? sb.GetString()?.Trim().ToLowerInvariant()
+            : "display_order";
+
+        var tagLimit = args.TryGetProperty("tagLimit", out var tl) && tl.ValueKind == JsonValueKind.Number && tl.TryGetInt32(out var parsedLimit)
+            ? Math.Clamp(parsedLimit, 1, 50)
+            : 30;
 
         var catQuery = db.ArtworkCategories
             .AsNoTracking()
-            .Where(c => c.IsActive && !c.IsDeleted);
+            .Where(c => c.IsActive && !c.IsDeleted)
+            .Select(c => new
+            {
+                c.Name,
+                c.Slug,
+                c.Description,
+                c.DisplayOrder,
+                approvedArtworkCount = c.Artworks.Count(a =>
+                    !a.IsDeleted
+                    && a.ModerationStatus == "Approved"
+                    && a.CreatorProfile != null
+                    && a.CreatorProfile.IsApproved
+                    && !a.CreatorProfile.IsDeleted)
+            });
+
+        if (nonEmptyOnly)
+        {
+            catQuery = catQuery.Where(c => c.approvedArtworkCount > 0);
+        }
 
         if (!string.IsNullOrEmpty(keyword))
         {
@@ -50,13 +93,20 @@ public sealed class SearchArtworkCategoriesTool(IApplicationDbContext db) : IAiT
                 || (c.Description != null && c.Description.ToLower().Contains(keyword)));
         }
 
+        catQuery = sortBy switch
+        {
+            "artwork_count" => catQuery.OrderByDescending(c => c.approvedArtworkCount).ThenBy(c => c.DisplayOrder),
+            "name" => catQuery.OrderBy(c => c.Name),
+            _ => catQuery.OrderBy(c => c.DisplayOrder).ThenBy(c => c.Name)
+        };
+
         var categories = await catQuery
-            .OrderBy(c => c.DisplayOrder)
             .Select(c => new
             {
                 c.Name,
                 c.Slug,
-                c.Description
+                c.Description,
+                c.approvedArtworkCount
             })
             .ToListAsync(cancellationToken);
 
@@ -73,9 +123,20 @@ public sealed class SearchArtworkCategoriesTool(IApplicationDbContext db) : IAiT
             }
 
             tags = await tagQuery
-                .OrderBy(t => t.Name)
-                .Take(30)
-                .Select(t => t.Name)
+                .Select(t => new
+                {
+                    t.Name,
+                    approvedArtworkCount = t.ArtworkTags.Count(at =>
+                        at.Artwork != null
+                        && !at.Artwork.IsDeleted
+                        && at.Artwork.ModerationStatus == "Approved"
+                        && at.Artwork.CreatorProfile != null
+                        && at.Artwork.CreatorProfile.IsApproved
+                        && !at.Artwork.CreatorProfile.IsDeleted)
+                })
+                .OrderByDescending(t => t.approvedArtworkCount)
+                .ThenBy(t => t.Name)
+                .Take(tagLimit)
                 .ToListAsync(cancellationToken);
         }
 

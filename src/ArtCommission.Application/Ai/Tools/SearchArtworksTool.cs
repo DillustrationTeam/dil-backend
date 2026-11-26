@@ -10,7 +10,7 @@ public sealed class SearchArtworksTool(IApplicationDbContext db) : IAiTool
     public string Name => "search_artworks";
 
     public string Description =>
-        "Searches approved public artworks by optional keyword, art style, category slug, or AI-generated filter.";
+        "Searches approved public artworks by optional keyword, art style, category slug, creator name, license type, price range, AI-generated filter, and sort order.";
 
     public object ParametersSchema => new
     {
@@ -32,10 +32,37 @@ public sealed class SearchArtworksTool(IApplicationDbContext db) : IAiTool
                 type = "string",
                 description = "Optional artwork category slug"
             },
+            creatorName = new
+            {
+                type = "string",
+                description = "Optional creator display name filter"
+            },
+            licenseType = new
+            {
+                type = "string",
+                @enum = new[] { "Personal", "Commercial" },
+                description = "Optional license type filter"
+            },
+            minPrice = new
+            {
+                type = "number",
+                description = "Optional minimum starting price (VND)"
+            },
+            maxPrice = new
+            {
+                type = "number",
+                description = "Optional maximum starting price (VND)"
+            },
             excludeAiGenerated = new
             {
                 type = "boolean",
                 description = "If true, exclude artworks marked as AI-generated"
+            },
+            sortBy = new
+            {
+                type = "string",
+                @enum = new[] { "popular", "newest", "views", "price_asc", "price_desc" },
+                description = "Optional sort order (defaults to popular)"
             }
         }
     };
@@ -54,7 +81,27 @@ public sealed class SearchArtworksTool(IApplicationDbContext db) : IAiTool
             ? cat.GetString()?.Trim().ToLower()
             : null;
 
+        var creatorName = args.TryGetProperty("creatorName", out var cn) && cn.ValueKind == JsonValueKind.String
+            ? cn.GetString()?.Trim().ToLower()
+            : null;
+
+        var licenseType = args.TryGetProperty("licenseType", out var lt) && lt.ValueKind == JsonValueKind.String
+            ? lt.GetString()?.Trim().ToLower()
+            : null;
+
+        decimal? minPrice = args.TryGetProperty("minPrice", out var minP) && minP.ValueKind == JsonValueKind.Number && minP.TryGetDecimal(out var parsedMinP)
+            ? parsedMinP
+            : null;
+
+        decimal? maxPrice = args.TryGetProperty("maxPrice", out var maxP) && maxP.ValueKind == JsonValueKind.Number && maxP.TryGetDecimal(out var parsedMaxP)
+            ? parsedMaxP
+            : null;
+
         var excludeAi = args.TryGetProperty("excludeAiGenerated", out var ai) && ai.ValueKind == JsonValueKind.True;
+
+        var sortBy = args.TryGetProperty("sortBy", out var sb) && sb.ValueKind == JsonValueKind.String
+            ? sb.GetString()?.Trim().ToLowerInvariant()
+            : "popular";
 
         var query = db.Artworks
             .AsNoTracking()
@@ -79,6 +126,26 @@ public sealed class SearchArtworksTool(IApplicationDbContext db) : IAiTool
             query = query.Where(a => a.Category != null && a.Category.Slug.ToLower() == categorySlug);
         }
 
+        if (!string.IsNullOrEmpty(creatorName))
+        {
+            query = query.Where(a => a.CreatorProfile!.DisplayName.ToLower().Contains(creatorName));
+        }
+
+        if (!string.IsNullOrEmpty(licenseType))
+        {
+            query = query.Where(a => a.LicenseType.ToLower() == licenseType);
+        }
+
+        if (minPrice.HasValue)
+        {
+            query = query.Where(a => a.StartingPrice.HasValue && a.StartingPrice.Value >= minPrice.Value);
+        }
+
+        if (maxPrice.HasValue)
+        {
+            query = query.Where(a => a.StartingPrice.HasValue && a.StartingPrice.Value <= maxPrice.Value);
+        }
+
         if (!string.IsNullOrEmpty(keyword))
         {
             query = query.Where(a =>
@@ -87,9 +154,16 @@ public sealed class SearchArtworksTool(IApplicationDbContext db) : IAiTool
                 || a.ArtworkTags.Any(at => at.Tag != null && at.Tag.Name.ToLower().Contains(keyword)));
         }
 
+        query = sortBy switch
+        {
+            "newest" => query.OrderByDescending(a => a.CreatedAt),
+            "views" => query.OrderByDescending(a => a.ViewCount).ThenByDescending(a => a.LikeCount),
+            "price_asc" => query.OrderBy(a => a.StartingPrice ?? decimal.MaxValue),
+            "price_desc" => query.OrderByDescending(a => a.StartingPrice ?? -1m),
+            _ => query.OrderByDescending(a => a.LikeCount).ThenByDescending(a => a.ViewCount)
+        };
+
         return await query
-            .OrderByDescending(a => a.LikeCount)
-            .ThenByDescending(a => a.ViewCount)
             .Take(10)
             .Select(a => new
             {

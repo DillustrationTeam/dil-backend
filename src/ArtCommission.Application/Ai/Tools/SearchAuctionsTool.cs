@@ -11,7 +11,7 @@ public sealed class SearchAuctionsTool(IApplicationDbContext db) : IAiTool
     public string Name => "search_auctions";
 
     public string Description =>
-        "Searches or lists public artwork auctions by optional keyword, status, physical copy availability, or max current price.";
+        "Searches or lists public artwork auctions by optional keyword, status, auctionType, physical copy availability, buy-now option, price range, end date, and sort order.";
 
     public object ParametersSchema => new
     {
@@ -29,15 +29,42 @@ public sealed class SearchAuctionsTool(IApplicationDbContext db) : IAiTool
                 @enum = new[] { "scheduled", "active", "ended", "any" },
                 description = "Optional auction status filter (defaults to any)"
             },
+            auctionType = new
+            {
+                type = "string",
+                @enum = new[] { "standard", "buynow", "any" },
+                description = "Optional auction type filter"
+            },
             hasPhysicalCopy = new
             {
                 type = "boolean",
                 description = "Optional filter for auctions offering a physical copy"
             },
+            hasBuyNow = new
+            {
+                type = "boolean",
+                description = "If true, only return auctions with a buy-now price"
+            },
+            minPrice = new
+            {
+                type = "number",
+                description = "Optional minimum current price (VND)"
+            },
             maxPrice = new
             {
                 type = "number",
                 description = "Optional maximum current price (VND)"
+            },
+            endingBefore = new
+            {
+                type = "string",
+                description = "Optional ISO 8601 date/time; returns auctions ending on or before this time"
+            },
+            sortBy = new
+            {
+                type = "string",
+                @enum = new[] { "ending_soon", "price_asc", "price_desc", "most_bids" },
+                description = "Optional sort order (defaults to ending_soon)"
             }
         }
     };
@@ -52,13 +79,33 @@ public sealed class SearchAuctionsTool(IApplicationDbContext db) : IAiTool
             ? st.GetString()?.Trim().ToLowerInvariant()
             : "any";
 
+        var auctionType = args.TryGetProperty("auctionType", out var at) && at.ValueKind == JsonValueKind.String
+            ? at.GetString()?.Trim().ToLowerInvariant()
+            : "any";
+
         bool? hasPhysicalCopy = args.TryGetProperty("hasPhysicalCopy", out var phys) && phys.ValueKind is JsonValueKind.True or JsonValueKind.False
             ? phys.GetBoolean()
+            : null;
+
+        var hasBuyNow = args.TryGetProperty("hasBuyNow", out var bn) && bn.ValueKind == JsonValueKind.True;
+
+        decimal? minPrice = args.TryGetProperty("minPrice", out var minP) && minP.ValueKind == JsonValueKind.Number && minP.TryGetDecimal(out var parsedMinP)
+            ? parsedMinP
             : null;
 
         decimal? maxPrice = args.TryGetProperty("maxPrice", out var mp) && mp.ValueKind == JsonValueKind.Number && mp.TryGetDecimal(out var dec)
             ? dec
             : null;
+
+        DateTimeOffset? endingBefore = args.TryGetProperty("endingBefore", out var eb)
+            && eb.ValueKind == JsonValueKind.String
+            && DateTimeOffset.TryParse(eb.GetString(), out var parsedEb)
+                ? parsedEb
+                : null;
+
+        var sortBy = args.TryGetProperty("sortBy", out var sb) && sb.ValueKind == JsonValueKind.String
+            ? sb.GetString()?.Trim().ToLowerInvariant()
+            : "ending_soon";
 
         var query = db.Auctions
             .AsNoTracking()
@@ -72,14 +119,36 @@ public sealed class SearchAuctionsTool(IApplicationDbContext db) : IAiTool
             _ => query.Where(a => a.Status != AuctionStatus.Cancelled)
         };
 
+        query = auctionType switch
+        {
+            "standard" => query.Where(a => a.AuctionType == AuctionType.Standard),
+            "buynow" => query.Where(a => a.AuctionType == AuctionType.BuyNow),
+            _ => query
+        };
+
         if (hasPhysicalCopy.HasValue)
         {
             query = query.Where(a => a.HasPhysicalCopy == hasPhysicalCopy.Value);
         }
 
+        if (hasBuyNow)
+        {
+            query = query.Where(a => a.BuyNowPrice.HasValue);
+        }
+
+        if (minPrice.HasValue)
+        {
+            query = query.Where(a => a.CurrentPrice >= minPrice.Value);
+        }
+
         if (maxPrice.HasValue)
         {
             query = query.Where(a => a.CurrentPrice <= maxPrice.Value);
+        }
+
+        if (endingBefore.HasValue)
+        {
+            query = query.Where(a => a.EndAt <= endingBefore.Value);
         }
 
         if (!string.IsNullOrEmpty(keyword))
@@ -89,8 +158,15 @@ public sealed class SearchAuctionsTool(IApplicationDbContext db) : IAiTool
                 || (a.PhysicalDescription != null && a.PhysicalDescription.ToLower().Contains(keyword)));
         }
 
+        query = sortBy switch
+        {
+            "price_asc" => query.OrderBy(a => a.CurrentPrice),
+            "price_desc" => query.OrderByDescending(a => a.CurrentPrice),
+            "most_bids" => query.OrderByDescending(a => a.BidCount).ThenBy(a => a.EndAt),
+            _ => query.OrderBy(a => a.EndAt)
+        };
+
         return await query
-            .OrderBy(a => a.EndAt)
             .Take(10)
             .Select(a => new
             {
