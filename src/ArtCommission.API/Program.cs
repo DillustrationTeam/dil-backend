@@ -286,6 +286,7 @@ builder.Services.AddScoped<IAiContextBuilder, AiContextBuilder>();
 builder.Services.AddScoped<IAiTool, ArtCommission.Application.Ai.Tools.SearchEventsTool>();
 builder.Services.AddScoped<IAiTool, ArtCommission.Application.Ai.Tools.GetEventDetailsTool>();
 builder.Services.AddScoped<IAiTool, ArtCommission.Application.Ai.Tools.SearchCreatorsTool>();
+builder.Services.AddScoped<IAiTool, ArtCommission.Application.Ai.Tools.SearchCommissionServicesTool>();
 builder.Services.AddScoped<IAiTool, ArtCommission.Application.Ai.Tools.GetCreatorServicesTool>();
 builder.Services.AddScoped<IAiTool, ArtCommission.Application.Ai.Tools.SearchArtworksTool>();
 builder.Services.AddScoped<IAiTool, ArtCommission.Application.Ai.Tools.SearchArtworkCategoriesTool>();
