@@ -13,6 +13,7 @@ public class Commission : BaseEntity
     public Guid? VoucherId { get; set; }
     public string LicenseType { get; set; } = "Personal";
     public decimal LicenseMultiplierApplied { get; set; } = 1m;
+    public decimal AiReferenceDiscountPercentApplied { get; set; } = 0m;
 
     public decimal DiscountAmount { get; set; } = 0.00m;
     public decimal TotalPrice { get; set; } = 0.00m;
@@ -37,6 +38,9 @@ public class Commission : BaseEntity
     public string? CreatorTermsVersion { get; set; }
     public string? CreatorTermsSnapshotJson { get; set; }
     public string? ReferenceImagesJson { get; set; }
+    public string? AiReferenceImagesJson { get; set; }
+    public bool IsFreestyle { get; set; }
+    public string? LayoutHint { get; set; }
 
     // Navigation properties
     public ICollection<Milestone> Milestones { get; set; } = new List<Milestone>();

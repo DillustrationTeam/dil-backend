@@ -46,6 +46,8 @@ public class AdminPlatformConfigController : ApiControllerBase
             MilestoneAutoApprovalDays: request.MilestoneAutoApprovalDays,
             DefaultFreeRevisionLimit: request.DefaultFreeRevisionLimit,
             PresignedUrlExpirationMinutes: request.PresignedUrlExpirationMinutes,
+            AiReferenceSketchDiscountPercent: request.AiReferenceSketchDiscountPercent,
+            AiReferenceSketchMaxGenerationsPerWindow: request.AiReferenceSketchMaxGenerationsPerWindow,
             AdminId: CurrentUserId
         );
 

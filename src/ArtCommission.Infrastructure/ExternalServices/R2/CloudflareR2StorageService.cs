@@ -76,6 +76,11 @@ public class CloudflareR2StorageService : IStorageService
         }
     }
 
+    public async Task DeletePrivateAsync(string privateKey, CancellationToken ct = default)
+    {
+        await _s3Client.DeleteObjectAsync(_privateBucket, privateKey, ct);
+    }
+
     public string GeneratePresignedDownloadUrl(string privateKey, TimeSpan expiry)
     {
         // Xem ghi chú ở LocalFileStorageService: URL tuyệt đối thì không ký lại.

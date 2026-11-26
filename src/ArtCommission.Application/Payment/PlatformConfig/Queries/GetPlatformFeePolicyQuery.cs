@@ -1,4 +1,5 @@
 using System.Globalization;
+using ArtCommission.Application.Ai.ReferenceSketch;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.Payment.PlatformConfig.DTOs;
 using ArtCommission.Domain.Entities.Payment;
@@ -31,7 +32,9 @@ public class GetPlatformFeePolicyQueryHandler : IRequestHandler<GetPlatformFeePo
             PlatformConfigKeys.EscrowHoldDaysSqlKey,
             PlatformConfigKeys.DefaultFreeRevisionLimit,
             PlatformConfigKeys.MaxRevisionCountSqlKey,
-            PlatformConfigKeys.PresignedUrlExpirationMinutes
+            PlatformConfigKeys.PresignedUrlExpirationMinutes,
+            PlatformConfigKeys.AiReferenceSketchDiscountPercent,
+            PlatformConfigKeys.AiReferenceSketchMaxGenerationsPerWindow
         };
 
         var configs = await _db.PlatformConfigs
@@ -78,6 +81,20 @@ public class GetPlatformFeePolicyQueryHandler : IRequestHandler<GetPlatformFeePo
             presignedUrlExpirationMinutes = parsedExp;
         }
 
+        decimal aiReferenceSketchDiscountPercent = 0m;
+        if (configDict.TryGetValue(PlatformConfigKeys.AiReferenceSketchDiscountPercent, out var aiDiscountStr) &&
+            decimal.TryParse(aiDiscountStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedAiDiscount))
+        {
+            aiReferenceSketchDiscountPercent = parsedAiDiscount;
+        }
+
+        int aiReferenceSketchMaxGenerationsPerWindow = ReferenceSketchLimits.MaxGenerationsPerWindow;
+        if (configDict.TryGetValue(PlatformConfigKeys.AiReferenceSketchMaxGenerationsPerWindow, out var aiLimitStr) &&
+            int.TryParse(aiLimitStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedAiLimit))
+        {
+            aiReferenceSketchMaxGenerationsPerWindow = parsedAiLimit;
+        }
+
         DateTimeOffset? latestUpdatedAt = configs.Count > 0
             ? configs.Max(c => c.UpdatedAt ?? c.CreatedAt)
             : null;
@@ -88,6 +105,8 @@ public class GetPlatformFeePolicyQueryHandler : IRequestHandler<GetPlatformFeePo
             MilestoneAutoApprovalDays = milestoneAutoApprovalDays,
             DefaultFreeRevisionLimit = defaultFreeRevisionLimit,
             PresignedUrlExpirationMinutes = presignedUrlExpirationMinutes,
+            AiReferenceSketchDiscountPercent = aiReferenceSketchDiscountPercent,
+            AiReferenceSketchMaxGenerationsPerWindow = aiReferenceSketchMaxGenerationsPerWindow,
             UpdatedAt = latestUpdatedAt
         };
     }

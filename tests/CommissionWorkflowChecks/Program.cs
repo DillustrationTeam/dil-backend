@@ -134,7 +134,7 @@ for (var i = 0; i < normal.Milestones.Length; i++)
 var approved = await service.GetCommissionByIdAsync(normal.Id, clientId);
 Equal(0m, approved!.EscrowHeldAmount, "escrow exhausted");
 Equal(EscrowStatus.Released.ToString(), approved.EscrowStatus, "escrow released");
-MemoryStream ValidPngStream() { using var img = new SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32>(1, 1); var ms = new MemoryStream(); SixLabors.ImageSharp.ImageExtensions.SaveAsPng(img, ms); ms.Position = 0; return ms; }
+MemoryStream ValidPngStream() { using var img = new SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32>(1, 1); var ms = new MemoryStream(); SixLabors.ImageSharp.ImageExtensions.SaveAsPng(img, ms); ms.Position = 0; return ms; }
 await service.DeliverFinalWorkAsync(normal.Id, ValidPngStream(), "image/png", "final.png", creatorId);
 var deliveryDownload = await service.GetFinalDownloadUrlAsync(normal.Id, clientId);
 Equal(true, deliveryDownload.DownloadUrl.StartsWith("https://example.test/"), "client can inspect final delivery before completion");
@@ -748,7 +748,7 @@ sealed class TestWatermark : IWatermarkService
 {
     public Task<Stream> ApplyWatermarkAsync(Stream stream, string text, CancellationToken ct = default) => Task.FromResult<Stream>(new MemoryStream(new byte[] { 4, 5, 6 }));
 }
-sealed class TestStorage : IStorageService
+sealed class TestStorage : IStorageService
 {
     public Dictionary<string, byte[]> UploadedPrivate { get; } = [];
     public Task<string> UploadPublicAsync(Stream stream, string key, string contentType, CancellationToken ct = default) => Task.FromResult(key);
@@ -762,6 +762,11 @@ sealed class TestStorage : IStorageService
     public Task<Stream?> OpenPrivateReadAsync(string key, CancellationToken ct = default)
         => Task.FromResult<Stream?>(UploadedPrivate.TryGetValue(key, out var bytes) ? new MemoryStream(bytes) : null);
     public string GeneratePresignedDownloadUrl(string key, TimeSpan expiry) => "https://example.test/" + key;
+    public Task DeletePrivateAsync(string key, CancellationToken ct = default)
+    {
+        UploadedPrivate.Remove(key);
+        return Task.CompletedTask;
+    }
 }
 
 sealed class TestPayOsPayoutService : IPayOsPayoutService

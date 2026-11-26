@@ -35,6 +35,12 @@ public class CommissionConfiguration : IEntityTypeConfiguration<Commission>
 
         builder.Property(c => c.ReferenceImagesJson);
 
+        builder.Property(c => c.AiReferenceImagesJson);
+
+        builder.Property(c => c.IsFreestyle).HasDefaultValue(false);
+
+        builder.Property(c => c.LayoutHint).HasMaxLength(300);
+
         builder.Property(c => c.CreatorTermsVersion)
             .HasMaxLength(20);
 
@@ -45,6 +51,9 @@ public class CommissionConfiguration : IEntityTypeConfiguration<Commission>
             .HasMaxLength(20);
 
         builder.Property(c => c.LicenseMultiplierApplied)
+            .HasPrecision(5, 2);
+
+        builder.Property(c => c.AiReferenceDiscountPercentApplied)
             .HasPrecision(5, 2);
 
         builder.Property(c => c.TotalPrice)
