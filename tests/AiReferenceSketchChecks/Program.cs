@@ -404,6 +404,9 @@ sealed class FakeAiChatClient : IAiChatClient
         var content = _responses.Count > 0 ? _responses.Dequeue() : _responses.Last();
         return Task.FromResult(AiCompletionResult.Ok(content, null, "fake-model"));
     }
+
+    public Task<AiCompletionResult> CompleteWithToolsAsync(string? systemInstruction, IReadOnlyList<AiChatTurn> history, string userMessage, IReadOnlyList<IAiTool> tools, CancellationToken cancellationToken = default)
+        => CompleteAsync(systemInstruction, history, userMessage, cancellationToken);
 }
 
 sealed class TestWatermark : IWatermarkService

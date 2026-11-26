@@ -52,17 +52,20 @@ public class SendAiMessageCommandHandler
     private readonly IApplicationDbContext _db;
     private readonly IAiChatClient _aiChatClient;
     private readonly IAiContextBuilder _contextBuilder;
+    private readonly IReadOnlyList<IAiTool> _tools;
     private readonly ILogger<SendAiMessageCommandHandler> _logger;
 
     public SendAiMessageCommandHandler(
         IApplicationDbContext db,
         IAiChatClient aiChatClient,
         IAiContextBuilder contextBuilder,
+        IEnumerable<IAiTool> tools,
         ILogger<SendAiMessageCommandHandler> logger)
     {
         _db = db;
         _aiChatClient = aiChatClient;
         _contextBuilder = contextBuilder;
+        _tools = tools.ToList();
         _logger = logger;
     }
 
@@ -143,10 +146,11 @@ public class SendAiMessageCommandHandler
             conversation.ContextId,
             cancellationToken);
 
-        var completion = await _aiChatClient.CompleteAsync(
+        var completion = await _aiChatClient.CompleteWithToolsAsync(
             systemInstruction,
             historyTurns,
             userMessage.Content,
+            _tools,
             cancellationToken);
 
         if (!completion.Success || string.IsNullOrWhiteSpace(completion.Content))
