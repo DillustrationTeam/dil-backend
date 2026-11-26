@@ -150,16 +150,24 @@ public sealed class SearchCreatorsTool(IApplicationDbContext db) : IAiTool
 
         if (!string.IsNullOrEmpty(keyword))
         {
+            var altKeyword = keyword.Replace('-', ' ');
             query = query.Where(p =>
                 p.DisplayName.ToLower().Contains(keyword)
-                || (p.Specialties != null && p.Specialties.ToLower().Contains(keyword))
-                || (p.Headline != null && p.Headline.ToLower().Contains(keyword))
-                || (p.Bio != null && p.Bio.ToLower().Contains(keyword))
+                || (p.Specialties != null && (p.Specialties.ToLower().Contains(keyword) || p.Specialties.ToLower().Contains(altKeyword)))
+                || (p.Headline != null && (p.Headline.ToLower().Contains(keyword) || p.Headline.ToLower().Contains(altKeyword)))
+                || (p.Bio != null && (p.Bio.ToLower().Contains(keyword) || p.Bio.ToLower().Contains(altKeyword)))
+                || db.CommissionServices.Any(s =>
+                    s.CreatorProfileId == p.Id
+                    && s.IsActive
+                    && !s.IsDeleted
+                    && (s.Title.ToLower().Contains(keyword)
+                        || s.Title.ToLower().Contains(altKeyword)
+                        || (s.Description != null && (s.Description.ToLower().Contains(keyword) || s.Description.ToLower().Contains(altKeyword)))))
                 || p.Artworks.Any(a =>
                     !a.IsDeleted
                     && a.ModerationStatus == "Approved"
-                    && ((a.Style != null && a.Style.ToLower().Contains(keyword))
-                        || a.ArtworkTags.Any(at => at.Tag != null && at.Tag.Name.ToLower().Contains(keyword)))));
+                    && ((a.Style != null && (a.Style.ToLower().Contains(keyword) || a.Style.ToLower().Contains(altKeyword)))
+                        || a.ArtworkTags.Any(at => at.Tag != null && (at.Tag.Name.ToLower().Contains(keyword) || at.Tag.Name.ToLower().Contains(altKeyword))))));
         }
 
         query = sortBy switch
