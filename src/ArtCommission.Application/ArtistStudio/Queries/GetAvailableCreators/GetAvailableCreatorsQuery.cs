@@ -17,7 +17,8 @@ public record AvailableCreatorDto(
     int FollowerCount,
     int AvailableSlots,
     string? BannerUrl = null,
-    IReadOnlyList<CategorySummaryDto>? Categories = null
+    IReadOnlyList<CategorySummaryDto>? Categories = null,
+    string? AvatarUrl = null
 );
 
 public record GetAvailableCreatorsQuery(
@@ -76,6 +77,7 @@ public class GetAvailableCreatorsQueryHandler : IRequestHandler<GetAvailableCrea
             .Select(profile => new
             {
                 profile.Id,
+                profile.UserId,
                 profile.DisplayName,
                 profile.Headline,
                 profile.Specialties,
@@ -85,6 +87,15 @@ public class GetAvailableCreatorsQueryHandler : IRequestHandler<GetAvailableCrea
                 profile.RateCardJson
             })
             .ToListAsync(cancellationToken);
+
+        var userIds = profiles.Select(p => p.UserId).Distinct().ToList();
+        var userMediaById = userIds.Count > 0
+            ? await _db.Users
+                .AsNoTracking()
+                .Where(u => userIds.Contains(u.Id))
+                .Select(u => new { u.Id, u.AvatarUrl, u.CoverUrl })
+                .ToDictionaryAsync(u => u.Id, cancellationToken)
+            : [];
 
         var creatorIds = profiles.Select(p => p.Id).ToList();
         var artworkCategoriesByCreator = creatorIds.Count > 0
@@ -144,6 +155,7 @@ public class GetAvailableCreatorsQueryHandler : IRequestHandler<GetAvailableCrea
                 .ToList();
 
             var rating = ratings.GetValueOrDefault(profile.Id);
+            userMediaById.TryGetValue(profile.UserId, out var userMedia);
             result.Add(new AvailableCreatorDto(
                 profile.Id,
                 profile.DisplayName,
@@ -153,8 +165,9 @@ public class GetAvailableCreatorsQueryHandler : IRequestHandler<GetAvailableCrea
                 rating.Count,
                 profile.FollowerCount,
                 profile.AvailableSlots,
-                profile.BannerUrl,
-                creatorCategories));
+                profile.BannerUrl ?? userMedia?.CoverUrl,
+                creatorCategories,
+                userMedia?.AvatarUrl));
         }
 
         return result;

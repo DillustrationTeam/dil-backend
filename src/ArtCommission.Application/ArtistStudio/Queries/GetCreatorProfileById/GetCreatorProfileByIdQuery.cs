@@ -28,6 +28,11 @@ public class GetCreatorProfileByIdQueryHandler : IRequestHandler<GetCreatorProfi
         }
 
         var rating = (await CreatorRatingStats.LoadAsync(_db, cancellationToken)).GetValueOrDefault(profile.Id);
+        var userMedia = await _db.Users
+            .AsNoTracking()
+            .Where(u => u.Id == profile.UserId)
+            .Select(u => new { u.AvatarUrl, u.CoverUrl })
+            .FirstOrDefaultAsync(cancellationToken);
         return (true, new CreatorProfileDto(
             profile.Id,
             profile.UserId,
@@ -37,14 +42,15 @@ public class GetCreatorProfileByIdQueryHandler : IRequestHandler<GetCreatorProfi
             profile.Specialties,
             profile.Location,
             profile.WebsiteUrl,
-            profile.BannerUrl,
+            profile.BannerUrl ?? userMedia?.CoverUrl,
             profile.IsAcceptingOrders,
             profile.IsApproved,
             rating.Average,
             rating.Count,
             profile.FollowerCount,
             profile.CreatedAt,
-            profile.AvailableSlots
+            profile.AvailableSlots,
+            userMedia?.AvatarUrl
         ), Array.Empty<string>());
     }
 }
