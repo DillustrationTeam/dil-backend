@@ -11,6 +11,7 @@ using ArtCommission.API.BackgroundWorkers;
 using ArtCommission.API.Common;
 using ArtCommission.API.Hubs;
 using ArtCommission.Application.Ai.Common;
+using ArtCommission.Application.Ai.ReferenceSketch;
 using ArtCommission.Application.ArtTrade.Common;
 using ArtCommission.Application.Auth.Commands.Register;
 using ArtCommission.Application.Auction.Common;
@@ -27,6 +28,7 @@ using ArtCommission.Infrastructure.ExternalServices.Cloudinary;
 using ArtCommission.Infrastructure.ExternalServices.Common;
 using ArtCommission.Infrastructure.ExternalServices.Gemini;
 using ArtCommission.Infrastructure.ExternalServices.Google;
+using ArtCommission.Infrastructure.ExternalServices.OpenAi;
 using ArtCommission.Infrastructure.ExternalServices.PayOs;
 using ArtCommission.Infrastructure.ExternalServices.R2;
 using ArtCommission.Infrastructure.ExternalServices.Watermark;
@@ -283,6 +285,33 @@ builder.Services.AddScoped<ITranslationClient>(sp => new FallbackTranslationClie
 builder.Services.AddScoped<IAiContextBuilder, AiContextBuilder>();
 builder.Services.AddScoped<IDeadlineRiskPredictor, DeadlineRiskPredictor>();
 
+// 3j-quater. AI phác thảo bố cục reference — OpenAI Images (gpt-image-1-mini).
+// Key lấy từ biến môi trường OpenAi__ApiKey hoặc User Secrets; KHÔNG để trong appsettings.json.
+// Không cấu hình key ⇒ dùng FakeAiImageClient (dev/e2e/demo), không gọi OpenAI thật.
+builder.Services.Configure<OpenAiOptions>(builder.Configuration.GetSection(OpenAiOptions.SectionName));
+
+var openAiApiKey = builder.Configuration[$"{OpenAiOptions.SectionName}:ApiKey"];
+
+if (!string.IsNullOrWhiteSpace(openAiApiKey))
+{
+    builder.Services.AddHttpClient<OpenAiImageClient>(client =>
+    {
+        var timeoutSeconds = builder.Configuration.GetValue<int?>($"{OpenAiOptions.SectionName}:TimeoutSeconds") ?? 90;
+        client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+    });
+    builder.Services.AddScoped<IAiImageClient, OpenAiImageClient>();
+}
+else
+{
+    builder.Services.AddScoped<IAiImageClient, FakeAiImageClient>();
+}
+
+builder.Services.AddScoped<ReferenceSketchPromptService>();
+builder.Services.AddScoped<ArtCommission.Infrastructure.Services.ReferenceSketchImageProtector>();
+builder.Services.AddScoped<IReferenceSketchGenerationJob, ReferenceSketchGenerationJob>();
+builder.Services.AddScoped<IReferenceSketchGenerationQueue, HangfireReferenceSketchGenerationQueue>();
+builder.Services.AddScoped<IReferenceSketchProgressPublisher, SignalRReferenceSketchProgressPublisher>();
+
 // 3k. UC51 — Creator Revenue Analytics: đọc sổ cái ví
 builder.Services.AddScoped<IRevenueQueryService, RevenueQueryService>();
 
@@ -520,6 +549,12 @@ builder.Services.AddRateLimiter(options => {
     options.AddPolicy("artwork-ai", context => RateLimitPartition.GetFixedWindowLimiter(
         context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 6, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    options.AddPolicy("ai-reference", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    options.AddPolicy("ai-layout-hint", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 });
 var app = builder.Build();
 
@@ -592,6 +627,10 @@ if (!isDocumentGeneration)
             "milestone-auto-accept",
             job => job.RunAsync(CancellationToken.None),
             Cron.Minutely);
+        recurringJobManager.AddOrUpdate<AiReferenceTempCleanupJob>(
+            "ai-reference-temp-cleanup",
+            job => job.RunAsync(CancellationToken.None),
+            Cron.Hourly);
     }
     catch (Exception ex)
     {

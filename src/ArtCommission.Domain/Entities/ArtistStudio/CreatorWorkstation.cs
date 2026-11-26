@@ -9,6 +9,7 @@ public class CreatorTerms : BaseEntity
     public string? RevisionPolicy { get; set; }
     public string? CancellationPolicy { get; set; }
     public string? ExtendedTermsJson { get; set; }
+    public bool AllowAiReferenceSketch { get; set; }
     public CreatorProfile? CreatorProfile { get; set; }
 }
 

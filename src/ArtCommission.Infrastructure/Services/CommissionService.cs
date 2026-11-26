@@ -1,3 +1,4 @@
+using System.Globalization;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Commission.DTOs;
@@ -6,6 +7,7 @@ using ArtCommission.Application.Commission.Validators;
 using ArtCommission.Application.Dispute.CommissionDispute.DTOs;
 using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
+using ArtCommission.Domain.Entities.Ai;
 using ArtCommission.Domain.Entities.ArtistStudio;
 using ArtCommission.Domain.Entities.Commission;
 using ArtCommission.Domain.Entities.Dispute;
@@ -136,6 +138,24 @@ public class CommissionService : ICommissionService
             milestone.Price = Math.Round(milestone.Price * multiplier, 2, MidpointRounding.AwayFromZero);
         milestones[^1].Price += totalPrice - milestones.Sum(x => x.Price);
 
+        // Giảm giá toàn sàn khi khách gắn ảnh AI phác thảo làm reference (docs/ai-reference/PLAN.md T12) —
+        // % do admin cấu hình tại /admin/fee-policy (PlatformConfig), không phải theo creator.
+        var aiDiscountConfig = await _dbContext.PlatformConfigs.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Key == PlatformConfigKeys.AiReferenceSketchDiscountPercent && !c.IsDeleted, cancellationToken);
+        var aiDiscountPercent = !request.IsFreestyle && request.AiReferenceImageIds is { Count: > 0 }
+            && aiDiscountConfig is not null
+            && decimal.TryParse(aiDiscountConfig.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedAiDiscount)
+            ? parsedAiDiscount
+            : 0m;
+        if (aiDiscountPercent > 0)
+        {
+            var aiDiscountFactor = 1m - aiDiscountPercent / 100m;
+            totalPrice = Math.Round(totalPrice * aiDiscountFactor, 2, MidpointRounding.AwayFromZero);
+            foreach (var milestone in milestones)
+                milestone.Price = Math.Round(milestone.Price * aiDiscountFactor, 2, MidpointRounding.AwayFromZero);
+            milestones[^1].Price += totalPrice - milestones.Sum(x => x.Price);
+        }
+
         var discountAmount = 0.00m;
         Guid? voucherId = null;
         if (!string.IsNullOrWhiteSpace(request.VoucherCode))
@@ -169,6 +189,29 @@ public class CommissionService : ICommissionService
         var extendDays = bookingAddons.Sum(x => x.ExtendDays);
         if (extendDays > 0 && request.DeadlineAt is null) throw new ArgumentException("Cần chọn deadline khi phụ phí có gia hạn.");
 
+        var aiImageIds = request.AiReferenceImageIds?.Distinct().ToList() ?? [];
+        var aiImages = new List<AiReferenceImage>();
+        if (aiImageIds.Count > 0)
+        {
+            aiImages = await _dbContext.AiReferenceImages
+                .Include(i => i.Generation)
+                .Where(i => aiImageIds.Contains(i.Id))
+                .ToListAsync(cancellationToken);
+            if (aiImages.Count != aiImageIds.Count)
+                throw new ArgumentException("Một số ảnh AI phác thảo không tồn tại.");
+
+            var cutoff = DateTimeOffset.UtcNow - ArtCommission.Application.Ai.ReferenceSketch.ReferenceSketchLimits.QuotaWindow;
+            foreach (var aiImage in aiImages)
+            {
+                if (aiImage.Generation is null || aiImage.Generation.ClientId != clientId || aiImage.Generation.CreatorProfileId != creator.Id)
+                    throw new ArgumentException("Ảnh AI phác thảo không thuộc về bạn hoặc creator này.");
+                if (aiImage.CommissionId is not null)
+                    throw new ArgumentException("Ảnh AI phác thảo đã được gắn vào đơn khác.");
+                if (aiImage.CreatedAt < cutoff)
+                    throw new ArgumentException("Ảnh AI phác thảo đã quá 24 giờ, vui lòng sinh ảnh mới.");
+            }
+        }
+
         var commission = new Commission
         {
             Title = request.Title,
@@ -179,8 +222,11 @@ public class CommissionService : ICommissionService
             VoucherId = voucherId,
             LicenseType = request.LicenseType,
             LicenseMultiplierApplied = multiplier,
+            AiReferenceDiscountPercentApplied = aiDiscountPercent,
             CreatorTermsSnapshotJson = ArtCommission.Application.ArtistStudio.DTOs.CreatorTermsHelper.SerializeSnapshot(creatorTerms),
             ReferenceImagesJson = request.ReferenceImages is { Count: > 0 } ? System.Text.Json.JsonSerializer.Serialize(request.ReferenceImages) : null,
+            IsFreestyle = request.IsFreestyle,
+            LayoutHint = request.LayoutHint,
             TotalPrice = totalPrice,
             DiscountAmount = discountAmount,
             FinalPrice = finalPrice,
@@ -195,6 +241,22 @@ public class CommissionService : ICommissionService
         foreach (var m in milestones)
         {
             commission.Milestones.Add(m);
+        }
+
+        if (aiImages.Count > 0)
+        {
+            var summaries = new List<ArtCommission.Application.Commission.DTOs.AiReferenceImageSummaryDto>();
+            foreach (var aiImage in aiImages)
+            {
+                var sourceStream = await _storageService.OpenPrivateReadAsync(aiImage.TempStorageKey, cancellationToken)
+                    ?? throw new ArgumentException("Không tìm thấy ảnh AI phác thảo đã sinh, vui lòng thử lại.");
+                var key = $"commissions/{commission.Id}/ai-reference/{aiImage.Id:N}.png";
+                var url = await _storageService.UploadPublicAsync(sourceStream, key, "image/png", cancellationToken);
+                aiImage.PermanentUrl = url;
+                aiImage.CommissionId = commission.Id;
+                summaries.Add(new ArtCommission.Application.Commission.DTOs.AiReferenceImageSummaryDto(url, aiImage.LabelVi, aiImage.LabelEn));
+            }
+            commission.AiReferenceImagesJson = System.Text.Json.JsonSerializer.Serialize(summaries);
         }
 
         _dbContext.Commissions.Add(commission);
@@ -1837,6 +1899,7 @@ public class CommissionService : ICommissionService
             VoucherId = c.VoucherId,
             LicenseType = c.LicenseType,
             LicenseMultiplierApplied = c.LicenseMultiplierApplied,
+            AiReferenceDiscountPercentApplied = c.AiReferenceDiscountPercentApplied,
             DiscountAmount = c.DiscountAmount,
             TotalPrice = c.TotalPrice,
             FinalPrice = c.FinalPrice,
@@ -1865,6 +1928,9 @@ public class CommissionService : ICommissionService
             CurrentWorkroomTermsVersion = CurrentWorkroomTermsVersion,
             CreatorTermsSnapshot = ArtCommission.Application.ArtistStudio.DTOs.CreatorTermsHelper.ParseSnapshot(c.CreatorTermsSnapshotJson),
             ReferenceImages = ParseReferenceImages(c.ReferenceImagesJson),
+            AiReferenceImages = ParseAiReferenceImages(c.AiReferenceImagesJson),
+            IsFreestyle = c.IsFreestyle,
+            LayoutHint = c.LayoutHint,
             CreatedAt = c.CreatedAt
         };
     }
@@ -1937,6 +2003,19 @@ public class CommissionService : ICommissionService
         }
     }
 
+    private static List<ArtCommission.Application.Commission.DTOs.AiReferenceImageSummaryDto> ParseAiReferenceImages(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<ArtCommission.Application.Commission.DTOs.AiReferenceImageSummaryDto>>(json) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
     private static CommissionDetailDto MapToDetailDto(Commission c)
     {
         var dto = MapToDto(c);
@@ -1951,6 +2030,7 @@ public class CommissionService : ICommissionService
             VoucherId = dto.VoucherId,
             LicenseType = dto.LicenseType,
             LicenseMultiplierApplied = dto.LicenseMultiplierApplied,
+            AiReferenceDiscountPercentApplied = dto.AiReferenceDiscountPercentApplied,
             DiscountAmount = dto.DiscountAmount,
             TotalPrice = dto.TotalPrice,
             FinalPrice = dto.FinalPrice,
@@ -1978,6 +2058,9 @@ public class CommissionService : ICommissionService
             CurrentWorkroomTermsVersion = dto.CurrentWorkroomTermsVersion,
             CreatorTermsSnapshot = dto.CreatorTermsSnapshot,
             ReferenceImages = dto.ReferenceImages,
+            AiReferenceImages = dto.AiReferenceImages,
+            IsFreestyle = dto.IsFreestyle,
+            LayoutHint = dto.LayoutHint,
             CreatedAt = dto.CreatedAt,
             Milestones = c.Milestones.Select(MapToMilestoneDto).ToList(),
             Review = c.Reviews.FirstOrDefault() != null ? MapToReviewDto(c.Reviews.First()) : null,

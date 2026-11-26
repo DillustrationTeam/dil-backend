@@ -4,13 +4,18 @@ using ArtCommission.Application.Ai.Commands.StandardizeRevision;
 using ArtCommission.Application.Ai.Commands.CreateDeadlineReminder;
 using ArtCommission.Application.Ai.Commands.PredictDeadlineRisk;
 using ArtCommission.Application.Ai.Commands.SendAiMessage;
+using ArtCommission.Application.Ai.Commands.StartReferenceSketchGeneration;
 using ArtCommission.Application.Ai.Commands.SubmitAiFeedback;
+using ArtCommission.Application.Ai.Commands.SuggestLayoutHints;
 using ArtCommission.Application.Ai.Commands.UpdateReminderSettings;
 using ArtCommission.Application.Ai.Queries.GetAiConversations;
 using ArtCommission.Application.Ai.Queries.GetAiMessages;
 using ArtCommission.Application.Ai.Queries.GetDeadlineRisk;
+using ArtCommission.Application.Ai.Queries.GetReferenceSketchGeneration;
+using ArtCommission.Application.Ai.Queries.GetReferenceSketchQuota;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace ArtCommission.API.Controllers;
 
@@ -38,6 +43,12 @@ public sealed record SendAiMessageRequest(string Content);
 
 /// <summary>Thân request đánh giá câu trả lời của trợ lý ảo.</summary>
 public sealed record AiFeedbackRequest(bool Helpful, string? Note = null);
+
+/// <summary>Thân request khởi tạo 1 lượt AI phác thảo bố cục reference.</summary>
+public sealed record StartReferenceSketchRequest(Guid CreatorProfileId, string Brief, string? LayoutHint = null);
+
+/// <summary>Thân request nút "🎲 Gợi ý bố cục độc đáo" — không trừ lượt sinh ảnh.</summary>
+public sealed record SuggestLayoutHintsRequest(Guid CreatorProfileId, string Brief, string? CurrentHint = null);
 
 /// <summary>Thân request dự đoán rủi ro trễ hạn.</summary>
 public sealed record PredictDeadlineRiskRequest(string? ModelVersion = null);
@@ -335,6 +346,106 @@ public class AiController : ApiControllerBase
             new StandardizeRevisionCommand(
                 request.Feedback,
                 request.MilestoneTitle),
+            cancellationToken);
+
+        return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
+    }
+
+    // =================================================================
+    // AI phác thảo bố cục reference — xem docs/ai-reference/PLAN.md
+    // =================================================================
+
+    /// <summary>Khởi tạo 1 lượt AI phác thảo bố cục reference cho form đặt commission.</summary>
+    [HttpPost("reference-sketches")]
+    [EnableRateLimiting("ai-reference")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> StartReferenceSketch(
+        [FromBody] StartReferenceSketchRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var (success, data, errors) = await Mediator.Send(
+            new StartReferenceSketchGenerationCommand(
+                CurrentUserId,
+                request.CreatorProfileId,
+                request.Brief,
+                request.LayoutHint),
+            cancellationToken);
+
+        if (!success)
+        {
+            return BadRequestEnvelope(errors);
+        }
+
+        return StatusCode(StatusCodes.Status202Accepted, new { data, meta = (object?)null, error = (object?)null });
+    }
+
+    /// <summary>Khách xem còn bao nhiêu lượt AI phác thảo bố cục trong 24h hiện tại.</summary>
+    [HttpGet("reference-sketches/quota")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetReferenceSketchQuota(
+        [FromQuery] Guid creatorProfileId,
+        CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var (success, data, errors) = await Mediator.Send(
+            new GetReferenceSketchQuotaQuery(CurrentUserId, creatorProfileId),
+            cancellationToken);
+
+        return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
+    }
+
+    /// <summary>Trạng thái + % + ảnh hiện tại của 1 lượt sinh — fallback khi SignalR rớt.</summary>
+    [HttpGet("reference-sketches/{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetReferenceSketch(Guid id, CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var (success, data, errors) = await Mediator.Send(
+            new GetReferenceSketchGenerationQuery(id, CurrentUserId),
+            cancellationToken);
+
+        return success ? OkEnvelope(data) : BadRequestEnvelope(errors);
+    }
+
+    /// <summary>Nút "🎲 Gợi ý bố cục độc đáo" — 3 gợi ý ngắn tiếng Việt, không trừ lượt sinh ảnh.</summary>
+    [HttpPost("reference-sketches/layout-hints")]
+    [EnableRateLimiting("ai-layout-hint")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> SuggestLayoutHints(
+        [FromBody] SuggestLayoutHintsRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (CurrentUserId == Guid.Empty)
+        {
+            return UnauthorizedEnvelope();
+        }
+
+        var (success, data, errors) = await Mediator.Send(
+            new SuggestLayoutHintsCommand(
+                CurrentUserId,
+                request.CreatorProfileId,
+                request.Brief,
+                request.CurrentHint),
             cancellationToken);
 
         return success ? OkEnvelope(data) : BadRequestEnvelope(errors);

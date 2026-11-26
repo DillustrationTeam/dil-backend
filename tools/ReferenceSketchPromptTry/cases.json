@@ -1,0 +1,37 @@
+[
+  {
+    "name": "1-hop-le",
+    "brief": "Vẽ OC cô gái tóc bạc dài, mặc áo khoác dài, cầm ô đứng dưới mưa, phong cách anime.",
+    "layoutHint": "đứng trên cầu, phía sau là thành phố về đêm",
+    "willDraw": "Nhân vật gốc (OC), fanart anime/game, minh họa chân dung, couple.",
+    "wontDraw": "Nội dung 18+/NSFW, thù hận/chính trị, mecha quá phức tạp."
+  },
+  {
+    "name": "2-vi-pham-wontDraw",
+    "brief": "Vẽ robot mecha chiến đấu cực kỳ chi tiết, nhiều vũ khí và giáp máy phức tạp, đang bắn tên lửa.",
+    "layoutHint": "",
+    "willDraw": "Nhân vật gốc (OC), fanart anime/game, minh họa chân dung, couple.",
+    "wontDraw": "Nội dung 18+/NSFW, thù hận/chính trị, mecha quá phức tạp."
+  },
+  {
+    "name": "3-khong-co-goi-y-bo-cuc",
+    "brief": "Một cặp đôi ngồi uống cà phê trong quán nhỏ ấm cúng, trò chuyện vui vẻ.",
+    "layoutHint": "",
+    "willDraw": "Nhân vật gốc (OC), fanart anime/game, minh họa chân dung, couple.",
+    "wontDraw": "Nội dung 18+/NSFW, thù hận/chính trị, mecha quá phức tạp."
+  },
+  {
+    "name": "4-phong-canh-thien-nhien",
+    "brief": "Vẽ phong cảnh thác nước đổ xuống từ vách núi đá cao, bên dưới là hồ nước phẳng lặng, có một cây cổ thụ rễ to bên bờ hồ. Không có nhân vật.",
+    "layoutHint": "",
+    "willDraw": "Phong cảnh thiên nhiên, kiến trúc, background cho game/truyện.",
+    "wontDraw": "Nhân vật chi tiết, nội dung 18+/NSFW, xe cộ máy móc phức tạp."
+  },
+  {
+    "name": "5-phong-canh-kien-truc",
+    "brief": "Vẽ sảnh cổng vòm của một tòa lâu đài cổ kiểu châu Âu, có cột đá lớn và bậc thang dẫn lên.",
+    "layoutHint": "nhìn từ dưới bậc thang lên",
+    "willDraw": "Phong cảnh thiên nhiên, kiến trúc, background cho game/truyện.",
+    "wontDraw": "Nhân vật chi tiết, nội dung 18+/NSFW, xe cộ máy móc phức tạp."
+  }
+]

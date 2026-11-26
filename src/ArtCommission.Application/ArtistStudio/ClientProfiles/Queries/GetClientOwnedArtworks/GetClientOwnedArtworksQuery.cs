@@ -71,13 +71,17 @@ public class GetClientOwnedArtworksQueryHandler
                     .Where(a => auctionIds.Contains(a.Id))
                     .ToDictionaryAsync(a => a.Id, cancellationToken);
 
+                // Giữ cả đường dẫn tệp bàn giao để ký link tải, không chỉ biết "có tệp".
                 var deliverables = await _db.Deliverables
                     .AsNoTracking()
                     .Where(d => auctionIds.Contains(d.AuctionId) && !d.IsDeleted)
-                    .Select(d => d.AuctionId)
-                    .Distinct()
+                    .Select(d => new { d.AuctionId, d.FileUrl })
                     .ToListAsync(cancellationToken);
-                var deliverableSet = deliverables.ToHashSet();
+                var deliverableSet = deliverables.Select(d => d.AuctionId).ToHashSet();
+                var deliverableFileByAuction = deliverables
+                    .Where(d => !string.IsNullOrWhiteSpace(d.FileUrl))
+                    .GroupBy(d => d.AuctionId)
+                    .ToDictionary(g => g.Key, g => g.First().FileUrl!);
 
                 var creatorProfileIds = artworks.Values
                     .Select(a => a.CreatorProfileId)
@@ -121,10 +125,14 @@ public class GetClientOwnedArtworksQueryHandler
                         CreatorName: creatorName,
                         CreatorAvatarUrl: creatorAvatar,
                         AcquiredAt: o.AcquiredAt,
-                        Price: auction?.FinalPrice,
+                        // Demo/đấu giá huỷ không có FinalPrice → lấy giá khởi điểm thay vì null.
+                        Price: auction?.FinalPrice ?? artwork.StartingPrice,
                         CertificateNumber: certNumber,
                         HasMasterFile: hasMaster,
-                        DownloadUrl: null,
+                        // Có tệp bàn giao thì ký link tải; không có thì để null (UI nói "chưa có tệp").
+                        DownloadUrl: o.AuctionId.HasValue && deliverableFileByAuction.TryGetValue(o.AuctionId.Value, out var deliverableFile)
+                            ? _storageService.GeneratePresignedDownloadUrl(deliverableFile, TimeSpan.FromHours(24))
+                            : null,
                         ExclusiveBadge: "Exclusive Owner"
                     ));
                 }

@@ -140,6 +140,135 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.ToTable("AiMessages", (string)null);
                 });
 
+            modelBuilder.Entity("ArtCommission.Domain.Entities.Ai.AiReferenceGeneration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BlockReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("BriefText")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("CreatorProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("DurationMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("LayoutHint")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<int>("ProgressPercent")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Pending");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("VariantsJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId", "CreatorProfileId", "CreatedAt")
+                        .HasDatabaseName("IX_AiReferenceGenerations_Client_Creator_CreatedAt");
+
+                    b.ToTable("AiReferenceGenerations", (string)null);
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.Ai.AiReferenceImage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CommissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("GenerationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("LabelEn")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("LabelVi")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("PermanentUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("TempStorageKey")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("VariantIndex")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CommissionId")
+                        .HasDatabaseName("IX_AiReferenceImages_CommissionId");
+
+                    b.HasIndex("GenerationId", "VariantIndex")
+                        .HasDatabaseName("IX_AiReferenceImages_Generation_VariantIndex");
+
+                    b.ToTable("AiReferenceImages", (string)null);
+                });
+
             modelBuilder.Entity("ArtCommission.Domain.Entities.Ai.DeadlineReminder", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1038,6 +1167,11 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("AllowAiReferenceSketch")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
 
                     b.Property<string>("CancellationPolicy")
                         .HasColumnType("nvarchar(max)");
@@ -2130,6 +2264,13 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<decimal>("AiReferenceDiscountPercentApplied")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<string>("AiReferenceImagesJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("CancellationDetails")
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
@@ -2215,6 +2356,15 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
+
+                    b.Property<bool>("IsFreestyle")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("LayoutHint")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
 
                     b.Property<decimal>("LicenseMultiplierApplied")
                         .HasPrecision(5, 2)
@@ -4545,6 +4695,17 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
                     b.Navigation("Conversation");
                 });
 
+            modelBuilder.Entity("ArtCommission.Domain.Entities.Ai.AiReferenceImage", b =>
+                {
+                    b.HasOne("ArtCommission.Domain.Entities.Ai.AiReferenceGeneration", "Generation")
+                        .WithMany("Images")
+                        .HasForeignKey("GenerationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Generation");
+                });
+
             modelBuilder.Entity("ArtCommission.Domain.Entities.Ai.DeadlineReminder", b =>
                 {
                     b.HasOne("ArtCommission.Domain.Entities.Commission.Commission", null)
@@ -5538,6 +5699,11 @@ namespace ArtCommission.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("ArtCommission.Domain.Entities.Ai.AiConversation", b =>
                 {
                     b.Navigation("Messages");
+                });
+
+            modelBuilder.Entity("ArtCommission.Domain.Entities.Ai.AiReferenceGeneration", b =>
+                {
+                    b.Navigation("Images");
                 });
 
             modelBuilder.Entity("ArtCommission.Domain.Entities.ArtistStudio.Artwork", b =>

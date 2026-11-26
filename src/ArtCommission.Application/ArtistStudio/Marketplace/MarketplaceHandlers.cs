@@ -4,6 +4,7 @@ using ArtCommission.Application.ArtistStudio.Queries;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Domain.Entities.ArtistStudio;
 using FluentValidation;
+using ArtCommission.Domain.Enums;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -48,6 +49,8 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
         var ratedCreators = ratings.Where(pair => pair.Value.Average >= (r.MinRating ?? 0)).Select(pair => pair.Key).ToArray();
         var items = await _db.Artworks.AsNoTracking().Include(x => x.Category).Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).Include(x => x.CreatorProfile)
             .Where(x => !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted)
+            // Dữ liệu seed nội bộ "[DEMO] …" không được xuất hiện trên bề mặt công khai.
+            .Where(x => !x.Title.StartsWith("[DEMO]"))
             .Where(x => string.IsNullOrWhiteSpace(r.Query)
                 || x.Title.Contains(r.Query)
                 || (x.Description != null && x.Description.Contains(r.Query))
@@ -214,7 +217,7 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
     public async Task<IReadOnlyList<ArtworkDto>> Handle(GetFollowingFeedQuery q, CancellationToken ct)
     {
         var ratings = await CreatorRatingStats.LoadAsync(_db, ct);
-        var items = await _db.Artworks.AsNoTracking().Where(a => _db.Follows.Any(f => f.FollowerUserId == q.UserId && f.CreatorProfileId == a.CreatorProfileId)).Where(x => !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted).Include(x => x.Category).Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).Include(x => x.CreatorProfile).OrderByDescending(x => x.CreatedAt).Take(Math.Clamp(q.Take, 1, 100)).ToListAsync(ct);
+        var items = await _db.Artworks.AsNoTracking().Where(a => _db.Follows.Any(f => f.FollowerUserId == q.UserId && f.CreatorProfileId == a.CreatorProfileId)).Where(x => !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted && !x.Title.StartsWith("[DEMO]")).Include(x => x.Category).Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).Include(x => x.CreatorProfile).OrderByDescending(x => x.CreatedAt).Take(Math.Clamp(q.Take, 1, 100)).ToListAsync(ct);
         return items.Select(x => Map(x) with { CreatorRating = ratings.GetValueOrDefault(x.CreatorProfileId).Average }).ToList();
     }
 
@@ -225,8 +228,30 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
 
     public async Task<IReadOnlyList<BannerDto>> Handle(GetFeaturedBannersQuery _, CancellationToken ct)
     {
-        var items = await _db.Artworks.AsNoTracking().Where(x => !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted).OrderByDescending(x => x.CreatedAt).Take(3).Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).Include(x => x.CreatorProfile).ToListAsync(ct);
-        return items.Count == 0 ? new[] { new BannerDto("banner-artverse", "Artverse Weekend", "Tận hưởng hội chợ tranh giới hạn", "/weblogo.png", "Khám phá", "/explore") } : items.Select(MapBanner).ToList();
+        // Banner "Sự kiện nổi bật" PHẢI trỏ tới sự kiện, không phải tác phẩm.
+        // Trước đây lấy 3 tác phẩm mới nhất rồi gắn nhãn "Sự kiện nổi bật" → bấm vào ra tranh.
+        var events = await _db.PlatformEvents
+            .AsNoTracking()
+            .Where(e => !e.IsDeleted && e.Status != EventStatus.Draft && !e.Title.StartsWith("[DEMO]"))
+            .OrderByDescending(e => e.IsFeatured)
+            .ThenByDescending(e => e.SubmissionEndAt)
+            .Take(3)
+            .Select(e => new BannerDto(
+                $"banner-{e.Id}",
+                e.Title,
+                e.Description ?? "Sự kiện đang mở trên dilillustration",
+                e.BannerUrl ?? "/weblogo.png",
+                "Xem sự kiện",
+                $"/events/{e.Id}"))
+            .ToListAsync(ct);
+
+        if (events.Count > 0)
+        {
+            return events;
+        }
+
+        // Không có sự kiện nào → không bịa banner tác phẩm; trả rỗng để UI ẩn khối này.
+        return Array.Empty<BannerDto>();
     }
 
     public async Task<MarketplaceHomeFeedDto> Handle(GetMarketplaceHomeQuery q, CancellationToken ct)
