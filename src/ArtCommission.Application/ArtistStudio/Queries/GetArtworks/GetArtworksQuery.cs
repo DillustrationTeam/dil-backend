@@ -1,4 +1,4 @@
-﻿using ArtCommission.Application.ArtistStudio.DTOs;
+using ArtCommission.Application.ArtistStudio.DTOs;
 using ArtCommission.Application.Common.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -44,7 +44,10 @@ public class GetArtworksQueryHandler : IRequestHandler<GetArtworksQuery, (bool S
         {
             var term = request.Search.Trim();
             query = query.Where(x => EF.Functions.Like(x.Title, $"%{term}%")
-                                     || (x.Description != null && EF.Functions.Like(x.Description, $"%{term}%")));
+                                     || (x.Category != null && EF.Functions.Like(x.Category.Name, $"%{term}%"))
+                                     || (x.Style != null && EF.Functions.Like(x.Style, $"%{term}%"))
+                                     || x.ArtworkTags.Any(at => at.Tag != null && EF.Functions.Like(at.Tag.Name, $"%{term}%"))
+                                     || (x.CreatorProfile != null && EF.Functions.Like(x.CreatorProfile.DisplayName, $"%{term}%")));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -70,7 +73,9 @@ public class GetArtworksQueryHandler : IRequestHandler<GetArtworksQuery, (bool S
                 CreatorName = x.CreatorProfile != null ? x.CreatorProfile.DisplayName : null,
                 Style = x.Style,
                 CategoryId = x.CategoryId,
-                CategoryName = x.Category != null ? x.Category.Name : x.Style
+                CategoryName = x.Category != null ? x.Category.Name : x.Style,
+                LicenseType = x.LicenseType,
+                StartingPrice = x.StartingPrice
             })
             .ToListAsync(cancellationToken);
 

@@ -53,7 +53,6 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
             .Where(x => !x.Title.StartsWith("[DEMO]"))
             .Where(x => string.IsNullOrWhiteSpace(r.Query)
                 || x.Title.Contains(r.Query)
-                || (x.Description != null && x.Description.Contains(r.Query))
                 || (x.Style != null && x.Style.Contains(r.Query))
                 || (x.Category != null && x.Category.Name.Contains(r.Query))
                 || (x.CreatorProfile != null && x.CreatorProfile.DisplayName.Contains(r.Query))
