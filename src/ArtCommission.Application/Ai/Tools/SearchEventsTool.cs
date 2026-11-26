@@ -11,7 +11,7 @@ public sealed class SearchEventsTool(IApplicationDbContext db) : IAiTool
     public string Name => "search_events";
 
     public string Description =>
-        "Searches or lists public platform art events (contests) by optional keyword, status, or featured flag.";
+        "Searches or lists public platform art events (contests) by optional keyword, status, featured flag, date window (fromDate/toDate), and sort order.";
 
     public object ParametersSchema => new
     {
@@ -33,6 +33,22 @@ public sealed class SearchEventsTool(IApplicationDbContext db) : IAiTool
             {
                 type = "boolean",
                 description = "If true, only return featured events"
+            },
+            fromDate = new
+            {
+                type = "string",
+                description = "Optional ISO 8601 start of date window (e.g. '2026-12-01' or '2026-12-01T00:00:00Z')"
+            },
+            toDate = new
+            {
+                type = "string",
+                description = "Optional ISO 8601 end of date window (e.g. '2026-12-31')"
+            },
+            sortBy = new
+            {
+                type = "string",
+                @enum = new[] { "featured", "soonest", "deadline" },
+                description = "Optional sort order (defaults to featured)"
             }
         }
     };
@@ -48,6 +64,22 @@ public sealed class SearchEventsTool(IApplicationDbContext db) : IAiTool
             : "any";
 
         var featuredOnly = args.TryGetProperty("featuredOnly", out var feat) && feat.ValueKind == JsonValueKind.True;
+
+        DateTimeOffset? fromDate = args.TryGetProperty("fromDate", out var fd)
+            && fd.ValueKind == JsonValueKind.String
+            && DateTimeOffset.TryParse(fd.GetString(), out var parsedFrom)
+                ? parsedFrom
+                : null;
+
+        DateTimeOffset? toDate = args.TryGetProperty("toDate", out var td)
+            && td.ValueKind == JsonValueKind.String
+            && DateTimeOffset.TryParse(td.GetString(), out var parsedTo)
+                ? parsedTo
+                : null;
+
+        var sortBy = args.TryGetProperty("sortBy", out var sb) && sb.ValueKind == JsonValueKind.String
+            ? sb.GetString()?.Trim().ToLowerInvariant()
+            : "featured";
 
         var query = db.PlatformEvents
             .AsNoTracking()
@@ -67,6 +99,16 @@ public sealed class SearchEventsTool(IApplicationDbContext db) : IAiTool
             query = query.Where(e => e.IsFeatured);
         }
 
+        if (fromDate.HasValue)
+        {
+            query = query.Where(e => e.ResultAnnouncementAt >= fromDate.Value);
+        }
+
+        if (toDate.HasValue)
+        {
+            query = query.Where(e => e.SubmissionStartAt <= toDate.Value);
+        }
+
         if (!string.IsNullOrEmpty(keyword))
         {
             query = query.Where(e =>
@@ -76,9 +118,14 @@ public sealed class SearchEventsTool(IApplicationDbContext db) : IAiTool
                 || (e.Rules != null && e.Rules.ToLower().Contains(keyword)));
         }
 
+        query = sortBy switch
+        {
+            "soonest" => query.OrderBy(e => e.SubmissionStartAt),
+            "deadline" => query.OrderBy(e => e.SubmissionEndAt),
+            _ => query.OrderByDescending(e => e.IsFeatured).ThenBy(e => e.SubmissionStartAt)
+        };
+
         return await query
-            .OrderByDescending(e => e.IsFeatured)
-            .ThenBy(e => e.SubmissionStartAt)
             .Take(10)
             .Select(e => new
             {
@@ -88,8 +135,12 @@ public sealed class SearchEventsTool(IApplicationDbContext db) : IAiTool
                 e.Prize,
                 status = e.Status.ToString(),
                 e.IsFeatured,
+                e.MaxVote,
                 submissionStart = e.SubmissionStartAt,
                 submissionEnd = e.SubmissionEndAt,
+                judgingStart = e.JudgingStartAt,
+                judgingEnd = e.JudgingEndAt,
+                votingStart = e.VotingStartAt,
                 votingEnd = e.VotingEndAt,
                 resultAnnouncementAt = e.ResultAnnouncementAt
             })

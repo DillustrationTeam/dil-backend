@@ -11,7 +11,7 @@ public sealed class SearchPublicVouchersTool(IApplicationDbContext db) : IAiTool
     public string Name => "search_public_vouchers";
 
     public string Description =>
-        "Searches or lists active, platform-wide public discount vouchers by optional keyword or scope.";
+        "Searches or lists active, platform-wide public discount vouchers by optional keyword, scope, discountType, or orderAmount.";
 
     public object ParametersSchema => new
     {
@@ -28,6 +28,17 @@ public sealed class SearchPublicVouchersTool(IApplicationDbContext db) : IAiTool
                 type = "string",
                 @enum = new[] { "commission", "auction", "deposit", "any" },
                 description = "Optional voucher scope filter"
+            },
+            discountType = new
+            {
+                type = "string",
+                @enum = new[] { "percent", "fixed", "any" },
+                description = "Optional discount type filter"
+            },
+            orderAmount = new
+            {
+                type = "number",
+                description = "Optional order amount (VND); returns vouchers where MinOrderAmount <= orderAmount"
             }
         }
     };
@@ -41,6 +52,14 @@ public sealed class SearchPublicVouchersTool(IApplicationDbContext db) : IAiTool
         var scope = args.TryGetProperty("scope", out var sc) && sc.ValueKind == JsonValueKind.String
             ? sc.GetString()?.Trim().ToLowerInvariant()
             : "any";
+
+        var discountType = args.TryGetProperty("discountType", out var dt) && dt.ValueKind == JsonValueKind.String
+            ? dt.GetString()?.Trim().ToLowerInvariant()
+            : "any";
+
+        decimal? orderAmount = args.TryGetProperty("orderAmount", out var oa) && oa.ValueKind == JsonValueKind.Number && oa.TryGetDecimal(out var parsedOa)
+            ? parsedOa
+            : null;
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
@@ -59,6 +78,18 @@ public sealed class SearchPublicVouchersTool(IApplicationDbContext db) : IAiTool
             "deposit" => query.Where(v => (v.Scope & VoucherScope.Deposit) != 0),
             _ => query
         };
+
+        query = discountType switch
+        {
+            "percent" => query.Where(v => v.DiscountType == DiscountType.Percent),
+            "fixed" => query.Where(v => v.DiscountType == DiscountType.Fixed),
+            _ => query
+        };
+
+        if (orderAmount.HasValue)
+        {
+            query = query.Where(v => v.MinOrderAmount <= orderAmount.Value);
+        }
 
         if (!string.IsNullOrEmpty(keyword))
         {
