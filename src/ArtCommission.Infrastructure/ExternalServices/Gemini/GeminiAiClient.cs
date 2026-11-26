@@ -33,6 +33,9 @@ public class GeminiAiClient : IAiChatClient, ITranslationClient
     /// <summary>Số lần thử lại tối đa cho lỗi tạm thời.</summary>
     private const int MaxAttempts = 3;
 
+    /// <summary>Số vòng gọi công cụ tối đa trong một lượt hỏi để tránh vòng lặp vô hạn.</summary>
+    private const int MaxToolRounds = 4;
+
     public GeminiAiClient(
         HttpClient httpClient,
         IOptions<GeminiOptions> options,
@@ -50,6 +53,126 @@ public class GeminiAiClient : IAiChatClient, ITranslationClient
         CancellationToken cancellationToken = default,
         int? maxOutputTokens = null,
         bool jsonResponse = false)
+    {
+        var contents = BuildContents(history, userMessage);
+        return SendAsync(contents, systemInstruction, cancellationToken, maxOutputTokens, jsonResponse);
+    }
+
+    public async Task<AiCompletionResult> CompleteWithToolsAsync(
+        string? systemInstruction,
+        IReadOnlyList<AiChatTurn> history,
+        string userMessage,
+        IReadOnlyList<IAiTool> tools,
+        CancellationToken cancellationToken = default)
+    {
+        if (tools.Count == 0)
+        {
+            return await CompleteAsync(systemInstruction, history, userMessage, cancellationToken);
+        }
+
+        var contents = BuildContents(history, userMessage);
+        var toolsByName = tools.ToDictionary(t => t.Name, StringComparer.Ordinal);
+        var toolDeclaration = new GeminiTool
+        {
+            FunctionDeclarations = tools.Select(t => new GeminiFunctionDeclaration
+            {
+                Name = t.Name,
+                Description = t.Description,
+                Parameters = t.ParametersSchema
+            }).ToList()
+        };
+
+        int? totalTokens = null;
+
+        for (var round = 0; round < MaxToolRounds; round++)
+        {
+            var post = await PostAsync(
+                contents,
+                systemInstruction,
+                [toolDeclaration],
+                cancellationToken);
+
+            if (!post.Success || post.Response is null)
+            {
+                return AiCompletionResult.Fail(post.Error ?? "Gọi Gemini thất bại.");
+            }
+
+            if (post.Response.UsageMetadata?.TotalTokenCount is int roundTokens)
+            {
+                totalTokens = (totalTokens ?? 0) + roundTokens;
+            }
+
+            var modelContent = post.Response.Candidates?.FirstOrDefault()?.Content;
+            if (modelContent is null || modelContent.Parts.Count == 0)
+            {
+                return AiCompletionResult.Fail(FormatEmptyContentReason(post.Response));
+            }
+
+            var functionCalls = modelContent.Parts
+                .Where(p => p.FunctionCall is not null)
+                .ToList();
+
+            if (functionCalls.Count == 0)
+            {
+                var text = string.Concat(
+                    modelContent.Parts
+                        .Where(p => !string.IsNullOrWhiteSpace(p.Text))
+                        .Select(p => p.Text))
+                    .Trim();
+
+                return string.IsNullOrEmpty(text)
+                    ? AiCompletionResult.Fail(FormatEmptyContentReason(post.Response))
+                    : AiCompletionResult.Ok(text, totalTokens, post.Model!);
+            }
+
+            // Giữ nguyên turn của model (kể cả thoughtSignature nếu có) rồi nối kết quả tra cứu.
+            modelContent.Role = "model";
+            contents.Add(modelContent);
+
+            var responseParts = new List<GeminiPart>(functionCalls.Count);
+            foreach (var part in functionCalls)
+            {
+                var call = part.FunctionCall!;
+                object result;
+                try
+                {
+                    result = toolsByName.TryGetValue(call.Name, out var tool)
+                        ? await tool.ExecuteAsync(call.Args, cancellationToken)
+                        : new { error = $"Unknown function '{call.Name}'." };
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Công cụ AI {ToolName} thực thi thất bại.", call.Name);
+                    result = new { error = "Lookup failed." };
+                }
+
+                responseParts.Add(new GeminiPart
+                {
+                    FunctionResponse = new GeminiFunctionResponse
+                    {
+                        Name = call.Name,
+                        Response = new { result }
+                    }
+                });
+            }
+
+            contents.Add(new GeminiContent
+            {
+                Role = "user",
+                Parts = responseParts
+            });
+        }
+
+        return AiCompletionResult.Fail("Quá nhiều vòng gọi công cụ tra cứu.");
+    }
+
+    private static List<GeminiContent> BuildContents(
+        IReadOnlyList<AiChatTurn> history,
+        string userMessage)
     {
         var contents = new List<GeminiContent>();
 
@@ -77,18 +200,7 @@ public class GeminiAiClient : IAiChatClient, ITranslationClient
             Parts = [new GeminiPart { Text = userMessage }]
         });
 
-        return SendAsync(contents, systemInstruction, cancellationToken, maxOutputTokens, jsonResponse);
-    }
-
-    public Task<AiCompletionResult> CompleteWithToolsAsync(
-        string? systemInstruction,
-        IReadOnlyList<AiChatTurn> history,
-        string userMessage,
-        IReadOnlyList<IAiTool> tools,
-        CancellationToken cancellationToken = default)
-    {
-        // TODO: Implement Gemini function-calling loop when tools are wired up.
-        return CompleteAsync(systemInstruction, history, userMessage, cancellationToken);
+        return contents;
     }
 
     public Task<AiCompletionResult> TranslateAsync(
@@ -150,9 +262,48 @@ public class GeminiAiClient : IAiChatClient, ITranslationClient
         int? maxOutputTokens = null,
         bool jsonResponse = false)
     {
+        var post = await PostAsync(
+            contents,
+            systemInstruction,
+            tools: null,
+            cancellationToken,
+            maxOutputTokens,
+            jsonResponse);
+
+        if (!post.Success || post.Response is null)
+        {
+            return AiCompletionResult.Fail(post.Error ?? "Gọi Gemini thất bại sau nhiều lần thử.");
+        }
+
+        var text = post.Response.Candidates?
+            .FirstOrDefault()?
+            .Content?
+            .Parts?
+            .FirstOrDefault(p => !string.IsNullOrWhiteSpace(p.Text))?
+            .Text;
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return AiCompletionResult.Fail(FormatEmptyContentReason(post.Response));
+        }
+
+        return AiCompletionResult.Ok(
+            text.Trim(),
+            post.Response.UsageMetadata?.TotalTokenCount,
+            post.Model!);
+    }
+
+    private async Task<(bool Success, GeminiResponse? Response, string? Model, string? Error)> PostAsync(
+        List<GeminiContent> contents,
+        string? systemInstruction,
+        List<GeminiTool>? tools,
+        CancellationToken cancellationToken,
+        int? maxOutputTokens = null,
+        bool jsonResponse = false)
+    {
         if (!_options.IsConfigured)
         {
-            return AiCompletionResult.Fail(
+            return (false, null, null,
                 "Chưa cấu hình Gemini API key (Gemini:ApiKey / biến môi trường Gemini__ApiKey).");
         }
 
@@ -162,6 +313,7 @@ public class GeminiAiClient : IAiChatClient, ITranslationClient
             SystemInstruction = string.IsNullOrWhiteSpace(systemInstruction)
                 ? null
                 : new GeminiContent { Parts = [new GeminiPart { Text = systemInstruction }] },
+            Tools = tools is { Count: > 0 } ? tools : null,
             GenerationConfig = new GeminiGenerationConfig
             {
                 Temperature = _options.Temperature,
@@ -174,7 +326,7 @@ public class GeminiAiClient : IAiChatClient, ITranslationClient
 
         if (models.Count == 0)
         {
-            return AiCompletionResult.Fail("Chưa cấu hình model Gemini nào (Gemini:Model).");
+            return (false, null, null, "Chưa cấu hình model Gemini nào (Gemini:Model).");
         }
 
         string? lastError = null;
@@ -210,18 +362,26 @@ public class GeminiAiClient : IAiChatClient, ITranslationClient
 
                     if (response.IsSuccessStatusCode)
                     {
-                        var completion = await ParseSuccessAsync(response, model, cancellationToken);
-
-                        if (completion.Success)
+                        var (parsed, parseError) = await DeserializeSuccessAsync(response, cancellationToken);
+                        if (parsed is not null)
                         {
-                            return completion;
+                            var parts = parsed.Candidates?.FirstOrDefault()?.Content?.Parts;
+                            var hasUsablePart = parts is not null && parts.Any(p =>
+                                !string.IsNullOrWhiteSpace(p.Text) || p.FunctionCall is not null);
+
+                            if (hasUsablePart)
+                            {
+                                return (true, parsed, model, null);
+                            }
+
+                            lastError = FormatEmptyContentReason(parsed);
+                            _logger.LogWarning("Gemini không có nội dung: {Reason}", lastError);
+                        }
+                        else
+                        {
+                            lastError = parseError ?? $"Model {model} không trả nội dung.";
                         }
 
-                        // HTTP 200 nhưng không có nội dung dùng được: JSON hỏng, bị chặn
-                        // vì an toàn nội dung, hoặc hết token trước khi sinh chữ.
-                        // Chuyển sang model dự phòng vì có trường hợp đây là đặc thù của
-                        // riêng model đang gọi (ví dụ cách chia ngân sách token khác nhau).
-                        lastError = completion.Error ?? $"Model {model} không trả nội dung.";
                         _logger.LogWarning(
                             "Model {Model} trả về nhưng không có nội dung: {Error}", model, lastError);
 
@@ -251,7 +411,7 @@ public class GeminiAiClient : IAiChatClient, ITranslationClient
                     {
                         // 400/401/403 là lỗi cấu hình hoặc request sai — model dự phòng
                         // cũng sẽ hỏng y hệt, nên dừng luôn thay vì tốn thêm một lượt gọi.
-                        return AiCompletionResult.Fail(AppendDetail(lastError, body));
+                        return (false, null, model, AppendDetail(lastError, body));
                     }
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -278,59 +438,36 @@ public class GeminiAiClient : IAiChatClient, ITranslationClient
         }
 
         // Hết cả model chính lẫn dự phòng.
-        return AiCompletionResult.Fail(lastError ?? "Gọi Gemini thất bại sau nhiều lần thử.");
+        return (false, null, null, lastError ?? "Gọi Gemini thất bại sau nhiều lần thử.");
     }
 
-    /// <param name="model">
-    /// Model THỰC SỰ đã trả lời lượt này. Ghi lại vào <c>ModelVersion</c> để biết
-    /// câu trả lời đến từ model chính hay model dự phòng — không có nó thì khi chất
-    /// lượng câu trả lời giảm, không ai biết là do đã âm thầm chuyển model.
-    /// </param>
-    private async Task<AiCompletionResult> ParseSuccessAsync(
+    private async Task<(GeminiResponse? Response, string? Error)> DeserializeSuccessAsync(
         HttpResponseMessage response,
-        string model,
         CancellationToken cancellationToken)
     {
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        GeminiResponse? parsed;
         try
         {
-            parsed = JsonSerializer.Deserialize<GeminiResponse>(json);
+            return (JsonSerializer.Deserialize<GeminiResponse>(json), null);
         }
         catch (JsonException ex)
         {
             _logger.LogError(ex, "Không đọc được phản hồi Gemini.");
-            return AiCompletionResult.Fail("Phản hồi từ Gemini không đúng định dạng JSON.");
+            return (null, "Phản hồi từ Gemini không đúng định dạng JSON.");
         }
+    }
 
-        var text = parsed?.Candidates?
-            .FirstOrDefault()?
-            .Content?
-            .Parts?
-            .FirstOrDefault(p => !string.IsNullOrWhiteSpace(p.Text))?
-            .Text;
+    private static string FormatEmptyContentReason(GeminiResponse? parsed)
+    {
+        var finishReason = parsed?.Candidates?.FirstOrDefault()?.FinishReason;
+        var blockReason = parsed?.PromptFeedback?.BlockReason;
 
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            // Trường hợp điển hình: bị chặn bởi safety filter, hoặc hết token vì
-            // thinking budget. Ghi lại finishReason để tra soát thay vì báo lỗi chung chung.
-            var finishReason = parsed?.Candidates?.FirstOrDefault()?.FinishReason;
-            var blockReason = parsed?.PromptFeedback?.BlockReason;
-
-            var reason = blockReason is not null
-                ? $"Nội dung bị chặn (blockReason={blockReason})."
-                : finishReason is not null
-                    ? $"Gemini không trả nội dung (finishReason={finishReason})."
-                    : "Gemini trả về nội dung rỗng.";
-
-            _logger.LogWarning("Gemini không có nội dung: {Reason}", reason);
-            return AiCompletionResult.Fail(reason);
-        }
-
-        var tokenCount = parsed?.UsageMetadata?.TotalTokenCount;
-
-        return AiCompletionResult.Ok(text.Trim(), tokenCount, model);
+        return blockReason is not null
+            ? $"Nội dung bị chặn (blockReason={blockReason})."
+            : finishReason is not null
+                ? $"Gemini không trả nội dung (finishReason={finishReason})."
+                : "Gemini trả về nội dung rỗng.";
     }
 
     /// <summary>
@@ -360,8 +497,29 @@ public class GeminiAiClient : IAiChatClient, ITranslationClient
         [JsonPropertyName("systemInstruction")]
         public GeminiContent? SystemInstruction { get; set; }
 
+        [JsonPropertyName("tools")]
+        public List<GeminiTool>? Tools { get; set; }
+
         [JsonPropertyName("generationConfig")]
         public GeminiGenerationConfig? GenerationConfig { get; set; }
+    }
+
+    private sealed class GeminiTool
+    {
+        [JsonPropertyName("functionDeclarations")]
+        public List<GeminiFunctionDeclaration> FunctionDeclarations { get; set; } = [];
+    }
+
+    private sealed class GeminiFunctionDeclaration
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonPropertyName("description")]
+        public string Description { get; set; } = string.Empty;
+
+        [JsonPropertyName("parameters")]
+        public object? Parameters { get; set; }
     }
 
     private sealed class GeminiContent
@@ -376,7 +534,34 @@ public class GeminiAiClient : IAiChatClient, ITranslationClient
     private sealed class GeminiPart
     {
         [JsonPropertyName("text")]
-        public string Text { get; set; } = string.Empty;
+        public string? Text { get; set; }
+
+        [JsonPropertyName("functionCall")]
+        public GeminiFunctionCall? FunctionCall { get; set; }
+
+        [JsonPropertyName("functionResponse")]
+        public GeminiFunctionResponse? FunctionResponse { get; set; }
+
+        [JsonPropertyName("thoughtSignature")]
+        public string? ThoughtSignature { get; set; }
+    }
+
+    private sealed class GeminiFunctionCall
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonPropertyName("args")]
+        public JsonElement Args { get; set; }
+    }
+
+    private sealed class GeminiFunctionResponse
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonPropertyName("response")]
+        public object? Response { get; set; }
     }
 
     private sealed class GeminiGenerationConfig
