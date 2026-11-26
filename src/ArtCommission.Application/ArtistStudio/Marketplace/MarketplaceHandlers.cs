@@ -44,7 +44,11 @@ public class MarketplaceQueryHandler : IRequestHandler<SearchMarketplaceQuery, I
         var ratedCreators = ratings.Where(pair => pair.Value.Average >= (r.MinRating ?? 0)).Select(pair => pair.Key).ToArray();
         var items = await _db.Artworks.AsNoTracking().Include(x => x.ArtworkTags).ThenInclude(x => x.Tag).Include(x => x.CreatorProfile)
             .Where(x => !x.IsDeleted && x.ModerationStatus == "Approved" && !x.CreatorProfile!.IsDeleted)
-            .Where(x => string.IsNullOrWhiteSpace(r.Query) || x.Title.Contains(r.Query) || (x.Description != null && x.Description.Contains(r.Query)))
+            .Where(x => string.IsNullOrWhiteSpace(r.Query)
+                || x.Title.Contains(r.Query)
+                || (x.Style != null && x.Style.Contains(r.Query))
+                || x.ArtworkTags.Any(t => t.Tag != null && t.Tag.Name.Contains(r.Query))
+                || (x.CreatorProfile != null && x.CreatorProfile.DisplayName.Contains(r.Query)))
             .Where(x => string.IsNullOrWhiteSpace(r.Style) || x.Style == r.Style || x.ArtworkTags.Any(t => t.Tag!.Name == r.Style))
             .Where(x => r.MinPrice == null || x.StartingPrice >= r.MinPrice).Where(x => r.MaxPrice == null || x.StartingPrice <= r.MaxPrice)
             .Where(x => string.IsNullOrWhiteSpace(r.LicenseType) || x.LicenseType == r.LicenseType)

@@ -34,7 +34,13 @@ public class GetArtworksQueryHandler : IRequestHandler<GetArtworksQuery, (bool S
                 x.ModerationStatus,
                 x.ViewCount,
                 x.CreatedAt,
-                x.ArtworkTags.Select(at => at.Tag!.Name).ToList()))
+                x.ArtworkTags.Select(at => at.Tag!.Name).ToList())
+            {
+                CreatorName = x.CreatorProfile != null ? x.CreatorProfile.DisplayName : null,
+                Style = x.Style,
+                LicenseType = x.LicenseType,
+                StartingPrice = x.StartingPrice
+            })
             .ToListAsync(cancellationToken);
 
         return (true, artworks, Array.Empty<string>());
