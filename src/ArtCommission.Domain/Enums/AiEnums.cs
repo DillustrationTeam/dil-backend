@@ -38,16 +38,6 @@ public enum ReminderChannel
     Push
 }
 
-/// <summary>Trạng thái một lượt sinh ảnh phác thảo bố cục AI.</summary>
-public enum AiReferenceGenerationStatus
-{
-    Pending,
-    Running,
-    Succeeded,
-    Blocked,
-    Failed
-}
-
 /// <summary>
 /// Mức rủi ro trễ hạn, suy ra từ <c>DeadlineReminder.RiskScore</c>.
 /// Dùng cho nhãn màu trên UI và để quyết định có gửi cảnh báo hay không.

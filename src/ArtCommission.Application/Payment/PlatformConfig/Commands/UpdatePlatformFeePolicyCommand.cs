@@ -16,8 +16,6 @@ public record UpdatePlatformFeePolicyCommand(
     int MilestoneAutoApprovalDays,
     int DefaultFreeRevisionLimit,
     int PresignedUrlExpirationMinutes,
-    decimal AiReferenceSketchDiscountPercent,
-    int AiReferenceSketchMaxGenerationsPerWindow,
     Guid? AdminId = null
 ) : IRequest<(bool Success, PlatformFeePolicyDto? Data, string[] Errors)>;
 
@@ -40,14 +38,6 @@ public class UpdatePlatformFeePolicyCommandValidator : AbstractValidator<UpdateP
         RuleFor(x => x.PresignedUrlExpirationMinutes)
             .InclusiveBetween(5, 120)
             .WithMessage("Thời gian hết hạn Presigned URL (PresignedUrlExpirationMinutes) phải từ 5 đến 120 phút.");
-
-        RuleFor(x => x.AiReferenceSketchDiscountPercent)
-            .InclusiveBetween(0m, 30m)
-            .WithMessage("% giảm giá AI phác thảo (AiReferenceSketchDiscountPercent) phải từ 0% đến 30%.");
-
-        RuleFor(x => x.AiReferenceSketchMaxGenerationsPerWindow)
-            .InclusiveBetween(1, 10)
-            .WithMessage("Giới hạn lượt sinh ảnh AI phác thảo (AiReferenceSketchMaxGenerationsPerWindow) phải từ 1 đến 10 lượt/24h.");
     }
 }
 
@@ -102,14 +92,6 @@ public class UpdatePlatformFeePolicyCommandHandler
             [PlatformConfigKeys.PresignedUrlExpirationMinutes] = (
                 request.PresignedUrlExpirationMinutes.ToString(CultureInfo.InvariantCulture),
                 "Thời gian hết hạn của AWS S3 / Cloudinary presigned URL (phút, BR-39)"
-            ),
-            [PlatformConfigKeys.AiReferenceSketchDiscountPercent] = (
-                request.AiReferenceSketchDiscountPercent.ToString("0.##", CultureInfo.InvariantCulture),
-                "% giảm giá đơn toàn sàn khi khách gắn ảnh AI phác thảo làm reference (0% - 30%)"
-            ),
-            [PlatformConfigKeys.AiReferenceSketchMaxGenerationsPerWindow] = (
-                request.AiReferenceSketchMaxGenerationsPerWindow.ToString(CultureInfo.InvariantCulture),
-                "Giới hạn lượt sinh ảnh AI phác thảo bố cục mỗi (khách, creator) trong 24 giờ (1 - 10 lượt)"
             )
         };
 
@@ -157,8 +139,6 @@ public class UpdatePlatformFeePolicyCommandHandler
             MilestoneAutoApprovalDays = request.MilestoneAutoApprovalDays,
             DefaultFreeRevisionLimit = request.DefaultFreeRevisionLimit,
             PresignedUrlExpirationMinutes = request.PresignedUrlExpirationMinutes,
-            AiReferenceSketchDiscountPercent = request.AiReferenceSketchDiscountPercent,
-            AiReferenceSketchMaxGenerationsPerWindow = request.AiReferenceSketchMaxGenerationsPerWindow,
             UpdatedAt = now
         };
 

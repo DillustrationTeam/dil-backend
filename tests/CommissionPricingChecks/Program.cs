@@ -3,7 +3,6 @@ using ArtCommission.Application.ArtistStudio.Queries.GetCreatorRateCard;
 using ArtCommission.Application.Commission.DTOs;
 using ArtCommission.Application.Commission.Interfaces;
 using ArtCommission.Application.Payment.Common;
-using ArtCommission.Domain.Entities.Ai;
 using ArtCommission.Domain.Entities.ArtistStudio;
 using ArtCommission.Domain.Entities.Payment;
 using ArtCommission.Domain.Enums;
@@ -41,22 +40,10 @@ db.Vouchers.Add(new Voucher
     UsageLimit = 1,
     IsActive = true
 });
-db.Vouchers.Add(new Voucher
-{
-    VoucherCode = "AIDISCOUNT10",
-    DiscountType = DiscountType.Percent,
-    DiscountValue = 10m,
-    Scope = VoucherScope.Commission,
-    StartDate = VoucherCheckService.TodayInVietnam().AddDays(-1),
-    EndDate = VoucherCheckService.TodayInVietnam().AddDays(1),
-    UsageLimit = 1,
-    IsActive = true
-});
 await db.SaveChangesAsync();
 
-var storage = new FakeStorageService();
 var service = new ArtCommission.Infrastructure.Services.CommissionService(
-    db, new WalletService(db), new FakeWatermarkService(), storage, new VoucherCheckService(db));
+    db, new WalletService(db), new FakeWatermarkService(), new FakeStorageService(), new VoucherCheckService(db));
 var checks = 0;
 
 void Equal<T>(T expected, T actual, string name)
@@ -156,82 +143,6 @@ Equal(450m, commercial.TotalPrice, "commercial license server price");
 Equal(1.5m, commercial.LicenseMultiplierApplied, "commercial license multiplier persisted");
 Equal(450m, (await service.GetCommissionByIdAsync(commercial.Id, clientId))!.Milestones.Sum(m => m.Price), "commercial milestones match total");
 
-// --- AI-DISCOUNT-*: giảm giá toàn sàn khi khách gắn ảnh AI phác thảo (docs/ai-reference/PLAN.md T12) ---
-async Task<Guid> SeedAiReferenceImage()
-{
-    var generationId = Guid.NewGuid();
-    var imageId = Guid.NewGuid();
-    var tempKey = $"ai-ref-temp/{generationId:N}/0.png";
-    db.AiReferenceGenerations.Add(new AiReferenceGeneration
-    {
-        Id = generationId, ClientId = clientId, CreatorProfileId = creatorProfileId,
-        BriefText = "Test brief for AI discount pricing check", Status = AiReferenceGenerationStatus.Succeeded
-    });
-    db.AiReferenceImages.Add(new AiReferenceImage
-    {
-        Id = imageId, GenerationId = generationId, TempStorageKey = tempKey, LabelVi = "Test", LabelEn = "Test"
-    });
-    await db.SaveChangesAsync();
-    await storage.UploadPrivateAsync(new MemoryStream([1, 2, 3]), tempKey, "image/png");
-    return imageId;
-}
-
-async Task SetAiDiscountPercent(string value)
-{
-    var config = await db.PlatformConfigs.FirstOrDefaultAsync(c => c.Key == PlatformConfigKeys.AiReferenceSketchDiscountPercent);
-    if (config is null)
-    {
-        db.PlatformConfigs.Add(new PlatformConfig { Key = PlatformConfigKeys.AiReferenceSketchDiscountPercent, Value = value });
-    }
-    else
-    {
-        config.Value = value;
-    }
-    await db.SaveChangesAsync();
-}
-
-await SetAiDiscountPercent("10");
-
-var aiImage1 = await SeedAiReferenceImage();
-var aiDiscounted = await service.CreateCommissionAsync(new CreateCommissionRequest
-{
-    CreatorId = creatorProfileId, PackageId = packageId, Title = "ai discount alone", AiReferenceImageIds = [aiImage1]
-}, clientId);
-Equal(270m, aiDiscounted.TotalPrice, "AI-DISCOUNT-01: giảm 10% riêng lẻ đúng giá");
-Equal(270m, (await service.GetCommissionByIdAsync(aiDiscounted.Id, clientId))!.Milestones.Sum(m => m.Price), "AI-DISCOUNT-01: tổng milestone khớp giá đã giảm");
-Equal(10m, aiDiscounted.AiReferenceDiscountPercentApplied, "AI-DISCOUNT-01: audit field ghi đúng % áp dụng");
-
-var aiImage2 = await SeedAiReferenceImage();
-var aiDiscountedCommercial = await service.CreateCommissionAsync(new CreateCommissionRequest
-{
-    CreatorId = creatorProfileId, PackageId = packageId, LicenseType = "Commercial",
-    Title = "ai discount + commercial multiplier", AiReferenceImageIds = [aiImage2]
-}, clientId);
-Equal(405m, aiDiscountedCommercial.TotalPrice, "AI-DISCOUNT-02: hệ số thương mại nhân trước (300*1.5=450) rồi mới giảm 10% (405)");
-
-var aiImage3 = await SeedAiReferenceImage();
-var aiDiscountedVoucher = await service.CreateCommissionAsync(new CreateCommissionRequest
-{
-    CreatorId = creatorProfileId, PackageId = packageId, Title = "ai discount + voucher",
-    AiReferenceImageIds = [aiImage3], VoucherCode = "AIDISCOUNT10"
-}, clientId);
-Equal(243m, aiDiscountedVoucher.FinalPrice, "AI-DISCOUNT-03: voucher 10% tính trên giá đã giảm AI (270*0.9=243), không phải trên giá gốc");
-
-var freestyleNoDiscount = await service.CreateCommissionAsync(new CreateCommissionRequest
-{
-    CreatorId = creatorProfileId, PackageId = packageId, Title = "freestyle no ai discount", IsFreestyle = true
-}, clientId);
-Equal(300m, freestyleNoDiscount.TotalPrice, "AI-DISCOUNT-04: freestyle (không gắn ảnh AI) không bị/được giảm dù config đang bật 10%");
-Equal(0m, freestyleNoDiscount.AiReferenceDiscountPercentApplied, "AI-DISCOUNT-04: audit field = 0 khi không dùng ảnh AI");
-
-await SetAiDiscountPercent("0");
-var aiImage4 = await SeedAiReferenceImage();
-var aiZeroPercent = await service.CreateCommissionAsync(new CreateCommissionRequest
-{
-    CreatorId = creatorProfileId, PackageId = packageId, Title = "ai images but 0% configured", AiReferenceImageIds = [aiImage4]
-}, clientId);
-Equal(300m, aiZeroPercent.TotalPrice, "AI-DISCOUNT-05: admin set 0% -> giá không đổi dù khách có gắn ảnh AI");
-
 Console.WriteLine($"Passed {checks} commission pricing and workflow checks.");
 
 sealed class FakeWatermarkService : IWatermarkService
@@ -259,9 +170,4 @@ sealed class FakeStorageService : IStorageService
     public Task<Stream?> OpenPrivateReadAsync(string privateKey, CancellationToken ct = default)
         => Task.FromResult<Stream?>(_private.TryGetValue(privateKey, out var bytes) ? new MemoryStream(bytes) : null);
     public string GeneratePresignedDownloadUrl(string privateKey, TimeSpan expiry) => $"https://example.test/{privateKey}";
-    public Task DeletePrivateAsync(string privateKey, CancellationToken ct = default)
-    {
-        _private.Remove(privateKey);
-        return Task.CompletedTask;
-    }
 }

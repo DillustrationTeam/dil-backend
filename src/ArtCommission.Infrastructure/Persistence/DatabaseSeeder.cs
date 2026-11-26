@@ -202,9 +202,7 @@ public static class DatabaseSeeder
             [PlatformConfigKeys.AiScanAdultThreshold] = ("0.70", "Ngưỡng cảnh báo nội dung người lớn (Adult/NSFW) từ AI (0.0 - 1.0)"),
             [PlatformConfigKeys.AiScanViolenceThreshold] = ("0.70", "Ngưỡng cảnh báo bạo lực/máu me (Violence/Gore) từ AI (0.0 - 1.0)"),
             [PlatformConfigKeys.AiScanAiDetectionThreshold] = ("0.75", "Ngưỡng xác suất tranh do AI tạo để tự động gắn cờ (0.0 - 1.0)"),
-            [PlatformConfigKeys.AiScanAutoTaggingEnabled] = ("true", "Bật/tắt tính năng AI tự động gợi ý và gắn tag phong cách cho tác phẩm (true/false)"),
-            [PlatformConfigKeys.AiReferenceSketchDiscountPercent] = ("0", "% giảm giá đơn toàn sàn khi khách gắn ảnh AI phác thảo làm reference (0% - 30%)"),
-            [PlatformConfigKeys.AiReferenceSketchMaxGenerationsPerWindow] = ("3", "Giới hạn lượt sinh ảnh AI phác thảo bố cục mỗi (khách, creator) trong 24 giờ (1 - 10 lượt)")
+            [PlatformConfigKeys.AiScanAutoTaggingEnabled] = ("true", "Bật/tắt tính năng AI tự động gợi ý và gắn tag phong cách cho tác phẩm (true/false)")
         };
 
         var configKeys = defaultConfigs.Keys.ToList();

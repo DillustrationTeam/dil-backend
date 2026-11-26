@@ -24,14 +24,4 @@ public record UpdatePlatformFeePolicyRequest
     /// Thời gian hết hạn của AWS S3 / Cloudinary Presigned URL (phút, 5 - 1440 phút).
     /// </summary>
     public int PresignedUrlExpirationMinutes { get; init; } = 15;
-
-    /// <summary>
-    /// % giảm giá đơn áp dụng toàn sàn khi khách gắn ảnh AI phác thảo làm reference (0% - 30%).
-    /// </summary>
-    public decimal AiReferenceSketchDiscountPercent { get; init; } = 0m;
-
-    /// <summary>
-    /// Giới hạn số lượt sinh ảnh AI phác thảo bố cục mỗi (khách, creator) trong 24 giờ (1 - 10 lượt).
-    /// </summary>
-    public int AiReferenceSketchMaxGenerationsPerWindow { get; init; } = 3;
 }

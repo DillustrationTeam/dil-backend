@@ -47,9 +47,7 @@ public class GeminiAiClient : IAiChatClient, ITranslationClient
         string? systemInstruction,
         IReadOnlyList<AiChatTurn> history,
         string userMessage,
-        CancellationToken cancellationToken = default,
-        int? maxOutputTokens = null,
-        bool jsonResponse = false)
+        CancellationToken cancellationToken = default)
     {
         var contents = new List<GeminiContent>();
 
@@ -77,7 +75,7 @@ public class GeminiAiClient : IAiChatClient, ITranslationClient
             Parts = [new GeminiPart { Text = userMessage }]
         });
 
-        return SendAsync(contents, systemInstruction, cancellationToken, maxOutputTokens, jsonResponse);
+        return SendAsync(contents, systemInstruction, cancellationToken);
     }
 
     public Task<AiCompletionResult> TranslateAsync(
@@ -135,9 +133,7 @@ public class GeminiAiClient : IAiChatClient, ITranslationClient
     private async Task<AiCompletionResult> SendAsync(
         List<GeminiContent> contents,
         string? systemInstruction,
-        CancellationToken cancellationToken,
-        int? maxOutputTokens = null,
-        bool jsonResponse = false)
+        CancellationToken cancellationToken)
     {
         if (!_options.IsConfigured)
         {
@@ -154,8 +150,7 @@ public class GeminiAiClient : IAiChatClient, ITranslationClient
             GenerationConfig = new GeminiGenerationConfig
             {
                 Temperature = _options.Temperature,
-                MaxOutputTokens = maxOutputTokens ?? _options.MaxOutputTokens,
-                ResponseMimeType = jsonResponse ? "application/json" : null
+                MaxOutputTokens = _options.MaxOutputTokens
             }
         };
 
@@ -375,10 +370,6 @@ public class GeminiAiClient : IAiChatClient, ITranslationClient
 
         [JsonPropertyName("maxOutputTokens")]
         public int MaxOutputTokens { get; set; }
-
-        // Null is omitted (SerializerOptions ignores nulls), so plain-text callers are unaffected.
-        [JsonPropertyName("responseMimeType")]
-        public string? ResponseMimeType { get; set; }
     }
 
     private sealed class GeminiResponse

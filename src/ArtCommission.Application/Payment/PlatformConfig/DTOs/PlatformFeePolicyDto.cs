@@ -26,16 +26,6 @@ public record PlatformFeePolicyDto
     public int PresignedUrlExpirationMinutes { get; init; } = 15;
 
     /// <summary>
-    /// % giảm giá đơn áp dụng toàn sàn khi khách gắn ảnh AI phác thảo làm reference (0% - 30%, mặc định 0%).
-    /// </summary>
-    public decimal AiReferenceSketchDiscountPercent { get; init; } = 0m;
-
-    /// <summary>
-    /// Giới hạn số lượt sinh ảnh AI phác thảo bố cục mỗi (khách, creator) trong 24 giờ (1 - 10 lượt, mặc định 3).
-    /// </summary>
-    public int AiReferenceSketchMaxGenerationsPerWindow { get; init; } = 3;
-
-    /// <summary>
     /// Thời điểm cập nhật cấu hình lần cuối.
     /// </summary>
     public DateTimeOffset? UpdatedAt { get; init; }
