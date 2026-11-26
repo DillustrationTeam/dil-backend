@@ -156,6 +156,7 @@ public sealed class SearchCreatorsTool(IApplicationDbContext db) : IAiTool
                 || (p.Specialties != null && (p.Specialties.ToLower().Contains(keyword) || p.Specialties.ToLower().Contains(altKeyword)))
                 || (p.Headline != null && (p.Headline.ToLower().Contains(keyword) || p.Headline.ToLower().Contains(altKeyword)))
                 || (p.Bio != null && (p.Bio.ToLower().Contains(keyword) || p.Bio.ToLower().Contains(altKeyword)))
+                || (p.RateCardJson != null && (p.RateCardJson.ToLower().Contains(keyword) || p.RateCardJson.ToLower().Contains(altKeyword)))
                 || db.CommissionServices.Any(s =>
                     s.CreatorProfileId == p.Id
                     && s.IsActive

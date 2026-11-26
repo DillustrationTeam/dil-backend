@@ -7,10 +7,15 @@ namespace ArtCommission.Application.Ai.Tools;
 
 public sealed class SearchCommissionServicesTool(IApplicationDbContext db) : IAiTool
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     public string Name => "search_commission_services";
 
     public string Description =>
-        "Searches active commission packages/services across all approved creators by keyword (e.g. 'half-body', 'chibi', 'portrait'), price range, delivery days, revisions, and order availability.";
+        "Searches active commission packages/services (both CommissionServices and creator rate-card packages) across all approved creators by keyword (e.g. 'half-body', 'chibi', 'portrait'), price range, delivery days, revisions, and order availability.";
 
     public object ParametersSchema => new
     {
@@ -20,17 +25,17 @@ public sealed class SearchCommissionServicesTool(IApplicationDbContext db) : IAi
             keyword = new
             {
                 type = "string",
-                description = "Optional keyword matching service title, description, or creator specialties"
+                description = "Optional keyword matching package/service name, description, category, or creator specialties"
             },
             minPrice = new
             {
                 type = "number",
-                description = "Optional minimum starting price (VND)"
+                description = "Optional minimum price (VND)"
             },
             maxPrice = new
             {
                 type = "number",
-                description = "Optional maximum starting price (VND)"
+                description = "Optional maximum price (VND)"
             },
             maxDeliveryDays = new
             {
@@ -45,7 +50,7 @@ public sealed class SearchCommissionServicesTool(IApplicationDbContext db) : IAi
             acceptingOrdersOnly = new
             {
                 type = "boolean",
-                description = "If true, only return services from creators currently accepting orders"
+                description = "If true, only return packages from creators currently accepting orders"
             },
             sortBy = new
             {
@@ -61,6 +66,7 @@ public sealed class SearchCommissionServicesTool(IApplicationDbContext db) : IAi
         var keyword = args.TryGetProperty("keyword", out var kw) && kw.ValueKind == JsonValueKind.String
             ? kw.GetString()?.Trim().ToLower()
             : null;
+        var altKeyword = keyword?.Replace('-', ' ');
 
         decimal? minPrice = args.TryGetProperty("minPrice", out var minP) && minP.ValueKind == JsonValueKind.Number && minP.TryGetDecimal(out var parsedMinP)
             ? parsedMinP
@@ -84,7 +90,8 @@ public sealed class SearchCommissionServicesTool(IApplicationDbContext db) : IAi
             ? sb.GetString()?.Trim().ToLowerInvariant()
             : "price_asc";
 
-        var query = db.CommissionServices
+        // 1. CommissionServices table
+        var serviceQuery = db.CommissionServices
             .AsNoTracking()
             .Where(s => s.IsActive
                 && !s.IsDeleted
@@ -94,64 +101,187 @@ public sealed class SearchCommissionServicesTool(IApplicationDbContext db) : IAi
 
         if (acceptingOrdersOnly)
         {
-            query = query.Where(s => s.CreatorProfile!.IsAcceptingOrders);
+            serviceQuery = serviceQuery.Where(s => s.CreatorProfile!.IsAcceptingOrders);
         }
-
         if (minPrice.HasValue)
         {
-            query = query.Where(s => s.StartingPrice >= minPrice.Value);
+            serviceQuery = serviceQuery.Where(s => s.StartingPrice >= minPrice.Value);
         }
-
         if (maxPrice.HasValue)
         {
-            query = query.Where(s => s.StartingPrice <= maxPrice.Value);
+            serviceQuery = serviceQuery.Where(s => s.StartingPrice <= maxPrice.Value);
         }
-
         if (maxDeliveryDays.HasValue)
         {
-            query = query.Where(s => s.DeliveryDays <= maxDeliveryDays.Value);
+            serviceQuery = serviceQuery.Where(s => s.DeliveryDays <= maxDeliveryDays.Value);
         }
-
         if (minRevisions.HasValue)
         {
-            query = query.Where(s => s.MaxRevisions >= minRevisions.Value);
+            serviceQuery = serviceQuery.Where(s => s.MaxRevisions >= minRevisions.Value);
         }
-
         if (!string.IsNullOrEmpty(keyword))
         {
-            var altKeyword = keyword.Replace('-', ' ');
-            query = query.Where(s =>
+            serviceQuery = serviceQuery.Where(s =>
                 s.Title.ToLower().Contains(keyword)
-                || s.Title.ToLower().Contains(altKeyword)
-                || (s.Description != null && (s.Description.ToLower().Contains(keyword) || s.Description.ToLower().Contains(altKeyword)))
-                || (s.CreatorProfile!.Specialties != null && (s.CreatorProfile.Specialties.ToLower().Contains(keyword) || s.CreatorProfile.Specialties.ToLower().Contains(altKeyword)))
+                || s.Title.ToLower().Contains(altKeyword!)
+                || (s.Description != null && (s.Description.ToLower().Contains(keyword) || s.Description.ToLower().Contains(altKeyword!)))
+                || (s.CreatorProfile!.Specialties != null && (s.CreatorProfile.Specialties.ToLower().Contains(keyword) || s.CreatorProfile.Specialties.ToLower().Contains(altKeyword!)))
                 || s.CreatorProfile.DisplayName.ToLower().Contains(keyword));
         }
 
-        query = sortBy switch
-        {
-            "price_desc" => query.OrderByDescending(s => s.StartingPrice),
-            "fastest" => query.OrderBy(s => s.DeliveryDays).ThenBy(s => s.StartingPrice),
-            "rating" => query.OrderByDescending(s => s.CreatorProfile!.RatingAverage).ThenBy(s => s.StartingPrice),
-            _ => query.OrderBy(s => s.StartingPrice).ThenByDescending(s => s.CreatorProfile!.RatingAverage)
-        };
-
-        return await query
-            .Take(10)
-            .Select(s => new
-            {
-                serviceId = s.Id,
+        var dbServices = await serviceQuery
+            .Select(s => new ServiceMatch(
+                s.Id.ToString(),
+                "CommissionService",
                 s.Title,
                 s.Description,
+                null,
                 s.StartingPrice,
                 s.DeliveryDays,
                 s.MaxRevisions,
-                creatorProfileId = s.CreatorProfileId,
-                creatorDisplayName = s.CreatorProfile!.DisplayName,
-                creatorRating = s.CreatorProfile.RatingAverage,
-                isAcceptingOrders = s.CreatorProfile.IsAcceptingOrders,
-                availableSlots = s.CreatorProfile.AvailableSlots
-            })
+                s.CreatorProfileId,
+                s.CreatorProfile!.DisplayName,
+                s.CreatorProfile.RatingAverage,
+                s.CreatorProfile.IsAcceptingOrders,
+                s.CreatorProfile.AvailableSlots))
             .ToListAsync(cancellationToken);
+
+        // 2. CreatorProfile.RateCardJson packages (unless maxDeliveryDays is required, since rate-card packages have no deliveryDays field)
+        var rateCardMatches = new List<ServiceMatch>();
+        if (!maxDeliveryDays.HasValue)
+        {
+            var creatorQuery = db.CreatorProfiles
+                .AsNoTracking()
+                .Where(p => p.IsApproved && !p.IsDeleted && p.RateCardJson != null && p.RateCardJson != "");
+
+            if (acceptingOrdersOnly)
+            {
+                creatorQuery = creatorQuery.Where(p => p.IsAcceptingOrders);
+            }
+
+            var creatorsWithRateCard = await creatorQuery
+                .Select(p => new
+                {
+                    p.Id,
+                    p.DisplayName,
+                    p.Specialties,
+                    p.RatingAverage,
+                    p.IsAcceptingOrders,
+                    p.AvailableSlots,
+                    p.RateCardJson
+                })
+                .ToListAsync(cancellationToken);
+
+            foreach (var creator in creatorsWithRateCard)
+            {
+                List<RateCardPackageDto>? packages;
+                try
+                {
+                    packages = JsonSerializer.Deserialize<List<RateCardPackageDto>>(creator.RateCardJson!, JsonOptions);
+                }
+                catch (JsonException)
+                {
+                    continue;
+                }
+
+                if (packages is null || packages.Count == 0)
+                {
+                    continue;
+                }
+
+                foreach (var pkg in packages)
+                {
+                    if (string.IsNullOrWhiteSpace(pkg.Name))
+                    {
+                        continue;
+                    }
+
+                    if (minPrice.HasValue && pkg.Price < minPrice.Value) continue;
+                    if (maxPrice.HasValue && pkg.Price > maxPrice.Value) continue;
+
+                    var revisions = pkg.MaxRevisions
+                        ?? pkg.Milestones?.Sum(m => m.MaxRevisions ?? 0);
+                    if (minRevisions.HasValue && (revisions ?? 0) < minRevisions.Value) continue;
+
+                    if (!string.IsNullOrEmpty(keyword))
+                    {
+                        var matchesKeyword =
+                            ContainsKeyword(pkg.Name, keyword, altKeyword!)
+                            || ContainsKeyword(pkg.Description, keyword, altKeyword!)
+                            || ContainsKeyword(pkg.CategoryName, keyword, altKeyword!)
+                            || ContainsKeyword(creator.Specialties, keyword, altKeyword!)
+                            || ContainsKeyword(creator.DisplayName, keyword, altKeyword!);
+
+                        if (!matchesKeyword)
+                        {
+                            continue;
+                        }
+                    }
+
+                    rateCardMatches.Add(new ServiceMatch(
+                        pkg.Id ?? string.Empty,
+                        "RateCardPackage",
+                        pkg.Name,
+                        pkg.Description,
+                        pkg.CategoryName,
+                        pkg.Price,
+                        null,
+                        revisions,
+                        creator.Id,
+                        creator.DisplayName,
+                        creator.RatingAverage,
+                        creator.IsAcceptingOrders,
+                        creator.AvailableSlots));
+                }
+            }
+        }
+
+        IEnumerable<ServiceMatch> combined = dbServices.Concat(rateCardMatches);
+
+        combined = sortBy switch
+        {
+            "price_desc" => combined.OrderByDescending(s => s.StartingPrice),
+            "fastest" => combined.OrderBy(s => s.DeliveryDays ?? int.MaxValue).ThenBy(s => s.StartingPrice),
+            "rating" => combined.OrderByDescending(s => s.CreatorRating).ThenBy(s => s.StartingPrice),
+            _ => combined.OrderBy(s => s.StartingPrice).ThenByDescending(s => s.CreatorRating)
+        };
+
+        return combined.Take(10).ToList();
+    }
+
+    private static bool ContainsKeyword(string? text, string keyword, string altKeyword) =>
+        !string.IsNullOrEmpty(text)
+        && (text.Contains(keyword, StringComparison.OrdinalIgnoreCase)
+            || text.Contains(altKeyword, StringComparison.OrdinalIgnoreCase));
+
+    private sealed record ServiceMatch(
+        string ServiceId,
+        string Source,
+        string Title,
+        string? Description,
+        string? CategoryName,
+        decimal StartingPrice,
+        int? DeliveryDays,
+        int? MaxRevisions,
+        Guid CreatorProfileId,
+        string CreatorDisplayName,
+        decimal CreatorRating,
+        bool IsAcceptingOrders,
+        int AvailableSlots);
+
+    private sealed class RateCardPackageDto
+    {
+        public string? Id { get; set; }
+        public string? Name { get; set; }
+        public string? Description { get; set; }
+        public decimal Price { get; set; }
+        public int? MaxRevisions { get; set; }
+        public string? CategoryName { get; set; }
+        public List<RateCardMilestoneDto>? Milestones { get; set; }
+    }
+
+    private sealed class RateCardMilestoneDto
+    {
+        public int? MaxRevisions { get; set; }
     }
 }
