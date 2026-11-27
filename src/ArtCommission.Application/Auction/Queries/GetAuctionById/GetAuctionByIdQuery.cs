@@ -261,8 +261,12 @@ public class GetAuctionByIdQueryHandler
                 : null,
             FinalPrice: auction.FinalPrice,
             BiddingBlocked: fraudConfirmed,
+            // Xác nhận gian lận giờ HUỶ phiên (không còn "tạm dừng" như bản đầu), nên câu này phải
+            // khớp trạng thái thật — người mua đọc được là phiên đã đóng, không phải đang chờ.
             BiddingBlockedReason: fraudConfirmed
-                ? "Phiên đang tạm dừng nhận giá do kiểm duyệt xác nhận có dấu hiệu gian lận."
+                ? auction.Status == AuctionStatus.Cancelled
+                    ? "Phiên đã bị huỷ do kiểm duyệt xác nhận gian lận. Tiền cọc đã được hoàn về ví."
+                    : "Phiên đang tạm dừng nhận giá do kiểm duyệt xác nhận có dấu hiệu gian lận."
                 : null,
             SellerPenaltyLevel: sellerPenaltyLevel,
             MyAutoBidMax: myAutoBidMax);

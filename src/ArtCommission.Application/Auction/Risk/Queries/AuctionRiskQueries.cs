@@ -342,7 +342,18 @@ public sealed class GetMyAuctionRiskFlagsQueryHandler(IApplicationDbContext db)
             .ToListAsync(cancellationToken);
 
         // StatusLabel is a C# switch, so it must run after materialisation, not inside the query.
+        //
+        // Một phiên có thể có NHIỀU phiếu (bị bỏ qua rồi bị gắn cờ lại, hoặc đã xác nhận rồi phát hiện
+        // thêm). Trước đây trả mỗi phiếu một dòng nên cùng một phiên hiện 2–3 thẻ trùng trên
+        // /my-auctions (React còn cảnh báo trùng key). Nay gộp theo phiên, giữ trạng thái NẶNG NHẤT.
         var items = rows
+            .GroupBy(r => r.AuctionId)
+            .Select(g => g
+                .OrderByDescending(r => StatusSeverity(r.Status))
+                .ThenByDescending(r => r.DetectedAt)
+                .First())
+            .OrderByDescending(r => StatusSeverity(r.Status))
+            .ThenByDescending(r => r.DetectedAt)
             .Select(r => new MyAuctionRiskFlagDto(
                 r.AuctionId,
                 r.Title ?? "Phiên đấu giá",
@@ -352,4 +363,13 @@ public sealed class GetMyAuctionRiskFlagsQueryHandler(IApplicationDbContext db)
 
         return (true, items, []);
     }
+
+    /// <summary>Độ nặng của trạng thái phiếu, dùng để chọn dòng đại diện khi một phiên có nhiều phiếu.</summary>
+    private static int StatusSeverity(AuctionRiskAssessmentStatus status) => status switch
+    {
+        AuctionRiskAssessmentStatus.Confirmed => 3,
+        AuctionRiskAssessmentStatus.UnderReview => 2,
+        AuctionRiskAssessmentStatus.Open => 1,
+        _ => 0
+    };
 }
