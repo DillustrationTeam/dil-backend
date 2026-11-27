@@ -55,8 +55,14 @@ public class AuctionRecommendationsController : ApiControllerBase
         CancellationToken cancellationToken)
     {
         var userId = User.Identity?.IsAuthenticated == true ? CurrentUserId : (Guid?)null;
+        // Accept both payload shapes: `items` (preferred, keeps score/rank) and the legacy id list.
+        var items = request.Items
+                    ?? (request.AuctionIds ?? [])
+                        .Select(id => new RecommendationImpressionItem(id))
+                        .ToList();
+
         var (success, recorded, errors) = await Mediator.Send(
-            new RecordRecommendationImpressionsCommand(userId, request.AuctionIds, request.Surface, request.Clicked),
+            new RecordRecommendationImpressionsCommand(userId, items, request.Surface, request.Clicked),
             cancellationToken);
 
         return success ? OkEnvelope(new { recorded }) : BadRequestEnvelope(errors);

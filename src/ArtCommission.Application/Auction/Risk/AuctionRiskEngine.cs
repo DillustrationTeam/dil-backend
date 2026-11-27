@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.Notifications.Common;
@@ -42,7 +43,13 @@ public sealed class AuctionRiskEngine : IRiskEngine
     private const int MaxBidsConsidered = 200;
     private const int MaxEvidenceLength = 1000;
 
-    private static readonly JsonSerializerOptions EvidenceJson = new() { WriteIndented = false };
+    // Unicode is kept readable in the column: support must be able to read the evidence straight
+    // from SQL, and escaped \uXXXX makes that impossible.
+    private static readonly JsonSerializerOptions EvidenceJson = new()
+    {
+        WriteIndented = false,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
 
     private readonly IApplicationDbContext _db;
     private readonly INotificationPublisher _notifications;

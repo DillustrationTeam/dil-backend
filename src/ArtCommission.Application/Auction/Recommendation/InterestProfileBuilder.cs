@@ -17,6 +17,12 @@ namespace ArtCommission.Application.Auction.Recommendation;
 public interface IInterestProfileBuilder
 {
     Task<InterestProfile> GetOrBuildAsync(Guid userId, bool forceRebuild, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Marks the cached profile stale after a strong signal (bid, watch) so the next rail read
+    /// rebuilds it. Cheap enough to call inside the bid command: one row update, no recompute.
+    /// </summary>
+    Task InvalidateAsync(Guid userId, CancellationToken cancellationToken = default);
 }
 
 public sealed class InterestProfileBuilder(IApplicationDbContext db) : IInterestProfileBuilder
@@ -81,6 +87,28 @@ public sealed class InterestProfileBuilder(IApplicationDbContext db) : IInterest
 
         await db.SaveChangesAsync(cancellationToken);
         return profile;
+    }
+
+    public async Task InvalidateAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+        {
+            return;
+        }
+
+        var row = await db.UserInterestProfiles
+            .FirstOrDefaultAsync(p => p.UserId == userId && !p.IsDeleted, cancellationToken);
+
+        if (row is null)
+        {
+            return;
+        }
+
+        // Expire instead of deleting: the weights stay readable for debugging while the next
+        // GetOrBuildAsync rebuilds from fresh behaviour.
+        row.ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+        row.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     /// <summary>One artwork contribution before aggregation.</summary>

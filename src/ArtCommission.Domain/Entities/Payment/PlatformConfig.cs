@@ -39,6 +39,9 @@ public static class PlatformConfigKeys
     /// <summary>Optional JSON override of the per-signal weights. Empty = code defaults.</summary>
     public const string AuctionRiskWeightsJson = "AuctionRiskWeightsJson";
 
+    /// <summary>JSON override of the recommendation ranking weights. Empty = code defaults.</summary>
+    public const string AuctionRecommendationWeights = "AuctionRecommendationWeights";
+
     public const string PayoutEnabled = "PayoutEnabled";
     public const string MilestoneAutoApprovalDays = "MilestoneAutoApprovalDays";
     public const string EscrowHoldDaysSqlKey = "escrow_hold_days";

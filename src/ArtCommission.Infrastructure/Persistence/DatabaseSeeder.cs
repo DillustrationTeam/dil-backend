@@ -209,7 +209,8 @@ public static class DatabaseSeeder
             [PlatformConfigKeys.AuctionRiskThresholdHigh] = ("55", "Ngưỡng điểm rủi ro (0-100) bắt đầu xếp mức Cao và gửi cảnh báo cho Admin"),
             [PlatformConfigKeys.AuctionRiskThresholdCritical] = ("80", "Ngưỡng điểm rủi ro (0-100) xếp mức Nghiêm trọng"),
             [PlatformConfigKeys.AuctionRiskSweepBatchSize] = ("200", "Số phiên tối đa mỗi lượt quét nền của bộ phát hiện gian lận"),
-            [PlatformConfigKeys.AuctionRiskWeightsJson] = ("", "Trọng số từng dấu hiệu gian lận dạng JSON. Để trống = dùng bộ trọng số mặc định trong code")
+            [PlatformConfigKeys.AuctionRiskWeightsJson] = ("", "Trọng số từng dấu hiệu gian lận dạng JSON. Để trống = dùng bộ trọng số mặc định trong code"),
+            [PlatformConfigKeys.AuctionRecommendationWeights] = ("", "Trọng số xếp hạng gợi ý đấu giá dạng JSON. Để trống = dùng bộ mặc định (content 0.45 · urgency 0.25 · popularity 0.15 · priceFit 0.10 · creator 0.05)")
         };
 
         var configKeys = defaultConfigs.Keys.ToList();

@@ -38,7 +38,7 @@ public sealed class GetSimilarAuctionsQueryHandler(IApplicationDbContext db)
 
         if (source is null)
         {
-            return (false, [], ["Không tìm thấy phiên đấu giá."]);
+            return (false, [], ["KhÃ´ng tÃ¬m tháº¥y phiÃªn Ä‘áº¥u giÃ¡."]);
         }
 
         var tags = source.Tags;
@@ -89,10 +89,10 @@ public sealed class GetSimilarAuctionsQueryHandler(IApplicationDbContext db)
                     - (r.RiskLevel is AuctionRiskLevel.High or AuctionRiskLevel.Critical ? 3d : 0d);
 
                 var reason = sharedTags.Count > 0
-                    ? $"Cùng phong cách {sharedTags[0]}"
+                    ? $"CÃ¹ng phong cÃ¡ch {sharedTags[0]}"
                     : r.CreatorProfileId == source.CreatorProfileId
-                        ? "Cùng creator"
-                        : "Cùng danh mục";
+                        ? "CÃ¹ng creator"
+                        : "CÃ¹ng danh má»¥c";
 
                 return new
                 {
@@ -140,7 +140,7 @@ public sealed class GetSimilarAuctionsQueryHandler(IApplicationDbContext db)
 // =====================================================================
 public sealed record RecordRecommendationImpressionsCommand(
     Guid? UserId,
-    IReadOnlyList<Guid> AuctionIds,
+    IReadOnlyList<RecommendationImpressionItem> Items,
     string? Surface,
     bool Clicked)
     : IRequest<(bool Success, int Recorded, string[] Errors)>;
@@ -154,13 +154,18 @@ public sealed class RecordRecommendationImpressionsCommandHandler(IApplicationDb
         RecordRecommendationImpressionsCommand request,
         CancellationToken cancellationToken)
     {
-        var ids = request.AuctionIds?.Where(id => id != Guid.Empty).Distinct().ToList() ?? [];
-        if (ids.Count == 0)
+        var items = (request.Items ?? [])
+            .Where(item => item.AuctionId != Guid.Empty)
+            .GroupBy(item => item.AuctionId)
+            .Select(group => group.First())
+            .ToList();
+
+        if (items.Count == 0)
         {
             return (false, 0, ["Danh sách impression rỗng."]);
         }
 
-        if (ids.Count > MaxBatch)
+        if (items.Count > MaxBatch)
         {
             return (false, 0, [$"Mỗi lượt chỉ ghi tối đa {MaxBatch} impression."]);
         }
@@ -171,8 +176,8 @@ public sealed class RecordRecommendationImpressionsCommandHandler(IApplicationDb
             surface = surface[..32];
         }
 
-        // Ignore ids that are not real auctions instead of failing the whole batch: impressions are
-        // telemetry, never worth breaking a page over.
+        // Unknown ids are dropped, never fatal: impressions are telemetry, not a transaction.
+        var ids = items.Select(item => item.AuctionId).ToList();
         var known = await db.Auctions.AsNoTracking()
             .Where(a => ids.Contains(a.Id))
             .Select(a => a.Id)
@@ -186,15 +191,17 @@ public sealed class RecordRecommendationImpressionsCommandHandler(IApplicationDb
         var now = DateTimeOffset.UtcNow;
         var userId = request.UserId ?? Guid.Empty;
 
-        foreach (var auctionId in known)
+        foreach (var item in items.Where(item => known.Contains(item.AuctionId)))
         {
             db.RecommendationImpressions.Add(new Domain.Entities.Auction.RecommendationImpression
             {
                 UserId = userId,
-                AuctionId = auctionId,
+                AuctionId = item.AuctionId,
                 Surface = surface,
-                Score = 0m,
-                Rank = 0,
+                // Score/rank are what the client actually displayed, so CTR can be joined with the
+                // ranking position later instead of being an opaque counter.
+                Score = item.Score ?? 0m,
+                Rank = item.Rank ?? 0,
                 Reason = string.Empty,
                 ShownAt = now,
                 ClickedAt = request.Clicked ? now : null,

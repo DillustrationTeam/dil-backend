@@ -60,6 +60,7 @@ public sealed class PlaceBidCommandHandler
     private readonly IAuctionSettlementService _settlementService;
     private readonly IWalletService _walletService;
     private readonly IRiskEngine _riskEngine;
+    private readonly Recommendation.IInterestProfileBuilder _interestProfiles;
     private readonly ILogger<PlaceBidCommandHandler> _logger;
 
     public PlaceBidCommandHandler(
@@ -71,6 +72,7 @@ public sealed class PlaceBidCommandHandler
         IAuctionSettlementService settlementService,
         IWalletService walletService,
         IRiskEngine riskEngine,
+        Recommendation.IInterestProfileBuilder interestProfiles,
         ILogger<PlaceBidCommandHandler> logger)
     {
         _db = db;
@@ -81,6 +83,7 @@ public sealed class PlaceBidCommandHandler
         _settlementService = settlementService;
         _walletService = walletService;
         _riskEngine = riskEngine;
+        _interestProfiles = interestProfiles;
         _logger = logger;
     }
 
@@ -508,6 +511,17 @@ public sealed class PlaceBidCommandHandler
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Risk hot-path evaluation failed for auctionId={AuctionId}.", auction.Id);
+            }
+
+            // A bid is the strongest taste signal there is: expire the cached interest profile so the
+            // recommendation rail reflects it on the next read instead of waiting for the 12h TTL.
+            try
+            {
+                await _interestProfiles.InvalidateAsync(request.UserId, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Interest profile invalidation failed for userId={UserId}.", request.UserId);
             }
 
             return (true, result, [], null);

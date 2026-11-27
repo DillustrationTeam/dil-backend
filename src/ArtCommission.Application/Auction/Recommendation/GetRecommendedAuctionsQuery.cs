@@ -6,31 +6,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ArtCommission.Application.Auction.Recommendation;
 
-/// <summary>
-/// Ranking weights of the v1 recommender. Kept as constants (not config rows) because every value
-/// below is entangled with the others: retuning one without re-running the offline backtest makes
-/// the rail quietly worse. Thresholds that an operator may legitimately tune live are in
-/// RiskSettings instead.
-/// </summary>
-internal static class RecommendationWeights
-{
-    public const double Content = 0.45;
-    public const double Urgency = 0.25;
-    public const double Popularity = 0.15;
-    public const double PriceFit = 0.10;
-    public const double Creator = 0.05;
-
-    /// <summary>Penalty applied to auctions the fraud detector rated High/Critical.</summary>
-    public const double RiskPenalty = 0.30;
-
-    public const int WindowDays = 7;
-    public const int MaxPerCreator = 2;
-    public const int MaxPerCategory = 3;
-}
-
-// =====================================================================
-// 1. GET /api/v1/auctions/recommended
-// =====================================================================
 public sealed record GetRecommendedAuctionsQuery(Guid? UserId, int Take = 12)
     : IRequest<(bool Success, IReadOnlyList<RecommendedAuctionDto> Data, string[] Errors)>;
 
@@ -46,17 +21,20 @@ public sealed class GetRecommendedAuctionsQueryHandler(
         var take = Math.Clamp(request.Take, 3, 30);
         var now = DateTimeOffset.UtcNow;
 
+        // Weights come from PlatformConfigs (fallback = shipped defaults) so tuning needs no deploy.
+        var weights = await RecommendationWeightsConfig.LoadAsync(db, cancellationToken);
+
         var profile = request.UserId is { } userId && userId != Guid.Empty
             ? await profileBuilder.GetOrBuildAsync(userId, forceRebuild: false, cancellationToken)
             : InterestProfile.Empty;
 
-        var candidates = await LoadCandidatesAsync(request.UserId, now, cancellationToken);
+        var candidates = await LoadCandidatesAsync(request.UserId, now, weights, cancellationToken);
         if (candidates.Count == 0)
         {
             return (true, [], []);
         }
 
-        var scored = Rank(candidates, profile, now);
+        var scored = Rank(candidates, profile, now, weights);
 
         // Diversity pass: no single creator or category may dominate the rail.
         var picked = new List<ScoredCandidate>();
@@ -65,13 +43,13 @@ public sealed class GetRecommendedAuctionsQueryHandler(
 
         foreach (var candidate in scored)
         {
-            if (perCreator.GetValueOrDefault(candidate.CreatorProfileId) >= RecommendationWeights.MaxPerCreator)
+            if (perCreator.GetValueOrDefault(candidate.CreatorProfileId) >= weights.MaxPerCreator)
             {
                 continue;
             }
 
             var categoryKey = candidate.CategoryName ?? "khac";
-            if (perCategory.GetValueOrDefault(categoryKey) >= RecommendationWeights.MaxPerCategory)
+            if (perCategory.GetValueOrDefault(categoryKey) >= weights.MaxPerCategory)
             {
                 continue;
             }
@@ -114,7 +92,8 @@ public sealed class GetRecommendedAuctionsQueryHandler(
     private static List<ScoredCandidate> Rank(
         IReadOnlyList<CandidateRow> candidates,
         InterestProfile profile,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        RecommendationWeightsConfig weights)
     {
         var contentScores = candidates
             .Select(c => profile.ContentScore(c.Tags, c.Style, c.CategoryName))
@@ -139,7 +118,7 @@ public sealed class GetRecommendedAuctionsQueryHandler(
             }
 
             var hoursLeft = Math.Max(0d, (candidate.EndAt - now).TotalHours);
-            var urgency = Math.Clamp(1d - (hoursLeft / (RecommendationWeights.WindowDays * 24d)), 0d, 1d);
+            var urgency = Math.Clamp(1d - (hoursLeft / (weights.WindowDays * 24d)), 0d, 1d);
             if (hoursLeft <= 24)
             {
                 signals.Add("ending-soon");
@@ -163,18 +142,18 @@ public sealed class GetRecommendedAuctionsQueryHandler(
             }
 
             var riskPenalty = candidate.RiskLevel is AuctionRiskLevel.High or AuctionRiskLevel.Critical
-                ? RecommendationWeights.RiskPenalty
+                ? weights.RiskPenalty
                 : 0d;
             if (riskPenalty > 0)
             {
                 signals.Add("risk-downranked");
             }
 
-            var score = (content * RecommendationWeights.Content)
-                        + (urgency * RecommendationWeights.Urgency)
-                        + (Math.Clamp(popularity, 0d, 1d) * RecommendationWeights.Popularity)
-                        + (priceFit * RecommendationWeights.PriceFit)
-                        + (creator * RecommendationWeights.Creator)
+            var score = (content * weights.Content)
+                        + (urgency * weights.Urgency)
+                        + (Math.Clamp(popularity, 0d, 1d) * weights.Popularity)
+                        + (priceFit * weights.PriceFit)
+                        + (creator * weights.Creator)
                         - riskPenalty;
 
             scored.Add(new ScoredCandidate(
@@ -248,9 +227,10 @@ public sealed class GetRecommendedAuctionsQueryHandler(
     private async Task<List<CandidateRow>> LoadCandidatesAsync(
         Guid? userId,
         DateTimeOffset now,
+        RecommendationWeightsConfig weights,
         CancellationToken cancellationToken)
     {
-        var horizon = now.AddDays(RecommendationWeights.WindowDays);
+        var horizon = now.AddDays(weights.WindowDays);
 
         // The window is an ORDERING preference, not a filter: a marketplace without auctions closing
         // this week would otherwise render an empty rail. Urgency simply saturates at 0 past the
