@@ -37,14 +37,23 @@ public class AuctionRiskController : ApiControllerBase
     }
 
     /// <summary>Full evidence sheet of one auction (drawer view).</summary>
+    /// <remarks>
+    /// Truyền <paramref name="assessmentId"/> khi mở phiếu từ hàng chờ: một phiên có thể có nhiều
+    /// phiếu (đã bỏ qua, đã xác nhận, phiếu mới mở) và chỉ id mới chỉ đúng phiếu người dùng bấm.
+    /// </remarks>
     [Authorize(Roles = $"{UserRoleNames.Administrator},{UserRoleNames.Moderator}")]
     [HttpGet("{auctionId:guid}/risk")]
     [ProducesResponseType(typeof(AuctionRiskAssessmentDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetRisk(Guid auctionId, CancellationToken cancellationToken)
+    public async Task<IActionResult> GetRisk(
+        Guid auctionId,
+        [FromQuery] Guid? assessmentId = null,
+        CancellationToken cancellationToken = default)
     {
-        var (success, data, errors) = await Mediator.Send(new GetAuctionRiskQuery(auctionId), cancellationToken);
+        var (success, data, errors) = await Mediator.Send(
+            new GetAuctionRiskQuery(auctionId, assessmentId), cancellationToken);
+
         return success ? OkEnvelope(data) : NotFoundEnvelope(errors);
     }
 

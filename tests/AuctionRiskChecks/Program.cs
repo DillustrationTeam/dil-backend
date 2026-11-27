@@ -122,6 +122,63 @@ Console.WriteLine("1. Bid pattern rules");
     Check("PriceJump stays quiet on one normal step", signals.Count == 0, $"signals={signals.Count}");
 }
 
+// Lệch 1 đơn vị cũ: phải 7 lượt mới xét, nên đợt 6 lượt/18 giây lọt hoàn toàn.
+{
+    var auction = NewAuction();
+    var bids = Enumerable.Range(0, settings.VelocityThreshold)
+        .Select(i => NewBid(auction, i % 2 == 0 ? bidderA : bidderB, 1_000_000m + (i * 50_000m), t0.AddSeconds(i * 5)))
+        .ToList();
+
+    var signals = new BidVelocityRule().Evaluate(BuildContext(auction, bids), settings);
+    Check($"BidVelocity fires for exactly {settings.VelocityThreshold} bids in 20s", signals.Count == 1, $"signals={signals.Count}");
+}
+
+// Ngưỡng cũ dùng Math.Max nên cú nhảy 4 bước giá vẫn không tính (mốc thực tế là 40% giá trước).
+{
+    var auction = NewAuction();
+    var bids = new List<BidEntity>
+    {
+        NewBid(auction, bidderA, 1_050_000m, t0),
+        NewBid(auction, bidderB, 1_250_000m, t0.AddMinutes(1))
+    };
+
+    var signals = new PriceJumpRule().Evaluate(BuildContext(auction, bids), settings);
+    Check("PriceJump fires on a 4-step jump below 40%", signals.Count == 1, $"signals={signals.Count}");
+}
+
+// Khoảng trống lớn nhất: nhiều tài khoản thay nhau, nhịp máy. Đo trên API thật trước khi sửa: 0 điểm.
+{
+    var auction = NewAuction();
+    var bids = Enumerable.Range(0, settings.BurstBidCount)
+        .Select(i => NewBid(auction, i % 2 == 0 ? bidderA : bidderB, 1_000_000m + (i * 50_000m), t0.AddSeconds(i * 3)))
+        .ToList();
+
+    var signals = new BidBurstClusterRule().Evaluate(BuildContext(auction, bids), settings);
+    Check(
+        $"BidBurstCluster fires for {settings.BurstBidCount} bids / 2 accounts / 3s apart",
+        signals.Count == 1, $"signals={signals.Count}");
+}
+
+{
+    var auction = NewAuction();
+    var bids = Enumerable.Range(0, settings.BurstBidCount)
+        .Select(i => NewBid(auction, bidderA, 1_000_000m + (i * 50_000m), t0.AddSeconds(i * 3)))
+        .ToList();
+
+    var signals = new BidBurstClusterRule().Evaluate(BuildContext(auction, bids), settings);
+    Check("BidBurstCluster stays quiet for a single account", signals.Count == 0, $"signals={signals.Count}");
+}
+
+{
+    var auction = NewAuction();
+    var bids = Enumerable.Range(0, settings.BurstBidCount)
+        .Select(i => NewBid(auction, i % 2 == 0 ? bidderA : bidderB, 1_000_000m + (i * 50_000m), t0.AddMinutes(i * 3)))
+        .ToList();
+
+    var signals = new BidBurstClusterRule().Evaluate(BuildContext(auction, bids), settings);
+    Check("BidBurstCluster stays quiet at one bid every 3 minutes", signals.Count == 0, $"signals={signals.Count}");
+}
+
 {
     var auction = NewAuction();
     var bids = new List<BidEntity>
@@ -263,7 +320,17 @@ Console.WriteLine("4. Scorer");
         RiskSignalDraft.ForBid(RiskSignalCode.BidVelocity, Guid.NewGuid(), bidderA, "7 bids")
     };
     var medium = scorer.Score(mediumDrafts, settings);
-    Check("AutoBidWall + BidVelocity = 25 points -> Low", medium.Score == 25m && medium.Level == AuctionRiskLevel.Low, $"{medium.Score}/{medium.Level}");
+    Check("AutoBidWall + BidVelocity = 30 points -> Medium", medium.Score == 30m && medium.Level == AuctionRiskLevel.Medium, $"{medium.Score}/{medium.Level}");
+
+    // Leo thang: Velocity (15) + BurstCluster (35) cùng cửa sổ ngắn -> +10 = 60 -> High.
+    var burstDrafts = new List<RiskSignalDraft>
+    {
+        RiskSignalDraft.ForBid(RiskSignalCode.BidVelocity, Guid.NewGuid(), bidderA, "5 bids / 20s"),
+        RiskSignalDraft.ForBid(RiskSignalCode.BidBurstCluster, Guid.NewGuid(), bidderB, "5 bids / 2 accounts")
+    };
+    var burst = scorer.Score(burstDrafts, settings);
+    Check("Velocity + BurstCluster escalates to 60 -> High", burst.Score == 60m && burst.Level == AuctionRiskLevel.High, $"{burst.Score}/{burst.Level}");
+    Check("Escalation is explained in the summary", burst.Summary.Contains("cộng thêm 10", StringComparison.Ordinal), burst.Summary);
 
     var highDrafts = new List<RiskSignalDraft>
     {

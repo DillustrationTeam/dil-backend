@@ -19,10 +19,14 @@ public class UnwatchAuctionCommandHandler
     : IRequestHandler<UnwatchAuctionCommand, (bool, AuctionWatchDto?, string[])>
 {
     private readonly IApplicationDbContext _db;
+    private readonly Recommendation.IInterestProfileBuilder _interestProfiles;
 
-    public UnwatchAuctionCommandHandler(IApplicationDbContext db)
+    public UnwatchAuctionCommandHandler(
+        IApplicationDbContext db,
+        Recommendation.IInterestProfileBuilder interestProfiles)
     {
         _db = db;
+        _interestProfiles = interestProfiles;
     }
 
     public async Task<(bool, AuctionWatchDto?, string[])> Handle(
@@ -45,6 +49,9 @@ public class UnwatchAuctionCommandHandler
             watch.IsDeleted = true;
             watch.UpdatedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(cancellationToken);
+
+            // Bỏ theo dõi làm giảm trọng số sở thích: hết hạn hồ sơ để rail xếp lại hạng.
+            await _interestProfiles.InvalidateAsync(request.UserId, cancellationToken);
         }
 
         return (true, new AuctionWatchDto(watch?.Id, request.AuctionId, request.UserId, false), []);

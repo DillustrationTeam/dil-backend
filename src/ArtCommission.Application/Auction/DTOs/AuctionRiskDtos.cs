@@ -30,9 +30,18 @@ public sealed record AuctionRiskAssessmentDto(
     string Summary,
     DateTimeOffset DetectedAt,
     DateTimeOffset? LastRiskScanAt,
+    Guid? ClaimedByUserId,
+    string? ClaimedByName,
+    DateTimeOffset? ClaimedAt,
     Guid? ReviewedByUserId,
+    string? ReviewedByName,
     DateTimeOffset? ReviewedAt,
     string? DecisionNote,
+    /// <summary>
+    /// Trạng thái HIỆN TẠI của phiên (Active / Cancelled / Settled ...). Xác nhận gian lận sẽ huỷ
+    /// phiên, nên phiếu kiểm duyệt phải nói được "phiên đã huỷ" thay vì "đang tạm dừng" như trước.
+    /// </summary>
+    string? AuctionStatus,
     IReadOnlyList<RiskSignalDto> Signals);
 
 /// <summary>Row of the risk queue (list view - no evidence payload, that is fetched on open).</summary>

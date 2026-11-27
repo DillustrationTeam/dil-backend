@@ -24,10 +24,14 @@ public class WatchAuctionCommandHandler
     : IRequestHandler<WatchAuctionCommand, (bool, AuctionWatchDto?, string[])>
 {
     private readonly IApplicationDbContext _db;
+    private readonly Recommendation.IInterestProfileBuilder _interestProfiles;
 
-    public WatchAuctionCommandHandler(IApplicationDbContext db)
+    public WatchAuctionCommandHandler(
+        IApplicationDbContext db,
+        Recommendation.IInterestProfileBuilder interestProfiles)
     {
         _db = db;
+        _interestProfiles = interestProfiles;
     }
 
     public async Task<(bool, AuctionWatchDto?, string[])> Handle(
@@ -66,6 +70,9 @@ public class WatchAuctionCommandHandler
                 existing.IsDeleted = false;
                 existing.UpdatedAt = DateTimeOffset.UtcNow;
                 await _db.SaveChangesAsync(cancellationToken);
+
+                // Bật lại theo dõi cũng là tín hiệu sở thích mới — hết hạn hồ sơ như nhánh tạo mới.
+                await _interestProfiles.InvalidateAsync(request.UserId, cancellationToken);
             }
 
             return (true, new AuctionWatchDto(existing.Id, existing.AuctionId, existing.UserId, true), []);
@@ -79,6 +86,9 @@ public class WatchAuctionCommandHandler
 
         _db.AuctionWatches.Add(watch);
         await _db.SaveChangesAsync(cancellationToken);
+
+        // Theo dõi là tín hiệu sở thích (trọng số 4): hết hạn hồ sơ để rail cập nhật ngay.
+        await _interestProfiles.InvalidateAsync(request.UserId, cancellationToken);
 
         return (true, new AuctionWatchDto(watch.Id, watch.AuctionId, watch.UserId, true), []);
     }

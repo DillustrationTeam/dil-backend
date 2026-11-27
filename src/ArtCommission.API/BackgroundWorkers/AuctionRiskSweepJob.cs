@@ -19,6 +19,12 @@ public sealed class AuctionRiskSweepJob
 {
     private static readonly TimeSpan RescanInterval = TimeSpan.FromMinutes(10);
 
+    /// <summary>
+    /// Tuổi tối đa của một lượt "đang xem". Quá hạn thì phiếu tự nhả về Open để người khác nhận,
+    /// tránh việc một tab đã đóng giữ phiếu vĩnh viễn.
+    /// </summary>
+    private static readonly TimeSpan ClaimLifetime = TimeSpan.FromMinutes(30);
+
     private readonly IApplicationDbContext _db;
     private readonly IRiskEngine _riskEngine;
     private readonly ILogger<AuctionRiskSweepJob> _logger;
@@ -35,15 +41,40 @@ public sealed class AuctionRiskSweepJob
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
+        var now = DateTimeOffset.UtcNow;
+        var staleBefore = now - RescanInterval;
+
+        // Nhả phiếu bị bỏ quên TRƯỚC khi kiểm tra công tắc: tắt bộ phát hiện không có nghĩa là phiếu
+        // đang bị một tab đã đóng giữ mãi. (Trước đây khối này nằm sau `if (!Enabled) return`.)
+        // Nhả phiếu bị bỏ quên: UnderReview quá 30 phút mà không có quyết định thì trả về Open để
+        // kiểm duyệt viên khác nhận, tránh phiếu bị "khoá" vĩnh viễn bởi một tab đã đóng.
+        var staleClaims = await _db.AuctionRiskAssessments
+            .Where(a => !a.IsDeleted
+                        && a.Status == AuctionRiskAssessmentStatus.UnderReview
+                        && a.ClaimedAt != null
+                        && a.ClaimedAt < now - ClaimLifetime)
+            .ToListAsync(cancellationToken);
+
+        foreach (var sheet in staleClaims)
+        {
+            sheet.Status = AuctionRiskAssessmentStatus.Open;
+            sheet.ClaimedByUserId = null;
+            sheet.ClaimedAt = null;
+            sheet.UpdatedAt = now;
+        }
+
+        if (staleClaims.Count > 0)
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Released {Count} stale risk claim(s).", staleClaims.Count);
+        }
+
         var settings = await RiskSettings.LoadAsync(_db, cancellationToken);
         if (!settings.Enabled)
         {
             _logger.LogInformation("Auction risk sweep skipped: detection disabled in PlatformConfig.");
             return;
         }
-
-        var now = DateTimeOffset.UtcNow;
-        var staleBefore = now - RescanInterval;
 
         var candidates = await _db.Auctions.AsNoTracking()
             .Where(a => !a.IsDeleted

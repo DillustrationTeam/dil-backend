@@ -32,6 +32,14 @@ public class AuctionRiskAssessment : BaseEntity
 
     public DateTimeOffset DetectedAt { get; set; } = DateTimeOffset.UtcNow;
 
+    /// <summary>
+    /// Moderator currently holding the sheet (status UnderReview). Lets two operators avoid
+    /// reviewing the same auction twice; the claim expires so an abandoned sheet returns to the queue.
+    /// </summary>
+    public Guid? ClaimedByUserId { get; set; }
+
+    public DateTimeOffset? ClaimedAt { get; set; }
+
     public Guid? ReviewedByUserId { get; set; }
     public DateTimeOffset? ReviewedAt { get; set; }
 

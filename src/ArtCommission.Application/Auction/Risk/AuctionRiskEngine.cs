@@ -119,13 +119,22 @@ public sealed class AuctionRiskEngine : IRiskEngine
         var previousLevel = live?.RiskLevel ?? AuctionRiskLevel.Low;
 
         // A clean re-scan must not erase a moderator's open sheet, and must not create noise rows.
-        if (live is null && drafts.Count == 0)
+        //
+        // Dưới ngưỡng Cao thì KHÔNG tạo phiếu: dấu hiệu vẫn được ghi lại (bằng chứng cho lần sau),
+        // nhưng hàng chờ của kiểm duyệt viên chỉ nhận việc thật sự đáng xem. Trước đây chỉ cần
+        // drafts.Count > 0 là tạo phiếu, nên một cặp dấu hiệu 35 điểm ("Vừa") cũng chen vào hàng chờ.
+        var belowAlertThreshold = scored.Level is AuctionRiskLevel.Low or AuctionRiskLevel.Medium;
+
+        if (live is null && (drafts.Count == 0 || belowAlertThreshold))
         {
-            auction.RiskScore = 0m;
-            auction.RiskLevel = AuctionRiskLevel.Low;
+            auction.RiskScore = drafts.Count == 0 ? 0m : scored.Score;
+            auction.RiskLevel = drafts.Count == 0 ? AuctionRiskLevel.Low : scored.Level;
             auction.LastRiskScanAt = now;
             await _db.SaveChangesAsync(cancellationToken);
-            return new RiskEvaluationOutcome(false, 0m, AuctionRiskLevel.Low, 0, null, false);
+
+            return drafts.Count == 0
+                ? new RiskEvaluationOutcome(false, 0m, AuctionRiskLevel.Low, 0, null, false)
+                : new RiskEvaluationOutcome(false, scored.Score, scored.Level, drafts.Count, null, false);
         }
 
         var isNewAssessment = live is null;

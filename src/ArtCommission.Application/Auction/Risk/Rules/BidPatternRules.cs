@@ -15,16 +15,19 @@ public sealed class BidVelocityRule : IRiskRule
     public IReadOnlyList<RiskSignalDraft> Evaluate(RiskContext context, RiskSettings settings)
     {
         var bids = context.Bids;
-        if (bids.Count <= settings.VelocityThreshold)
+
+        // Điều kiện cũ `bids.Count <= VelocityThreshold` làm ngưỡng thực tế là 7 lượt chứ không phải
+        // 6: một đợt 6 lượt trong 18 giây đi qua mà không bị chấm điểm nào. Nay là "đủ ngưỡng là xét".
+        if (bids.Count < settings.VelocityThreshold)
         {
             return [];
         }
 
         var window = settings.VelocityWindow;
-        for (var end = settings.VelocityThreshold; end < bids.Count; end++)
+        for (var end = settings.VelocityThreshold - 1; end < bids.Count; end++)
         {
             var current = bids[end];
-            var start = end - settings.VelocityThreshold;
+            var start = end - settings.VelocityThreshold + 1;
             if (current.PlacedAt - bids[start].PlacedAt > window)
             {
                 continue;
@@ -46,8 +49,77 @@ public sealed class BidVelocityRule : IRiskRule
 }
 
 /// <summary>
-/// A single bid that leaps far past both the configured step and a share of the current price -
-/// the classic "set a fake ceiling" move in a shill setup.
+/// Một cụm lượt đặt giá dồn dập do NHIỀU tài khoản khác nhau đẩy, nhịp gần như không có khoảng nghỉ.
+///
+/// VÌ SAO cần rule riêng (đo được, xem mục 7.17 của kế hoạch): 6 lượt trong 18 giây bởi 2 tài khoản,
+/// có một cú nhảy 4 bước giá, mà bộ cũ chấm **0 điểm** — vì <see cref="BidVelocityRule"/> chỉ nhìn
+/// tốc độ, còn <see cref="PriceLadderRule"/> chỉ bắt trường hợp CÙNG một người. Kiểu đẩy giá phổ
+/// biến nhất (hai tài khoản thay nhau) rơi đúng vào khoảng trống giữa hai rule đó.
+/// </summary>
+public sealed class BidBurstClusterRule : IRiskRule
+{
+    public RiskSignalCode Code => RiskSignalCode.BidBurstCluster;
+
+    public bool IsHotPathSafe => true;
+
+    public IReadOnlyList<RiskSignalDraft> Evaluate(RiskContext context, RiskSettings settings)
+    {
+        var bids = context.Bids;
+        if (bids.Count < settings.BurstBidCount)
+        {
+            return [];
+        }
+
+        var window = settings.BurstWindow;
+
+        // Cửa sổ trượt trên chuỗi bid đã sắp theo thời gian: tìm cụm ĐẦU TIÊN đủ điều kiện.
+        for (var end = settings.BurstBidCount - 1; end < bids.Count; end++)
+        {
+            var start = end - settings.BurstBidCount + 1;
+            var span = bids[end].PlacedAt - bids[start].PlacedAt;
+
+            if (span > window)
+            {
+                continue;
+            }
+
+            var cluster = bids.Skip(start).Take(settings.BurstBidCount).ToList();
+            var accounts = cluster.Select(b => b.BidderId).Distinct().Count();
+            if (accounts < 2)
+            {
+                // Một tài khoản duy nhất đã có PriceLadder lo; ở đây chỉ bắt kiểu dàn xếp nhiều tài khoản.
+                continue;
+            }
+
+            var averageGap = span.TotalSeconds / Math.Max(1, settings.BurstBidCount - 1);
+            if (averageGap > settings.BurstMaxAverageGapSeconds)
+            {
+                continue;
+            }
+
+            return
+            [
+                RiskSignalDraft.ForBid(
+                    Code,
+                    cluster[^1].Id,
+                    cluster[^1].BidderId,
+                    $"{settings.BurstBidCount} lượt trong {span.TotalSeconds:0} giây bởi {accounts} tài khoản, "
+                    + $"cách nhau trung bình {averageGap:0.#} giây")
+            ];
+        }
+
+        return [];
+    }
+}
+
+/// <summary>
+/// A single bid that leaps far past the configured step - the classic "set a fake ceiling" move in a
+/// shill setup.
+///
+/// Ngưỡng dùng <c>Math.Min</c> của hai mốc (bội số bước giá và tỉ lệ giá trước), tức là vượt MỘT
+/// trong hai mốc đã tính. Trước đây là <c>Math.Max</c>: phải vượt CẢ HAI, nên với phiên giá 340.000
+/// và bước 20.000 thì cú nhảy 80.000 (4 bước) vẫn không tính, còn mốc thực tế là 40% giá = 136.000 —
+/// rule gần như không bao giờ bắn.
 /// </summary>
 public sealed class PriceJumpRule : IRiskRule
 {
@@ -66,7 +138,11 @@ public sealed class PriceJumpRule : IRiskRule
             var delta = bid.Amount - previous;
             var stepFloor = auction.BidStep > 0 ? auction.BidStep * settings.StepJumpMultiplier : 0m;
             var relativeFloor = previous > 0 ? previous * settings.RelativeJumpRatio : 0m;
-            var floor = Math.Max(stepFloor, relativeFloor);
+
+            // Mốc thấp hơn quyết định: một trong hai điều kiện đủ để coi là nhảy bất thường.
+            var floor = stepFloor <= 0m ? relativeFloor
+                : relativeFloor <= 0m ? stepFloor
+                : Math.Min(stepFloor, relativeFloor);
 
             if (floor > 0 && delta >= floor)
             {

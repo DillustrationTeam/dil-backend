@@ -227,6 +227,7 @@ builder.Services.AddScoped<IRiskEngine, AuctionRiskEngine>();
 builder.Services.AddScoped<IRiskRule, SharedDeviceRule>();
 builder.Services.AddScoped<IRiskRule, SellerLinkedBidderRule>();
 builder.Services.AddScoped<IRiskRule, BidVelocityRule>();
+builder.Services.AddScoped<IRiskRule, BidBurstClusterRule>();
 builder.Services.AddScoped<IRiskRule, PriceJumpRule>();
 builder.Services.AddScoped<IRiskRule, PriceLadderRule>();
 builder.Services.AddScoped<IRiskRule, AutoBidWallRule>();

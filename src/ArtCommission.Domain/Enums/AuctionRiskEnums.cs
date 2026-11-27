@@ -71,5 +71,13 @@ public enum RiskSignalCode
     AutoBidWall = 9,
 
     /// <summary>A very new account bids aggressively.</summary>
-    NewAccountBurst = 10
+    NewAccountBurst = 10,
+
+    /// <summary>
+    /// A cluster of bids inside a short window pushed by SEVERAL accounts with almost no idle time
+    /// between them. Distinct from <see cref="BidVelocity"/> (raw speed, one or many accounts) and
+    /// from <see cref="PriceLadder"/> (one account, one step each): this is the "dàn xếp" pattern -
+    /// two accounts alternating a war nobody real is fighting.
+    /// </summary>
+    BidBurstCluster = 11
 }

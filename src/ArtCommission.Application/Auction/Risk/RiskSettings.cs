@@ -16,10 +16,32 @@ namespace ArtCommission.Application.Auction.Risk;
 /// </summary>
 public sealed class RiskSettings
 {
-    /// <summary>Bid count inside <see cref="VelocityWindow"/> that starts looking like a bot.</summary>
-    public int VelocityThreshold { get; init; } = 6;
+    /// <summary>
+    /// Số lượt đặt giá trong <see cref="VelocityWindow"/> bắt đầu giống bot.
+    ///
+    /// Hạ từ 6 xuống 5 sau khi đo: người đấu giá thật hiếm khi bấm 5 lượt trong 2 phút cho cùng một
+    /// phiên, còn đợt đẩy giá ảo thì 18 giây đã 6 lượt (xem mục 7.17 của kế hoạch).
+    /// </summary>
+    public int VelocityThreshold { get; init; } = 5;
 
     public TimeSpan VelocityWindow { get; init; } = TimeSpan.FromSeconds(120);
+
+    /// <summary>Số lượt tối thiểu trong <see cref="BurstWindow"/> để coi là một cụm dồn dập.</summary>
+    public int BurstBidCount { get; init; } = 5;
+
+    public TimeSpan BurstWindow { get; init; } = TimeSpan.FromSeconds(120);
+
+    /// <summary>
+    /// Khoảng cách trung bình tối đa (giây) giữa các lượt trong cụm. Người thật có nhịp thở: đọc giá,
+    /// cân nhắc rồi mới bấm. Dưới 15 giây/lượt suốt 5 lượt là nhịp máy hoặc hai tab mở sẵn.
+    /// </summary>
+    public int BurstMaxAverageGapSeconds { get; init; } = 15;
+
+    /// <summary>
+    /// Điểm cộng khi ≥2 dấu hiệu thuộc nhóm cửa sổ ngắn cùng bắn. Một dấu hiệu đơn lẻ có thể là
+    /// người đấu thật; hai dấu hiệu cùng lúc trong cùng cửa sổ thì gần như chắc chắn là dàn xếp.
+    /// </summary>
+    public decimal ShortWindowEscalation { get; init; } = 10m;
 
     /// <summary>Multiplier of <c>BidStep</c> that counts as a suspicious single jump.</summary>
     public decimal StepJumpMultiplier { get; init; } = 3m;
@@ -62,10 +84,24 @@ public sealed class RiskSettings
             [RiskSignalCode.PriceLadder] = 15m,
             [RiskSignalCode.WinNoPaymentRate] = 15m,
             [RiskSignalCode.AutoBidWall] = 15m,
-            [RiskSignalCode.BidVelocity] = 10m,
+            [RiskSignalCode.BidVelocity] = 15m,
+            [RiskSignalCode.BidBurstCluster] = 35m,
             [RiskSignalCode.PriceJump] = 10m,
             [RiskSignalCode.NewAccountBurst] = 10m
         };
+
+    /// <summary>
+    /// Nhóm "cửa sổ ngắn": các dấu hiệu chỉ có nghĩa khi xét cùng nhịp thời gian. Dùng cho
+    /// <see cref="ShortWindowEscalation"/>.
+    /// </summary>
+    public static readonly IReadOnlySet<RiskSignalCode> ShortWindowCodes = new HashSet<RiskSignalCode>
+    {
+        RiskSignalCode.BidVelocity,
+        RiskSignalCode.BidBurstCluster,
+        RiskSignalCode.PriceLadder,
+        RiskSignalCode.PriceJump,
+        RiskSignalCode.SelfOutbidLoop
+    };
 
     public decimal WeightOf(RiskSignalCode code)
         => Weights.TryGetValue(code, out var weight) ? weight : 0m;

@@ -11,7 +11,7 @@ namespace ArtCommission.Application.Auction.Risk.Queries;
 // =====================================================================
 // 1. Full risk sheet of one auction (moderation drawer)
 // =====================================================================
-public sealed record GetAuctionRiskQuery(Guid AuctionId)
+public sealed record GetAuctionRiskQuery(Guid AuctionId, Guid? AssessmentId = null)
     : IRequest<(bool Success, AuctionRiskAssessmentDto? Data, string[] Errors)>;
 
 public sealed class GetAuctionRiskQueryHandler(IApplicationDbContext db)
@@ -30,10 +30,15 @@ public sealed class GetAuctionRiskQueryHandler(IApplicationDbContext db)
             return (false, null, ["Không tìm thấy phiên đấu giá."]);
         }
 
-        var assessment = await db.AuctionRiskAssessments.AsNoTracking()
-            .Where(a => a.AuctionId == request.AuctionId && !a.IsDeleted)
-            .OrderByDescending(a => a.DetectedAt)
-            .FirstOrDefaultAsync(cancellationToken);
+        // Khi mở từ hàng chờ, client biết CHÍNH XÁC phiếu nào (id). Lấy "phiếu mới nhất của phiên"
+        // sẽ mở nhầm phiếu khác - ví dụ bấm vào dòng "Đã bỏ qua" nhưng lại thấy phiếu Open mới hơn.
+        var assessment = request.AssessmentId is { } sheetId
+            ? await db.AuctionRiskAssessments.AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Id == sheetId && !a.IsDeleted, cancellationToken)
+            : await db.AuctionRiskAssessments.AsNoTracking()
+                .Where(a => a.AuctionId == request.AuctionId && !a.IsDeleted)
+                .OrderByDescending(a => a.DetectedAt)
+                .FirstOrDefaultAsync(cancellationToken);
 
         var signals = await db.AuctionRiskSignals.AsNoTracking()
             .Where(s => s.AuctionId == request.AuctionId && !s.IsDeleted && (assessment == null || s.DetectorVersion == assessment.ModelVersion))
@@ -41,12 +46,20 @@ public sealed class GetAuctionRiskQueryHandler(IApplicationDbContext db)
             .Select(s => new { s.Id, s.SignalCode, s.Weight, s.EvidenceJson, s.BidId, s.UserId, s.DetectedAt })
             .ToListAsync(cancellationToken);
 
+        var reviewerName = assessment?.ReviewedByUserId is { } reviewerId
+            ? await db.Users.AsNoTracking().Where(u => u.Id == reviewerId).Select(u => u.FullName).FirstOrDefaultAsync(cancellationToken)
+            : null;
+
+        var claimedByName = assessment?.ClaimedByUserId is { } claimerId
+            ? await db.Users.AsNoTracking().Where(u => u.Id == claimerId).Select(u => u.FullName).FirstOrDefaultAsync(cancellationToken)
+            : null;
+
         var signalDtos = signals.Select(s => new RiskSignalDto(
             s.Id,
             s.SignalCode.ToString(),
             AuctionRiskScorer.LabelOf(s.SignalCode),
             s.Weight,
-            ExtractEvidence(s.EvidenceJson),
+            RiskEvidence.Extract(s.EvidenceJson),
             s.BidId,
             s.UserId,
             s.DetectedAt)).ToList();
@@ -58,7 +71,7 @@ public sealed class GetAuctionRiskQueryHandler(IApplicationDbContext db)
                 Guid.Empty,
                 auction.Id,
                 auction.Artwork?.Title ?? "Phiên đấu giá",
-                auction.Artwork?.ThumbnailUrl ?? auction.Artwork?.WatermarkedUrl,
+                auction.Artwork?.ThumbnailUrl ?? auction.Artwork?.WatermarkedUrl ?? auction.Artwork?.ImageUrl,
                 auction.CurrentPrice,
                 0m,
                 AuctionRiskLevel.Low.ToString(),
@@ -71,6 +84,11 @@ public sealed class GetAuctionRiskQueryHandler(IApplicationDbContext db)
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
+                null,
+                auction.Status.ToString(),
                 signalDtos), []);
         }
 
@@ -78,7 +96,7 @@ public sealed class GetAuctionRiskQueryHandler(IApplicationDbContext db)
             assessment.Id,
             auction.Id,
             auction.Artwork?.Title ?? "Phiên đấu giá",
-            auction.Artwork?.ThumbnailUrl ?? auction.Artwork?.WatermarkedUrl,
+            auction.Artwork?.ThumbnailUrl ?? auction.Artwork?.WatermarkedUrl ?? auction.Artwork?.ImageUrl,
             auction.CurrentPrice,
             assessment.Score,
             assessment.RiskLevel.ToString(),
@@ -88,9 +106,14 @@ public sealed class GetAuctionRiskQueryHandler(IApplicationDbContext db)
             assessment.Summary,
             assessment.DetectedAt,
             auction.LastRiskScanAt,
+            assessment.ClaimedByUserId,
+            claimedByName,
+            assessment.ClaimedAt,
             assessment.ReviewedByUserId,
+            reviewerName,
             assessment.ReviewedAt,
             assessment.DecisionNote,
+            auction.Status.ToString(),
             signalDtos), []);
     }
 
@@ -140,13 +163,26 @@ public sealed class GetRiskAlertsQueryHandler(IApplicationDbContext db)
         var query = db.AuctionRiskAssessments.AsNoTracking()
             .Where(a => !a.IsDeleted);
 
-        if (TryParseStatus(request.Status, out var status))
+        var rawStatus = request.Status?.Trim();
+
+        if (string.Equals(rawStatus, "All", StringComparison.OrdinalIgnoreCase))
         {
-            query = query.Where(a => a.Status == status);
+            // "Tất cả" là KHÔNG lọc gì. Trước đây "All" rơi vào nhánh mặc định nên tab Tất cả
+            // thực chất chỉ trả phiếu đang mở - người dùng mất luôn phiếu đã bỏ qua / đã xác nhận.
+        }
+        else if (TryParseStatus(rawStatus, out var status))
+        {
+            // "Chờ xem" là hàng chờ LÀM VIỆC, không phải một trạng thái riêng: phiếu đang được một
+            // kiểm duyệt viên nhận (UnderReview) vẫn phải nằm trong tab này, nếu không nó sẽ biến mất
+            // khỏi mọi tab trừ "Tất cả".
+            query = status == AuctionRiskAssessmentStatus.Open
+                ? query.Where(a => a.Status == AuctionRiskAssessmentStatus.Open
+                                   || a.Status == AuctionRiskAssessmentStatus.UnderReview)
+                : query.Where(a => a.Status == status);
         }
         else
         {
-            // Default queue shows what still needs a human.
+            // Không truyền filter = hàng chờ mặc định (những gì còn cần người xử lý).
             query = query.Where(a => a.Status == AuctionRiskAssessmentStatus.Open
                                      || a.Status == AuctionRiskAssessmentStatus.UnderReview);
         }
@@ -182,7 +218,11 @@ public sealed class GetRiskAlertsQueryHandler(IApplicationDbContext db)
                 a.Summary,
                 a.DetectedAt,
                 Title = a.Auction!.Artwork!.Title,
-                Thumbnail = a.Auction!.Artwork!.ThumbnailUrl ?? a.Auction!.Artwork!.WatermarkedUrl,
+                // Fallback tới ImageUrl: nhiều tác phẩm chỉ có ảnh gốc, không có thumbnail/watermark,
+            // nếu chỉ lấy 2 field đầu thì hàng chờ hiện ô trống dù tranh có ảnh.
+            Thumbnail = a.Auction!.Artwork!.ThumbnailUrl
+                        ?? a.Auction!.Artwork!.WatermarkedUrl
+                        ?? a.Auction!.Artwork!.ImageUrl,
                 a.Auction!.CurrentPrice,
                 a.Auction!.BidCount
             })
@@ -286,8 +326,11 @@ public sealed class GetMyAuctionRiskFlagsQueryHandler(IApplicationDbContext db)
         var rows = await db.AuctionRiskAssessments.AsNoTracking()
             .Where(a => !a.IsDeleted
                         && a.Auction!.SellerId == request.SellerId
+                        // Gồm cả Confirmed: đây là lúc người bán CẦN biết nhất. Trước đây lọc
+                        // Open/UnderReview nên xác nhận gian lận xong thẻ thông báo biến mất.
                         && (a.Status == AuctionRiskAssessmentStatus.Open
-                            || a.Status == AuctionRiskAssessmentStatus.UnderReview))
+                            || a.Status == AuctionRiskAssessmentStatus.UnderReview
+                            || a.Status == AuctionRiskAssessmentStatus.Confirmed))
             .OrderByDescending(a => a.DetectedAt)
             .Select(a => new
             {
