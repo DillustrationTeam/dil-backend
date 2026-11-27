@@ -198,6 +198,15 @@ public class GetAuctionByIdQueryHandler
                 .Select(p => (int?)p.StrikeLevel)
                 .MaxAsync(cancellationToken) ?? 0;
 
+        // Kiểm duyệt đã xác nhận gian lận ⇒ phiên tạm dừng nhận giá. Trạng thái này công khai
+        // (chỉ là "tạm dừng", không kèm điểm/dấu hiệu) để người mua không đặt giá vô ích.
+        var fraudConfirmed = await _db.AuctionRiskAssessments
+            .AsNoTracking()
+            .AnyAsync(a => a.AuctionId == auction.Id
+                           && !a.IsDeleted
+                           && a.Status == AuctionRiskAssessmentStatus.Confirmed,
+                cancellationToken);
+
         // Trần auto-bid của chính người xem: cần để banner "Auto-bid đang hoạt động" sống
         // qua lần tải lại trang (trước đây chỉ nằm trong RAM của tab đang mở).
         decimal? myAutoBidMax = null;
@@ -251,6 +260,14 @@ public class GetAuctionByIdQueryHandler
                 ? AuctionMapper.BuildReceipts(auction, escrow, delivery)
                 : null,
             FinalPrice: auction.FinalPrice,
+            BiddingBlocked: fraudConfirmed,
+            // Xác nhận gian lận giờ HUỶ phiên (không còn "tạm dừng" như bản đầu), nên câu này phải
+            // khớp trạng thái thật — người mua đọc được là phiên đã đóng, không phải đang chờ.
+            BiddingBlockedReason: fraudConfirmed
+                ? auction.Status == AuctionStatus.Cancelled
+                    ? "Phiên đã bị huỷ do kiểm duyệt xác nhận gian lận. Tiền cọc đã được hoàn về ví."
+                    : "Phiên đang tạm dừng nhận giá do kiểm duyệt xác nhận có dấu hiệu gian lận."
+                : null,
             SellerPenaltyLevel: sellerPenaltyLevel,
             MyAutoBidMax: myAutoBidMax);
         return (true, detail, recentBids, []);

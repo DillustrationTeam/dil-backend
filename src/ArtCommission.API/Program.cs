@@ -15,6 +15,9 @@ using ArtCommission.Application.Ai.ReferenceSketch;
 using ArtCommission.Application.ArtTrade.Common;
 using ArtCommission.Application.Auth.Commands.Register;
 using ArtCommission.Application.Auction.Common;
+using ArtCommission.Application.Auction.Risk;
+using ArtCommission.Application.Auction.Risk.Rules;
+using ArtCommission.Application.Auction.Recommendation;
 using ArtCommission.Application.Chat.Common;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.Commission.Interfaces;
@@ -217,6 +220,24 @@ builder.Services.AddScoped<IAuctionSettlementService, AuctionSettlementService>(
  builder.Services.AddScoped<IAuctionPenaltyService, AuctionPenaltyService>();
 builder.Services.AddScoped<IAuctionRealtimePublisher, AuctionRealtimePublisher>();
 builder.Services.AddScoped<IAuctionLifecycleNotifier, AuctionLifecycleNotifier>();
+
+// 3g-bis. AI Bid Fraud Detection — rule engine, scorer và 10 rule (hot path + sweep dùng chung)
+builder.Services.AddScoped<AuctionRiskScorer>();
+builder.Services.AddScoped<IRiskEngine, AuctionRiskEngine>();
+builder.Services.AddScoped<IRiskRule, SharedDeviceRule>();
+builder.Services.AddScoped<IRiskRule, SellerLinkedBidderRule>();
+builder.Services.AddScoped<IRiskRule, BidVelocityRule>();
+builder.Services.AddScoped<IRiskRule, BidBurstClusterRule>();
+builder.Services.AddScoped<IRiskRule, PriceJumpRule>();
+builder.Services.AddScoped<IRiskRule, PriceLadderRule>();
+builder.Services.AddScoped<IRiskRule, AutoBidWallRule>();
+builder.Services.AddScoped<IRiskRule, NonPaymentHistoryRule>();
+builder.Services.AddScoped<IRiskRule, WinNoPaymentRateRule>();
+builder.Services.AddScoped<IRiskRule, SelfOutbidLoopRule>();
+builder.Services.AddScoped<IRiskRule, NewAccountBurstRule>();
+
+// 3g-ter. Personalized Auction Recommendation — hồ sơ sở thích dùng chung cho rail gợi ý
+builder.Services.AddScoped<IInterestProfileBuilder, InterestProfileBuilder>();
 
 // 3h. UC43 — Workroom Chat: phân giải phòng, kiểm quyền thành viên & auto-reply
 builder.Services.AddScoped<IChatRoomService, ChatRoomService>();
@@ -641,6 +662,10 @@ if (!isDocumentGeneration)
             "ai-reference-temp-cleanup",
             job => job.RunAsync(CancellationToken.None),
             Cron.Hourly);
+        recurringJobManager.AddOrUpdate<AuctionRiskSweepJob>(
+            "auction-risk-sweep",
+            job => job.RunAsync(CancellationToken.None),
+            Cron.MinuteInterval(5));
     }
     catch (Exception ex)
     {

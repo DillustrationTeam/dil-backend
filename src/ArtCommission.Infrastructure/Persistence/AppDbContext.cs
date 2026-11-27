@@ -95,6 +95,18 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<TradeDispute> TradeDisputes => Set<TradeDispute>();
 
     // ---------------------------------------------------------------------
+    // Module Auction - AI Bid Fraud Detection
+    // ---------------------------------------------------------------------
+    public DbSet<AuctionRiskSignal> AuctionRiskSignals => Set<AuctionRiskSignal>();
+    public DbSet<AuctionRiskAssessment> AuctionRiskAssessments => Set<AuctionRiskAssessment>();
+
+    // ---------------------------------------------------------------------
+    // Module Auction - Personalized Auction Recommendation
+    // ---------------------------------------------------------------------
+    public DbSet<UserInterestProfile> UserInterestProfiles => Set<UserInterestProfile>();
+    public DbSet<RecommendationImpression> RecommendationImpressions => Set<RecommendationImpression>();
+
+    // ---------------------------------------------------------------------
     // Module Workroom Chat (UC43)
     // ---------------------------------------------------------------------
     public DbSet<ChatRoom> ChatRooms => Set<ChatRoom>();

@@ -23,6 +23,10 @@ using ArtworkOwnershipEntity = ArtCommission.Domain.Entities.Auction.ArtworkOwne
 using EscrowTransactionEntity = ArtCommission.Domain.Entities.Auction.EscrowTransaction;
 using DeliverableEntity = ArtCommission.Domain.Entities.Auction.Deliverable;
 using ArtTradeEntity = ArtCommission.Domain.Entities.Trade.ArtTrade;
+using AuctionRiskSignalEntity = ArtCommission.Domain.Entities.Auction.AuctionRiskSignal;
+using AuctionRiskAssessmentEntity = ArtCommission.Domain.Entities.Auction.AuctionRiskAssessment;
+using UserInterestProfile = ArtCommission.Domain.Entities.Auction.UserInterestProfile;
+using RecommendationImpression = ArtCommission.Domain.Entities.Auction.RecommendationImpression;
 
 namespace ArtCommission.Application.Common.Interfaces;
 
@@ -95,6 +99,14 @@ public interface IApplicationDbContext
     DbSet<ArtTradeEntity> ArtTrades { get; }
     DbSet<TradeSlotFreeze> TradeSlotFreezes { get; }
     DbSet<TradeDispute> TradeDisputes { get; }
+
+    // Module Auction - AI Bid Fraud Detection
+    DbSet<AuctionRiskSignalEntity> AuctionRiskSignals { get; }
+    DbSet<AuctionRiskAssessmentEntity> AuctionRiskAssessments { get; }
+
+    // Module Auction - Personalized Auction Recommendation
+    DbSet<UserInterestProfile> UserInterestProfiles { get; }
+    DbSet<RecommendationImpression> RecommendationImpressions { get; }
 
     // Module Workroom Chat (UC43)
     DbSet<ChatRoom> ChatRooms { get; }

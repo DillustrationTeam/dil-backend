@@ -146,6 +146,28 @@ public class IdentityService : IIdentityService
         return await _userManager.FindByIdAsync(profile.UserId.ToString());
     }
 
+    /// <summary>
+    /// Operator fan-out helper: resolves a role name to the ids of active users holding it.
+    /// Returns an empty list (never throws) when the role does not exist yet, so a fresh database
+    /// cannot break the alert publishers that call this.
+    /// </summary>
+    public async Task<IReadOnlyList<Guid>> GetUserIdsInRoleAsync(string roleName, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(roleName))
+        {
+            return Array.Empty<Guid>();
+        }
+
+        var role = await _roleManager.FindByNameAsync(roleName);
+        if (role is null || string.IsNullOrWhiteSpace(role.Name))
+        {
+            return Array.Empty<Guid>();
+        }
+
+        var users = await _userManager.GetUsersInRoleAsync(role.Name);
+        return users.Where(u => !u.IsDeleted).Select(u => u.Id).ToArray();
+    }
+
     public async Task<(bool Success, UserDto? User, string[] Roles, string[] Errors)> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         var user = await _userManager.FindByIdAsync(userId.ToString());

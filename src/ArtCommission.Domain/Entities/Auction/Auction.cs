@@ -85,6 +85,19 @@ public class Auction : BaseEntity
     /// <summary>Platform fee percentage actually charged on this session (base + surcharge).</summary>
     public decimal? EffectiveFeePercent { get; set; }
 
+    /// <summary>
+    /// Latest fraud-detection score (0-100) written by the risk sweep. Denormalised onto the auction
+    /// so list/filter paths (admin queue, recommendation penalty) never join the assessment table.
+    /// Null = never scanned.
+    /// </summary>
+    public decimal? RiskScore { get; set; }
+
+    /// <summary>Severity bucket matching <see cref="RiskScore"/>; null until the first scan.</summary>
+    public AuctionRiskLevel? RiskLevel { get; set; }
+
+    /// <summary>UTC timestamp of the last completed detector run for this auction.</summary>
+    public DateTimeOffset? LastRiskScanAt { get; set; }
+
     // Navigation
     public Artwork? Artwork { get; set; }
     public AuctionDelivery? Delivery { get; set; }

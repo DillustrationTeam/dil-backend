@@ -108,8 +108,16 @@ public sealed record AuctionDetailDto(
     DateTimeOffset? PhysicalChoiceDeadline = null,
     AuctionDeliveryDto? Delivery = null,
     IReadOnlyList<AuctionReceiptDto>? Receipts = null,
-    /// <summary>Giá chốt cuối cùng â€” null khi phiên chưa settle.</summary>
+    /// <summary>Giá chốt cuối cùng — null khi phiên chưa settle.</summary>
     decimal? FinalPrice = null,
+
+    /// <summary>
+    /// True khi kiểm duyệt đã XÁC NHẬN gian lận cho phiên: chặn nhận giá mới và hiện banner cho
+    /// người xem. Chỉ nêu trạng thái, không lộ điểm hay tên dấu hiệu.
+    /// </summary>
+    bool BiddingBlocked = false,
+
+    string? BiddingBlockedReason = null,
     /// <summary>
     /// Current step of the seller on the delivery-dispute penalty ladder (0 = no penalty).
     /// Highest step among penalties that were not revoked, so the ladder keeps accumulating

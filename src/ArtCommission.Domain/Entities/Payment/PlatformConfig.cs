@@ -30,6 +30,18 @@ public static class PlatformConfigKeys
     public const string AuctionPenaltyWindowSessions = "AuctionPenaltyWindowSessions";
     public const string AuctionPenaltySuspensionDays = "AuctionPenaltySuspensionDays";
 
+    // Auction fraud detection (AI Bid Fraud Detection)
+    public const string AuctionRiskDetectionEnabled = "AuctionRiskDetectionEnabled";
+    public const string AuctionRiskThresholdHigh = "AuctionRiskThresholdHigh";
+    public const string AuctionRiskThresholdCritical = "AuctionRiskThresholdCritical";
+    public const string AuctionRiskSweepBatchSize = "AuctionRiskSweepBatchSize";
+
+    /// <summary>Optional JSON override of the per-signal weights. Empty = code defaults.</summary>
+    public const string AuctionRiskWeightsJson = "AuctionRiskWeightsJson";
+
+    /// <summary>JSON override of the recommendation ranking weights. Empty = code defaults.</summary>
+    public const string AuctionRecommendationWeights = "AuctionRecommendationWeights";
+
     public const string PayoutEnabled = "PayoutEnabled";
     public const string MilestoneAutoApprovalDays = "MilestoneAutoApprovalDays";
     public const string EscrowHoldDaysSqlKey = "escrow_hold_days";

@@ -1,5 +1,6 @@
 using ArtCommission.Application.Auction.Common;
 using ArtCommission.Application.Auction.DTOs;
+using ArtCommission.Application.Auction.Risk;
 using ArtCommission.Application.Common.Interfaces;
 using ArtCommission.Application.Notifications.Common;
 using ArtCommission.Application.Payment.Common;
@@ -58,6 +59,8 @@ public sealed class PlaceBidCommandHandler
     private readonly IAuctionLifecycleNotifier _lifecycleNotifier;
     private readonly IAuctionSettlementService _settlementService;
     private readonly IWalletService _walletService;
+    private readonly IRiskEngine _riskEngine;
+    private readonly Recommendation.IInterestProfileBuilder _interestProfiles;
     private readonly ILogger<PlaceBidCommandHandler> _logger;
 
     public PlaceBidCommandHandler(
@@ -68,6 +71,8 @@ public sealed class PlaceBidCommandHandler
         IAuctionLifecycleNotifier lifecycleNotifier,
         IAuctionSettlementService settlementService,
         IWalletService walletService,
+        IRiskEngine riskEngine,
+        Recommendation.IInterestProfileBuilder interestProfiles,
         ILogger<PlaceBidCommandHandler> logger)
     {
         _db = db;
@@ -77,6 +82,8 @@ public sealed class PlaceBidCommandHandler
         _lifecycleNotifier = lifecycleNotifier;
         _settlementService = settlementService;
         _walletService = walletService;
+        _riskEngine = riskEngine;
+        _interestProfiles = interestProfiles;
         _logger = logger;
     }
 
@@ -174,6 +181,19 @@ public sealed class PlaceBidCommandHandler
             {
                 return (false, null,
                     [$"Phiên không nhận đặt giá (trạng thái: {AuctionMapper.DescribeStatus(auction.Status)})."], null);
+            }
+
+            // Kiểm duyệt đã xác nhận gian lận ⇒ chặn nhận giá mới (hold không bị treo thêm).
+            var fraudConfirmed = await _db.AuctionRiskAssessments.AsNoTracking()
+                .AnyAsync(a => a.AuctionId == auction.Id
+                               && !a.IsDeleted
+                               && a.Status == AuctionRiskAssessmentStatus.Confirmed,
+                    cancellationToken);
+
+            if (fraudConfirmed)
+            {
+                return (false, null,
+                    ["Phiên đang tạm dừng nhận giá do kiểm duyệt xác nhận có dấu hiệu gian lận."], null);
             }
 
             if (auction.SellerId == request.UserId)
@@ -387,8 +407,7 @@ public sealed class PlaceBidCommandHandler
                 {
                     oldLeading.Status = BidStatus.Outbid;
                     oldLeading.UpdatedAt = now;
-                    await _moneyService.RefundDepositAsync(
-                        oldLeading, "Bị đè giá bởi lượt đặt giá cao hơn.", cancellationToken);
+                    await RefundOldLeaderTolerantlyAsync(oldLeading, now, cancellationToken);
                     // Rời filtered unique index trước khi chèn bid dẫn đầu kế tiếp.
                     await _db.SaveChangesAsync(cancellationToken);
                 }
@@ -495,6 +514,28 @@ public sealed class PlaceBidCommandHandler
                 await PublishOutbidNotificationAsync(oldLeading, winnerBidderName: null, auction, requestBid.Id, cancellationToken);
             }
 
+            // Fraud detection, hot path: only rules that need data already in memory. Runs after the
+            // commit so a detector failure can never roll back a legitimate bid.
+            try
+            {
+                await _riskEngine.EvaluateAsync(auction.Id, hotPathOnly: true, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Risk hot-path evaluation failed for auctionId={AuctionId}.", auction.Id);
+            }
+
+            // A bid is the strongest taste signal there is: expire the cached interest profile so the
+            // recommendation rail reflects it on the next read instead of waiting for the 12h TTL.
+            try
+            {
+                await _interestProfiles.InvalidateAsync(request.UserId, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Interest profile invalidation failed for userId={UserId}.", request.UserId);
+            }
+
             return (true, result, [], null);
         }
         catch (Exception ex) when (AuctionConcurrency.IsExpectedConflict(ex))
@@ -513,6 +554,37 @@ public sealed class PlaceBidCommandHandler
                     latest.BidCount == 0 ? latest.StartPrice : latest.CurrentPrice + latest.BidStep,
                     latest.EndAt,
                     latest.Status.ToString()));
+        }
+    }
+
+    /// <summary>
+    /// Nhả cọc của người vừa bị đè giá, chịu lỗi dữ liệu cũ.
+    ///
+    /// VÌ SAO không gọi thẳng <see cref="IAuctionMoneyService.RefundDepositAsync"/>: hàm đó ném
+    /// InvalidOperationException khi ví không còn giữ đủ tiền (dòng bid mang cờ Held nhưng tiền đã
+    /// được nhả ở một đường khác, ví dụ dữ liệu demo/đối soát tay). Trước đây lỗi này làm CẢ lượt
+    /// đặt giá mới thất bại với "Số tiền đang giữ không đủ để hoàn lại" — người dùng không thể đè
+    /// giá một phiên đang dẫn đầu bởi một dòng cọc "ma", dù ví của CHÍNH HỌ đủ tiền.
+    ///
+    /// Nay: không có tiền để hoàn thì đóng cờ lại rồi đi tiếp; lượt đặt giá mới không bị chặn.
+    /// </summary>
+    private async Task RefundOldLeaderTolerantlyAsync(
+        Bid oldLeading,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _moneyService.RefundDepositAsync(
+                oldLeading, "Bị đè giá bởi lượt đặt giá cao hơn.", cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            oldLeading.HoldStatus = HoldStatus.Refunded;
+            oldLeading.UpdatedAt = now;
+            _logger.LogWarning(ex,
+                "Cọc bidId={BidId} auctionId={AuctionId} mang cờ Held nhưng ví không giữ tiền; đóng cờ và cho lượt đặt giá mới đi tiếp.",
+                oldLeading.Id, oldLeading.AuctionId);
         }
     }
 

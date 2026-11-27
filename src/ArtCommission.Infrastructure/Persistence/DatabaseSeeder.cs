@@ -204,7 +204,13 @@ public static class DatabaseSeeder
             [PlatformConfigKeys.AiScanAiDetectionThreshold] = ("0.75", "Ngưỡng xác suất tranh do AI tạo để tự động gắn cờ (0.0 - 1.0)"),
             [PlatformConfigKeys.AiScanAutoTaggingEnabled] = ("true", "Bật/tắt tính năng AI tự động gợi ý và gắn tag phong cách cho tác phẩm (true/false)"),
             [PlatformConfigKeys.AiReferenceSketchDiscountPercent] = ("0", "% giảm giá đơn toàn sàn khi khách gắn ảnh AI phác thảo làm reference (0% - 30%)"),
-            [PlatformConfigKeys.AiReferenceSketchMaxGenerationsPerWindow] = ("3", "Giới hạn lượt sinh ảnh AI phác thảo bố cục mỗi (khách, creator) trong 24 giờ (1 - 10 lượt)")
+            [PlatformConfigKeys.AiReferenceSketchMaxGenerationsPerWindow] = ("3", "Giới hạn lượt sinh ảnh AI phác thảo bố cục mỗi (khách, creator) trong 24 giờ (1 - 10 lượt)"),
+            [PlatformConfigKeys.AuctionRiskDetectionEnabled] = ("true", "Bật/tắt bộ phát hiện gian lận đấu giá (true/false)"),
+            [PlatformConfigKeys.AuctionRiskThresholdHigh] = ("55", "Ngưỡng điểm rủi ro (0-100) bắt đầu xếp mức Cao và gửi cảnh báo cho Admin"),
+            [PlatformConfigKeys.AuctionRiskThresholdCritical] = ("80", "Ngưỡng điểm rủi ro (0-100) xếp mức Nghiêm trọng"),
+            [PlatformConfigKeys.AuctionRiskSweepBatchSize] = ("200", "Số phiên tối đa mỗi lượt quét nền của bộ phát hiện gian lận"),
+            [PlatformConfigKeys.AuctionRiskWeightsJson] = ("", "Trọng số từng dấu hiệu gian lận dạng JSON. Để trống = dùng bộ trọng số mặc định trong code"),
+            [PlatformConfigKeys.AuctionRecommendationWeights] = ("", "Trọng số xếp hạng gợi ý đấu giá dạng JSON. Để trống = dùng bộ mặc định (content 0.45 · urgency 0.25 · popularity 0.15 · priceFit 0.10 · creator 0.05)")
         };
 
         var configKeys = defaultConfigs.Keys.ToList();

@@ -63,7 +63,8 @@ var auctionArtwork = new Artwork
     Id = Guid.NewGuid(),
     CreatorProfileId = creatorProfile.Id,
     Title = "Auction workflow artwork",
-    ImageUrl = "https://example.test/auction.png"
+    ImageUrl = "https://example.test/auction.png",
+    ModerationStatus = "Approved"
 };
 var auction = new Auction
 {
@@ -86,18 +87,27 @@ await db.SaveChangesAsync();
 var money = new TestAuctionMoneyService();
 var realtime = new TestAuctionRealtimePublisher();
 var lifecycle = new TestAuctionLifecycleNotifier();
+var penaltyService = new AuctionPenaltyService(
+    db, new WalletService(db), new TestNotificationPublisher(), NullLogger<AuctionPenaltyService>.Instance);
+var settlement = new AuctionSettlementService(
+    db, new WalletService(db), money, penaltyService, new TestNotificationPublisher(),
+    NullLogger<AuctionSettlementService>.Instance);
 var handler = new PlaceBidCommandHandler(
     db,
     money,
     new TestNotificationPublisher(),
     realtime,
     lifecycle,
+    settlement,
+    new WalletService(db),
+    new NoopRiskEngine(),
     NullLogger<PlaceBidCommandHandler>.Instance);
 
 var createHandler = new CreateAuctionCommandHandler(
     db,
     realtime,
     lifecycle,
+    penaltyService,
     NullLogger<CreateAuctionCommandHandler>.Instance);
 
 Console.WriteLine("--- CHẠY 40 TEST CASES BACKEND HỆ THỐNG ĐẤU GIÁ VÀ GIÁ TRỊ 1-OF-1 ---");
@@ -111,7 +121,8 @@ var testArtwork1 = new Artwork
     Id = Guid.NewGuid(),
     CreatorProfileId = creatorProfile.Id,
     Title = "Artwork Test 1",
-    ImageUrl = "https://example.test/art1.png"
+    ImageUrl = "https://example.test/art1.png",
+    ModerationStatus = "Approved"
 };
 db.Artworks.Add(testArtwork1);
 await db.SaveChangesAsync();
@@ -129,7 +140,8 @@ var testArtworkZip = new Artwork
     Id = Guid.NewGuid(),
     CreatorProfileId = creatorProfile.Id,
     Title = "Artwork with Zip",
-    ImageUrl = "https://example.test/artzip.png"
+    ImageUrl = "https://example.test/artzip.png",
+    ModerationStatus = "Approved"
 };
 db.Artworks.Add(testArtworkZip);
 await db.SaveChangesAsync();
@@ -157,7 +169,8 @@ var testArtworkReserve = new Artwork
     Id = Guid.NewGuid(),
     CreatorProfileId = otherProfile.Id,
     Title = "Artwork Reserve",
-    ImageUrl = "https://example.test/artreserve.png"
+    ImageUrl = "https://example.test/artreserve.png",
+    ModerationStatus = "Approved"
 };
 db.Artworks.Add(testArtworkReserve);
 await db.SaveChangesAsync();
@@ -298,14 +311,16 @@ var eligibleArtwork = new Artwork
     Id = Guid.NewGuid(),
     CreatorProfileId = creatorProfile.Id,
     Title = "Eligible artwork",
-    ImageUrl = "https://example.test/eligible.png"
+    ImageUrl = "https://example.test/eligible.png",
+    ModerationStatus = "Approved"
 };
 var transferredArtwork = new Artwork
 {
     Id = Guid.NewGuid(),
     CreatorProfileId = creatorProfile.Id,
     Title = "Transferred artwork",
-    ImageUrl = "https://example.test/transferred.png"
+    ImageUrl = "https://example.test/transferred.png",
+    ModerationStatus = "Approved"
 };
 
 // Phiên đã Ended nhưng CHƯA có bid: tranh phải đăng lại được (không còn bị khoá).
@@ -315,14 +330,16 @@ var endedWithoutBidArtwork = new Artwork
     Id = Guid.NewGuid(),
     CreatorProfileId = creatorProfile.Id,
     Title = "Ended without bid artwork",
-    ImageUrl = "https://example.test/ended-nobid.png"
+    ImageUrl = "https://example.test/ended-nobid.png",
+    ModerationStatus = "Approved"
 };
 var endedWithBidArtwork = new Artwork
 {
     Id = Guid.NewGuid(),
     CreatorProfileId = creatorProfile.Id,
     Title = "Ended with bid artwork",
-    ImageUrl = "https://example.test/ended-bid.png"
+    ImageUrl = "https://example.test/ended-bid.png",
+    ModerationStatus = "Approved"
 };
 
 db.Artworks.AddRange(eligibleArtwork, transferredArtwork, endedWithoutBidArtwork, endedWithBidArtwork);
@@ -467,6 +484,8 @@ var settlementService = new AuctionSettlementService(
     db,
     testWalletService,
     money,
+    new AuctionPenaltyService(
+        db, testWalletService, new TestNotificationPublisher(), NullLogger<AuctionPenaltyService>.Instance),
     new TestNotificationPublisher(),
     NullLogger<AuctionSettlementService>.Instance);
 
@@ -686,8 +705,16 @@ static async Task RunSqlServerRaceCheckAsync(string connectionString)
     var barrierMoney = new BarrierAuctionMoneyService();
     await using var contextA = new AppDbContext(options);
     await using var contextB = new AppDbContext(options);
-    var handlerA = new PlaceBidCommandHandler(contextA, barrierMoney, new TestNotificationPublisher(), new TestAuctionRealtimePublisher(), new TestAuctionLifecycleNotifier(), NullLogger<PlaceBidCommandHandler>.Instance);
-    var handlerB = new PlaceBidCommandHandler(contextB, barrierMoney, new TestNotificationPublisher(), new TestAuctionRealtimePublisher(), new TestAuctionLifecycleNotifier(), NullLogger<PlaceBidCommandHandler>.Instance);
+
+    // Built locally: this method is a static local function, so it cannot capture outer services.
+    var barrierPenalty = new AuctionPenaltyService(
+        contextA, new WalletService(contextA), new TestNotificationPublisher(), NullLogger<AuctionPenaltyService>.Instance);
+    var barrierSettlement = new AuctionSettlementService(
+        contextA, new WalletService(contextA), barrierMoney, barrierPenalty, new TestNotificationPublisher(),
+        NullLogger<AuctionSettlementService>.Instance);
+
+    var handlerA = new PlaceBidCommandHandler(contextA, barrierMoney, new TestNotificationPublisher(), new TestAuctionRealtimePublisher(), new TestAuctionLifecycleNotifier(), barrierSettlement, new WalletService(contextA), new NoopRiskEngine(), NullLogger<PlaceBidCommandHandler>.Instance);
+    var handlerB = new PlaceBidCommandHandler(contextB, barrierMoney, new TestNotificationPublisher(), new TestAuctionRealtimePublisher(), new TestAuctionLifecycleNotifier(), barrierSettlement, new WalletService(contextB), new NoopRiskEngine(), NullLogger<PlaceBidCommandHandler>.Instance);
     var results = await Task.WhenAll(
         handlerA.Handle(new PlaceBidCommand(bidderAId, auctionId, 1_000m), default),
         handlerB.Handle(new PlaceBidCommand(bidderBId, auctionId, 1_000m), default));
@@ -780,7 +807,7 @@ sealed class TestAuctionRealtimePublisher : IAuctionRealtimePublisher
 {
     public List<(Guid AuctionId, DateTimeOffset OldEndAt, DateTimeOffset NewEndAt)> Extensions { get; } = [];
 
-    public Task PublishBidPlacedAsync(Guid auctionId, PlaceBidResultDto bid, decimal currentPrice, decimal minimumNextBid, DateTimeOffset endAt, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task PublishBidPlacedAsync(Guid auctionId, PlaceBidResultDto bid, decimal currentPrice, decimal minimumNextBid, DateTimeOffset endAt, CancellationToken cancellationToken, string? auctionStatus = null, Guid? leadingBidderId = null) => Task.CompletedTask;
     public Task PublishAuctionExtendedAsync(Guid auctionId, Guid bidId, DateTimeOffset oldEndAt, DateTimeOffset newEndAt, CancellationToken cancellationToken)
     {
         Extensions.Add((auctionId, oldEndAt, newEndAt));
@@ -809,4 +836,13 @@ sealed class TestFileStorageService : IFileStorageService
     public Task<string> SaveAsync(
         Stream content, string fileName, string contentType, string folder, CancellationToken cancellationToken = default) =>
         Task.FromResult($"https://cdn.dillustration.test/{folder}/{fileName}");
+}
+
+/// <summary>Detector stub: the workflow checks assert on bid state, not on fraud scoring.</summary>
+sealed class NoopRiskEngine : ArtCommission.Application.Auction.Risk.IRiskEngine
+{
+    public Task<ArtCommission.Application.Auction.Risk.RiskEvaluationOutcome> EvaluateAsync(
+        Guid auctionId, bool hotPathOnly, CancellationToken cancellationToken = default)
+        => Task.FromResult(new ArtCommission.Application.Auction.Risk.RiskEvaluationOutcome(
+            true, 0m, ArtCommission.Domain.Enums.AuctionRiskLevel.Low, 0, null, false));
 }

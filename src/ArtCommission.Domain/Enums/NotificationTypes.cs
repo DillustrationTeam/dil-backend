@@ -97,7 +97,23 @@ public enum NotificationType
     BugReportReplied,
 
     /// <summary>Có tin nhắn mới trong phòng làm việc (Workroom Chat).</summary>
-    WorkroomMessage
+    WorkroomMessage,
+
+    /// <summary>Fraud detector flagged an auction above the alert threshold. Sent to Administrator/Moderator.</summary>
+    AuctionFraudAlert,
+
+    /// <summary>Neutral notice to the seller that one of their auctions is under extra review.</summary>
+    AuctionRiskFlagged,
+
+    /// <summary>Kiểm duyệt đã xác nhận gian lận; phiên bị tạm dừng nhận giá.</summary>
+    AuctionFraudConfirmed,
+
+    /// <summary>
+    /// Kiểm duyệt đã xem xét phiếu rủi ro và bỏ qua (không có vi phạm).
+    /// Gửi cho NGƯỜI BÁN để họ biết phiên từng bị soi nhưng đã được trả về bình thường —
+    /// trước đây im lặng, người bán thấy cờ rồi thấy nó biến mất mà không rõ vì sao.
+    /// </summary>
+    AuctionRiskDismissed
 }
 
 public static class NotificationTypeNames
@@ -130,6 +146,10 @@ public static class NotificationTypeNames
     public const string SubmissionDisputeCreated = nameof(NotificationType.SubmissionDisputeCreated);
     public const string BugReportReplied = nameof(NotificationType.BugReportReplied);
     public const string WorkroomMessage = nameof(NotificationType.WorkroomMessage);
+    public const string AuctionFraudAlert = nameof(NotificationType.AuctionFraudAlert);
+    public const string AuctionRiskFlagged = nameof(NotificationType.AuctionRiskFlagged);
+    public const string AuctionFraudConfirmed = nameof(NotificationType.AuctionFraudConfirmed);
+    public const string AuctionRiskDismissed = nameof(NotificationType.AuctionRiskDismissed);
 
     public static readonly string[] All =
     [
@@ -160,7 +180,11 @@ public static class NotificationTypeNames
         TradeDisputeResolved,
         SubmissionDisputeCreated,
         BugReportReplied,
-        WorkroomMessage
+        WorkroomMessage,
+        AuctionFraudAlert,
+        AuctionRiskFlagged,
+        AuctionFraudConfirmed,
+        AuctionRiskDismissed
     ];
 }
 
@@ -234,7 +258,14 @@ public static class NotificationCategoryMap
             NotificationType.InvitationCanceled,
             NotificationType.InvitationExpired,
             NotificationType.SubmissionDisputeCreated,
-            NotificationType.BugReportReplied
+            NotificationType.BugReportReplied,
+            // Nhóm kiểm duyệt đấu giá: TRƯỚC ĐÂY 4 loại này không thuộc nhóm nào, nên
+            // Notification Center lọc theo tab (category) sẽ không bao giờ trả chúng ra —
+            // thông báo gian lận ghi vào DB nhưng người dùng không thấy ở đâu cả.
+            NotificationType.AuctionFraudAlert,
+            NotificationType.AuctionRiskFlagged,
+            NotificationType.AuctionFraudConfirmed,
+            NotificationType.AuctionRiskDismissed
         ],
 
         NotificationCategory.Promotion => [NotificationType.PromotionAnnouncement],
