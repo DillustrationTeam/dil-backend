@@ -168,6 +168,7 @@ public sealed class SearchArtworksTool(IApplicationDbContext db) : IAiTool
             .Select(a => new
             {
                 id = a.Id,
+                url = $"/artworks/{a.Id}",
                 a.Title,
                 a.Description,
                 a.Style,
