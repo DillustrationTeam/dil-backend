@@ -171,6 +171,7 @@ public sealed class SearchAuctionsTool(IApplicationDbContext db) : IAiTool
             .Select(a => new
             {
                 id = a.Id,
+                url = $"/auctions/{a.Id}",
                 artworkTitle = a.Artwork != null ? a.Artwork.Title : null,
                 artworkThumbnail = a.Artwork != null ? (a.Artwork.WatermarkedUrl ?? a.Artwork.ThumbnailUrl) : null,
                 auctionType = a.AuctionType.ToString(),

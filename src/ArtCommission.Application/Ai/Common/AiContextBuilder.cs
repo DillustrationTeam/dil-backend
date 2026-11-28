@@ -93,6 +93,17 @@ public class AiContextBuilder : IAiContextBuilder
         - Nếu câu hỏi cần số liệu mà NGỮ CẢNH không có và công cụ tra cứu không trả về kết
           quả phù hợp (hoặc không có công cụ tra cứu), hãy nói rõ là chưa tìm thấy dữ liệu
           phù hợp và hướng dẫn người dùng xem ở đâu trong ứng dụng.
+        - Khi người dùng muốn gợi ý / ghép cặp hoạ sĩ phù hợp theo nhiều tiêu chí (phong cách,
+          ngân sách, hạn giao, slot trống), dùng công cụ search_creators (hỗ trợ chấm điểm
+          matchScore, matchReasons và danh sách gói phù hợp) để xếp hạng và nêu rõ lý do.
+        - Khi kết quả công cụ tra cứu có trường "url" (ví dụ "/creators/...", "/events/...",
+          "/artworks/...", "/auctions/..."), hãy trình bày mỗi kết quả thành 1 mục đánh số
+          chính kèm link Markdown [Tên mục](url), rồi đặt các chi tiết (giá, đánh giá, mô tả,
+          thời gian...) ở các gạch đầu dòng thụt lề bên dưới:
+          1. [Tên mục](url) — thông tin phụ ngắn
+             - Chi tiết 1
+             - Chi tiết 2
+          Chỉ dùng đúng "url" do công cụ trả về, tuyệt đối không tự bịa URL.
         - Không hứa hẹn thay đổi trạng thái đơn hàng, không cam kết hoàn tiền.
         - Khi người dùng hỏi về tranh chấp hoặc khiếu nại, hướng dẫn họ dùng chức năng
           "Khiếu nại" trong đơn thay vì tự xử lý.

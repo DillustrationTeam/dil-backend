@@ -104,6 +104,7 @@ public sealed class SearchPublicVouchersTool(IApplicationDbContext db) : IAiTool
             .Select(v => new
             {
                 v.VoucherCode,
+                url = "/vouchers",
                 v.Name,
                 discountType = v.DiscountType.ToString(),
                 v.DiscountValue,

@@ -246,7 +246,23 @@ public sealed class SearchCommissionServicesTool(IApplicationDbContext db) : IAi
             _ => combined.OrderBy(s => s.StartingPrice).ThenByDescending(s => s.CreatorRating)
         };
 
-        return combined.Take(10).ToList();
+        return combined.Take(10).Select(s => new
+        {
+            s.ServiceId,
+            s.Source,
+            s.Title,
+            s.Description,
+            s.CategoryName,
+            s.StartingPrice,
+            s.DeliveryDays,
+            s.MaxRevisions,
+            s.CreatorProfileId,
+            s.CreatorDisplayName,
+            s.CreatorRating,
+            s.IsAcceptingOrders,
+            s.AvailableSlots,
+            url = $"/creators/{s.CreatorProfileId}"
+        }).ToList();
     }
 
     private static bool ContainsKeyword(string? text, string keyword, string altKeyword) =>

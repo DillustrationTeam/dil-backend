@@ -105,6 +105,7 @@ public sealed class SearchArtworkCategoriesTool(IApplicationDbContext db) : IAiT
             {
                 c.Name,
                 c.Slug,
+                url = $"/explore?category={c.Slug}",
                 c.Description,
                 c.approvedArtworkCount
             })

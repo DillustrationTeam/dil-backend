@@ -125,6 +125,7 @@ public sealed class GetEventDetailsTool(IApplicationDbContext db) : IAiTool
             @event = new
             {
                 ev.Id,
+                url = $"/events/{ev.Id}",
                 ev.Title,
                 ev.Description,
                 ev.Rules,

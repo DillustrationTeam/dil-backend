@@ -154,7 +154,15 @@ public sealed class GetCreatorServicesTool(IApplicationDbContext db) : IAiTool
         return new
         {
             found = true,
-            creator,
+            creator = new
+            {
+                creator.Id,
+                url = $"/creators/{creator.Id}",
+                creator.DisplayName,
+                creator.IsAcceptingOrders,
+                creator.AvailableSlots,
+                creator.RateCardJson
+            },
             services,
             addons,
             terms,

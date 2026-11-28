@@ -130,6 +130,7 @@ public sealed class SearchEventsTool(IApplicationDbContext db) : IAiTool
             .Select(e => new
             {
                 id = e.Id,
+                url = $"/events/{e.Id}",
                 e.Title,
                 e.Description,
                 e.Prize,
